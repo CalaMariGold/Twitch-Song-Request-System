@@ -30,6 +30,10 @@ function initDatabase() {
       type TEXT,
       priority INTEGER,
       timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
+      video_duration TEXT,
+      duration_seconds INTEGER,
+      thumbnail_url TEXT,
+      channel_name TEXT,
       FOREIGN KEY(user_id) REFERENCES users(id)
     )`);
 
@@ -39,9 +43,17 @@ function initDatabase() {
       value TEXT
     )`);
 
+    // Video metadata cache table
+    db.run(`CREATE TABLE IF NOT EXISTS video_cache (
+      video_id TEXT PRIMARY KEY,
+      metadata TEXT,
+      timestamp TEXT DEFAULT CURRENT_TIMESTAMP
+    )`);
+
     // Create indexes
     db.run('CREATE INDEX IF NOT EXISTS idx_requests_user_id ON requests(user_id)');
     db.run('CREATE INDEX IF NOT EXISTS idx_requests_priority ON requests(priority)');
+    db.run('CREATE INDEX IF NOT EXISTS idx_video_cache_timestamp ON video_cache(timestamp)');
   });
 }
 

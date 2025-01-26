@@ -4,6 +4,8 @@
     --background-color: #f5f5f5;
     --text-color: #333;
     --border-color: #ddd;
+    --error-color: #dc3545;
+    --success-color: #28a745;
 }
 
 * {
@@ -67,6 +69,7 @@ header h1 {
     justify-content: space-between;
     align-items: center;
     background: white;
+    gap: 15px;
 }
 
 .queue-item:hover {
@@ -94,9 +97,207 @@ header h1 {
     color: white;
 }
 
+.queue-item .thumbnail {
+    position: relative;
+    width: 120px;
+    min-width: 120px;
+    height: 68px;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.queue-item .thumbnail img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.queue-item .thumbnail .duration {
+    position: absolute;
+    bottom: 4px;
+    right: 4px;
+    background: rgba(0, 0, 0, 0.8);
+    color: white;
+    padding: 2px 4px;
+    border-radius: 2px;
+    font-size: 0.8em;
+}
+
+.queue-item .channel {
+    font-size: 0.85em;
+    color: #666;
+    margin-top: 2px;
+}
+
 footer {
     text-align: center;
     padding: 20px;
     color: #666;
     font-size: 0.9em;
+}
+
+.error-message {
+    background-color: var(--error-color);
+    color: white;
+    padding: 12px;
+    border-radius: 4px;
+    margin-bottom: 20px;
+    text-align: center;
+    animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateY(-20px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+#status {
+    display: inline-block;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-weight: bold;
+}
+
+#status.active {
+    background-color: var(--success-color);
+}
+
+#status.paused {
+    background-color: var(--error-color);
+}
+
+.empty-queue {
+    text-align: center;
+    padding: 40px;
+    color: #666;
+    font-style: italic;
+}
+
+.header-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.header-left {
+    flex: 1;
+}
+
+.header-right {
+    display: flex;
+    align-items: center;
+}
+
+.twitch-button {
+    display: inline-flex;
+    align-items: center;
+    padding: 8px 16px;
+    background-color: var(--secondary-color);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    font-size: 14px;
+    cursor: pointer;
+    text-decoration: none;
+    transition: opacity 0.2s;
+}
+
+.twitch-button:hover {
+    opacity: 0.9;
+}
+
+.twitch-button img {
+    width: 20px;
+    height: 20px;
+    margin-right: 8px;
+}
+
+#user-profile {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+#user-name {
+    color: white;
+    font-weight: 500;
+}
+
+.history-container {
+    margin-top: 30px;
+}
+
+.history-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.history-controls {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+#history-filter {
+    padding: 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background-color: white;
+    font-size: 14px;
+}
+
+.secondary-button {
+    padding: 8px 16px;
+    background-color: var(--secondary-color);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: opacity 0.2s;
+}
+
+.secondary-button:hover {
+    opacity: 0.9;
+}
+
+.history-item {
+    padding: 15px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    margin-bottom: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: white;
+    gap: 15px;
+    opacity: 0.8;
+}
+
+.history-item:hover {
+    opacity: 1;
+    background-color: #f8f8f8;
+}
+
+.history-item .timestamp {
+    font-size: 0.85em;
+    color: #666;
+    margin-top: 4px;
+}
+
+#history-list {
+    min-height: 200px;
+}
+
+.load-more-container {
+    text-align: center;
+    margin-top: 20px;
 } 
