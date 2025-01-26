@@ -5,12 +5,13 @@
 - Basic Node.js and Express server setup completed
 - Database structure defined
 - Basic configuration files created
+- Basic front-end structure implemented with real-time updates capability
 
 ## Next Steps
-1. Create public directory with basic front-end structure
-2. Implement basic queue display
-3. Set up WebSocket connection
-4. Begin Twitch OAuth integration
+1. Implement API endpoints for queue management
+2. Add request handling logic
+3. Begin Twitch OAuth integration
+4. Add streamer controls
 
 ## Completed Tasks
 - [x] Created project documentation
@@ -20,12 +21,15 @@
 - [x] Created basic Express server
 - [x] Set up SQLite database structure
 - [x] Added configuration files (.env.example, .gitignore)
+- [x] Created basic front-end structure
+- [x] Implemented WebSocket connection
+- [x] Added real-time queue display
 
 ## In Progress
-- [ ] Setting up front-end structure
+- [ ] Implementing queue management API endpoints
 
 ## Blockers
 None currently
 
 ## Notes
-Basic infrastructure is in place. Next phase will focus on implementing the front-end queue display and real-time updates. 
+Basic front-end infrastructure is in place with real-time updates via WebSocket. Next phase will focus on implementing the queue management API endpoints and request handling logic. 

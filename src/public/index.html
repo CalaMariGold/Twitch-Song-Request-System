@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Song Request Queue</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Song Request Queue</h1>
+            <div id="queue-status">Queue Status: <span id="status">Active</span></div>
+        </header>
+
+        <main>
+            <div class="queue-container">
+                <h2>Current Queue</h2>
+                <div id="queue-list">
+                    <!-- Queue items will be inserted here dynamically -->
+                </div>
+            </div>
+        </main>
+
+        <footer>
+            <p>Powered by Song Request System</p>
+        </footer>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="js/main.js"></script>
+</body>
+</html> 
