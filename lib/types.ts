@@ -45,6 +45,11 @@ export interface SongRequest {
   }
   /** Type of request (determines priority and limits) */
   requestType: 'channelPoint' | 'donation'
+  /** Donation details (if requestType is 'donation') */
+  donationInfo?: {
+    amount: number;
+    currency: string;
+  }
   /** Current status of the request */
   status?: 'pending' | 'playing' | 'completed' | 'skipped'
 }

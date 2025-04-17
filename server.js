@@ -287,12 +287,12 @@ async function validateAndAddSong(request) {
 
       if (request.requestType === 'channelPoint' && videoDetails.durationSeconds > MAX_CHANNEL_POINT_DURATION_SECONDS) {
           console.log(`Channel Point request duration (${videoDetails.durationSeconds}s) exceeds limit (${MAX_CHANNEL_POINT_DURATION_SECONDS}s) - rejecting`);
-          sendChatMessage(`@${request.requester} Sorry, channel point requests cannot be longer than 5 minutes.`);
+          sendChatMessage(`@${request.requester} Sorry, channel point songs cannot be longer than 5 minutes. Donate for priority and up to 10 minute songs.`);
           return; // Stop processing this request
       }
       if (request.requestType === 'donation' && videoDetails.durationSeconds > MAX_DONATION_DURATION_SECONDS) {
           console.log(`Donation request duration (${videoDetails.durationSeconds}s) exceeds limit (${MAX_DONATION_DURATION_SECONDS}s) - rejecting`);
-          sendChatMessage(`@${request.requester} Sorry, donation requests cannot be longer than 10 minutes.`);
+          sendChatMessage(`@${request.requester} Sorry, donation songs cannot be longer than 10 minutes.`);
           return; // Stop processing this request
       }
       // --- END Duration Checks ---
@@ -340,13 +340,14 @@ async function validateAndAddSong(request) {
           timestamp: request.timestamp || new Date().toISOString(),
           title: videoDetails.title,
           artist: videoDetails.channelTitle,
-          channelId: videoDetails.channelId, // Added channelId
+          channelId: videoDetails.channelId,
           duration: videoDetails.duration,
           durationSeconds: videoDetails.durationSeconds,
           thumbnailUrl: videoDetails.thumbnailUrl,
           source: 'youtube',
           channelPointReward: request.requestType === 'channelPoint' ? request.channelPointReward : undefined,
-          requestType: request.requestType
+          requestType: request.requestType,
+          donationInfo: request.requestType === 'donation' ? request.donationInfo : undefined
       };
 
       console.log('Created song request object:', songRequest);
@@ -424,14 +425,19 @@ async function processRequest(filePath) {
             return
         }
 
-        // *** Add requestType for file-based requests ***
-        const requestWithType = {
+        // Determine request type: Use file data if present, otherwise default to channelPoint
+        const determinedRequestType = request.hasOwnProperty('requestType') && request.requestType 
+                                      ? request.requestType 
+                                      : 'channelPoint';
+
+        const finalRequest = {
             ...request,
-            requestType: 'channelPoint' // Assume file requests are channel point requests
+            requestType: determinedRequestType
         };
+        console.log(`Processing file request. Determined type: ${finalRequest.requestType}`); // Add log
 
         // Call the centralized validation and adding function
-        await validateAndAddSong(requestWithType); // Pass the modified request
+        await validateAndAddSong(finalRequest); // Pass the request with ensured requestType
 
     } catch (error) {
         console.error('Error processing request from file:', error)
