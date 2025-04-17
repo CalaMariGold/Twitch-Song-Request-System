@@ -627,19 +627,19 @@ export default function AdminPage() {
               <TabsList className="grid w-full grid-cols-4 bg-gray-700">
                 <TabsTrigger value="queue">
                   <List className="mr-2" size={16} />
-                  Queue
+                  Queue ({queueState.queue.length})
                 </TabsTrigger>
                 <TabsTrigger value="history">
                   <History className="mr-2" size={16} />
-                  History
+                  History ({queueState.history.length})
                 </TabsTrigger>
                 <TabsTrigger value="users">
                   <Users className="mr-2" size={16} />
-                  Users
+                  Users ({blockedUsers.length})
                 </TabsTrigger>
                 <TabsTrigger value="blacklist">
                   <AlertTriangle className="mr-2" size={16} />
-                  Blacklist
+                  Blacklist ({blacklist.length})
                 </TabsTrigger>
               </TabsList>
 

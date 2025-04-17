@@ -6,7 +6,8 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Input } from "@/components/ui/input"
-import { Search, Music, Clock, History, Loader2 } from "lucide-react"
+import { Search, Music, Clock, History, Loader2, Youtube } from "lucide-react"
+import { Button } from "@/components/ui/button"
 import { motion, AnimatePresence } from "framer-motion"
 import { ErrorBoundary } from "@/components/error-boundary"
 import { SongRequest, QueueState } from "@/lib/types"
@@ -53,7 +54,7 @@ export default function SongRequestQueue() {
     })
 
     // Handle initial state from server
-    newSocket.on('initialState', (serverState) => {
+    newSocket.on('initialState', (serverState: QueueState) => {
       console.log('Received initial state:', serverState)
       setState(prev => ({
         ...prev,
@@ -77,6 +78,13 @@ export default function SongRequestQueue() {
       console.log('Queue updated:', updatedQueue)
       setState(prev => ({ ...prev, queue: updatedQueue }))
     })
+
+    // *** Add History Update Listener ***
+    newSocket.on('historyUpdate', (updatedHistory: SongRequest[]) => {
+      console.log('History updated:', updatedHistory); // Add log for debugging
+      setState(prev => ({ ...prev, history: updatedHistory }));
+    })
+    // ********************************
 
     newSocket.on(socketEvents.NOW_PLAYING, (song: SongRequest | null) => {
       console.log('Now playing updated:', song)
@@ -187,17 +195,33 @@ function NowPlaying({ song, isLoading }: { song: SongRequest | null, isLoading: 
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
-          className="flex items-center space-x-4"
+          className="flex items-center justify-between w-full"
         >
-          <Avatar className="w-16 h-16">
-            <AvatarImage src={song.requesterAvatar} alt={song.requester} />
-            <AvatarFallback>{song.requester.slice(0, 2).toUpperCase()}</AvatarFallback>
-          </Avatar>
-          <div>
-            <h3 className="text-lg font-medium">{song.title}</h3>
-            <p className="text-gray-400">{song.artist}</p>
-            <p className="text-sm text-gray-500">Requested by: {song.requester}</p>
+          <div className="flex items-center space-x-4">
+            <Avatar className="w-24 h-16 rounded-md">
+              <AvatarImage src={song.thumbnailUrl} alt={`${song.title} thumbnail`} className="object-cover" />
+              <AvatarFallback className="rounded-md">?</AvatarFallback>
+            </Avatar>
+            <div>
+              <h3 className="text-lg font-medium">{song.title}</h3>
+              <p className="text-gray-400">{song.artist}</p>
+              <p className="text-sm text-gray-500 flex items-center mt-1">
+                Requested by:
+                <Avatar className="w-4 h-4 rounded-full ml-1.5 mr-1 inline-block">
+                  <AvatarImage src={song.requesterAvatar} alt={song.requester} />
+                  <AvatarFallback className="text-xs">{song.requester.slice(0, 1)}</AvatarFallback>
+                </Avatar>
+                {song.requester}
+              </p>
+            </div>
           </div>
+
+          {/* YouTube Link Button */}
+          <a href={song.youtubeUrl} target="_blank" rel="noopener noreferrer" aria-label="Watch on YouTube">
+            <Button variant="ghost" className="p-2">
+              <Youtube className="h-8 w-8 text-red-600" />
+            </Button>
+          </a>
         </motion.div>
       ) : (
         <p className="text-gray-400">No song is currently playing</p>
@@ -217,26 +241,37 @@ function SongList({ songs }: { songs: SongRequest[] }) {
           exit={{ opacity: 0, y: -20 }}
           transition={{ duration: 0.3, delay: index * 0.1 }}
         >
-          <div className="flex items-center space-x-4 p-3 rounded-lg hover:bg-gray-700 transition-colors mb-2">
-            {song.thumbnailUrl && (
-              <Avatar className="w-16 h-9 rounded-sm">
-                <AvatarImage src={song.thumbnailUrl} alt={`${song.title} thumbnail`} className="object-cover" />
-                <AvatarFallback className="rounded-sm">?</AvatarFallback>
-              </Avatar>
-            )}
-            <Avatar>
-              <AvatarImage src={song.requesterAvatar} alt={song.requester} />
-              <AvatarFallback>{song.requester.slice(0, 2).toUpperCase()}</AvatarFallback>
-            </Avatar>
-            <div className="flex-grow">
-              <h3 className="font-semibold">{song.title}</h3>
-              <p className="text-sm text-gray-400">{song.artist}</p>
+          <div className="flex items-center justify-between space-x-4 p-3 rounded-lg hover:bg-gray-700 transition-colors mb-2">
+            <div className="flex items-center space-x-4 flex-grow min-w-0">
+              {song.thumbnailUrl && (
+                <Avatar className="w-16 h-9 rounded-sm flex-shrink-0">
+                  <AvatarImage src={song.thumbnailUrl} alt={`${song.title} thumbnail`} className="object-cover" />
+                  <AvatarFallback className="rounded-sm">?</AvatarFallback>
+                </Avatar>
+              )}
+              <div className="flex-grow min-w-0">
+                <h3 className="font-semibold truncate">{song.title}</h3>
+                <p className="text-sm text-gray-400 truncate">{song.artist}</p>
+              </div>
             </div>
-            <div className="text-sm text-gray-400 flex items-center">
-              <Clock className="mr-1" size={14} />
-              {song.duration}
+            <div className="flex items-center space-x-3 flex-shrink-0">
+              <div className="text-sm text-gray-400 flex items-center">
+                <Clock className="mr-1" size={14} />
+                {song.duration}
+              </div>
+              <div className="text-sm text-gray-400 hidden sm:flex items-center">
+                <Avatar className="w-4 h-4 rounded-full mr-1.5">
+                  <AvatarImage src={song.requesterAvatar} alt={song.requester} />
+                  <AvatarFallback className="text-xs">{song.requester.slice(0,1)}</AvatarFallback>
+                </Avatar>
+                {song.requester}
+              </div>
+              <a href={song.youtubeUrl} target="_blank" rel="noopener noreferrer" aria-label="Watch on YouTube">
+                <Button variant="ghost" className="p-1">
+                  <Youtube className="h-5 w-5 text-red-600" />
+                </Button>
+              </a>
             </div>
-            <div className="text-sm text-gray-400">{song.requester}</div>
           </div>
         </motion.div>
       ))}

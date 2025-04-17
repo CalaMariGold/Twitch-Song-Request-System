@@ -4,6 +4,7 @@ const { watch, writeFileSync } = require('fs')
 const { readFile, writeFile } = require('fs/promises')
 const path = require('path')
 const fetch = require('node-fetch')
+const tmi = require('tmi.js')
 require('dotenv').config()
 
 const SOCKET_PORT = 3002
@@ -15,6 +16,60 @@ const TWITCH_CLIENT_ID = process.env.NEXT_PUBLIC_TWITCH_CLIENT_ID;
 const TWITCH_CLIENT_SECRET = process.env.TWITCH_CLIENT_SECRET;
 let twitchAppAccessToken = null;
 let twitchTokenExpiry = null;
+
+// Twitch Chat Bot Configuration
+const TWITCH_BOT_USERNAME = process.env.TWITCH_BOT_USERNAME;
+const TWITCH_BOT_OAUTH_TOKEN = process.env.TWITCH_BOT_OAUTH_TOKEN;
+const TWITCH_CHANNEL_NAME = process.env.TWITCH_CHANNEL_NAME;
+
+if (!TWITCH_BOT_USERNAME || !TWITCH_BOT_OAUTH_TOKEN || !TWITCH_CHANNEL_NAME) {
+  console.error('Twitch bot credentials (username, token, channel) are missing in .env file. Chat features disabled.');
+}
+
+const tmiOpts = {
+  identity: {
+    username: TWITCH_BOT_USERNAME,
+    password: TWITCH_BOT_OAUTH_TOKEN,
+  },
+  channels: [TWITCH_CHANNEL_NAME],
+};
+
+let tmiClient = null;
+if (TWITCH_BOT_USERNAME && TWITCH_BOT_OAUTH_TOKEN && TWITCH_CHANNEL_NAME) {
+  tmiClient = new tmi.client(tmiOpts);
+
+  tmiClient.on('message', (channel, tags, message, self) => {
+    // Handle incoming messages if needed in the future
+    if (self) return; // Ignore messages from the bot itself
+    // Example: console.log(`${tags['display-name']}: ${message}`);
+  });
+
+  tmiClient.on('connected', (addr, port) => {
+    console.log(`* Connected to Twitch chat (${addr}:${port}) in channel #${TWITCH_CHANNEL_NAME}`);
+  });
+
+  tmiClient.on('disconnected', (reason) => {
+    console.log(`* Disconnected from Twitch chat: ${reason}`);
+    // Optionally attempt to reconnect
+  });
+
+  tmiClient.connect().catch(console.error);
+}
+
+// Function to send a message to Twitch chat
+function sendChatMessage(message) {
+  if (tmiClient && tmiClient.readyState() === 'OPEN') {
+    tmiClient.say(TWITCH_CHANNEL_NAME, message)
+      .then(() => {
+        console.log(`[Twitch Chat] Sent: "${message}"`);
+      })
+      .catch((err) => {
+        console.error(`[Twitch Chat] Error sending message: ${err}`);
+      });
+  } else {
+    console.warn('[Twitch Chat] Could not send message, client not connected or configured.');
+  }
+}
 
 // Function to get Twitch App Access Token
 async function getTwitchAppAccessToken() {
@@ -153,157 +208,186 @@ async function saveHistory() {
   }
 }
 
+// --- NEW Function: Validate and Add Song ---
+async function validateAndAddSong(request) {
+  console.log('Validating and adding song request:', request);
+
+  // Validate essential request data
+  if (!request || !request.youtubeUrl || !request.requester) {
+      console.error('Invalid request object received in validateAndAddSong:', request);
+      // Optionally send a generic error message if possible, though requester might be unknown
+      return;
+  }
+
+  // Check if requester is blocked
+  const blockedUsers = state.blockedUsers || [];
+  const isBlocked = blockedUsers.some(user => user.username.toLowerCase() === request.requester.toLowerCase());
+  if (isBlocked) {
+      console.log(`Request from blocked user ${request.requester} - rejecting`);
+      sendChatMessage(`@${request.requester}, you are currently blocked from making song requests.`);
+      return; // Stop processing
+  }
+
+  // Fetch Twitch Profile for Avatar (Best effort)
+  let requesterAvatar = '/placeholder.svg?height=32&width=32';
+  try {
+      const twitchProfile = await getTwitchUserProfile(request.requester);
+      if (twitchProfile && twitchProfile.profile_image_url) {
+          requesterAvatar = twitchProfile.profile_image_url;
+          console.log(`Fetched Twitch avatar for ${request.requester}: ${requesterAvatar}`);
+      } else {
+          console.warn(`Could not find Twitch profile or avatar for ${request.requester}. Using placeholder.`);
+      }
+  } catch (twitchError) {
+      console.error(`Error fetching Twitch profile for ${request.requester}:`, twitchError);
+  }
+
+  // Extract video ID
+  const videoId = extractVideoId(request.youtubeUrl);
+  if (!videoId) {
+      console.error('Invalid YouTube URL:', request.youtubeUrl);
+      sendChatMessage(`@${request.requester}, the YouTube link you provided seems invalid.`);
+      return;
+  }
+  console.log('Extracted video ID:', videoId);
+
+  // Fetch video details
+  try {
+      const videoDetails = await fetchYouTubeDetails(videoId);
+      console.log('Successfully fetched video details:', videoDetails);
+
+      // Check for duration limits
+      if (state.settings && state.settings.maxDuration) {
+          const maxDurationInSeconds = state.settings.maxDuration * 60;
+          if (videoDetails.durationSeconds > maxDurationInSeconds) {
+              console.log(`Video duration (${videoDetails.durationSeconds}s) exceeds maximum allowed (${maxDurationInSeconds}s) - rejecting`);
+              sendChatMessage(`@${request.requester}, sorry, the song "${videoDetails.title}" is too long (>${state.settings.maxDuration} mins).`);
+              return;
+          }
+      }
+
+      // Check for blacklisted content
+      const blacklist = state.blacklist || [];
+      const songTitle = videoDetails.title.toLowerCase();
+      const artistName = videoDetails.channelTitle.toLowerCase();
+
+      const blacklistedSong = blacklist.find(item =>
+          item.type === 'song' && songTitle.includes(item.term.toLowerCase())
+      );
+      if (blacklistedSong) {
+          console.log(`Song "${videoDetails.title}" contains blacklisted term "${blacklistedSong.term}" - rejecting`);
+          sendChatMessage(`@${request.requester}, sorry, the song "${videoDetails.title}" is currently blacklisted.`);
+          return;
+      }
+
+      const blacklistedArtist = blacklist.find(item =>
+          item.type === 'artist' && artistName.includes(item.term.toLowerCase())
+      );
+      if (blacklistedArtist) {
+          console.log(`Artist "${videoDetails.channelTitle}" contains blacklisted term "${blacklistedArtist.term}" - rejecting`);
+           sendChatMessage(`@${request.requester}, sorry, songs by "${videoDetails.channelTitle}" are currently blacklisted.`);
+          return;
+      }
+
+      const blacklistedKeyword = blacklist.find(item =>
+          item.type === 'keyword' &&
+          (songTitle.includes(item.term.toLowerCase()) || artistName.includes(item.term.toLowerCase()))
+      );
+      if (blacklistedKeyword) {
+          console.log(`Song contains blacklisted keyword "${blacklistedKeyword.term}" - rejecting`);
+           sendChatMessage(`@${request.requester}, sorry, your request for "${videoDetails.title}" could not be added due to a blacklisted keyword.`);
+          return;
+      }
+
+      // Create song request object
+      const songRequest = {
+          id: request.id || Date.now().toString(), // Ensure ID exists
+          youtubeUrl: request.youtubeUrl,
+          requester: request.requester,
+          requesterAvatar: requesterAvatar,
+          timestamp: request.timestamp || new Date().toISOString(), // Ensure timestamp exists
+          title: videoDetails.title,
+          artist: videoDetails.channelTitle,
+          duration: videoDetails.duration,
+          durationSeconds: videoDetails.durationSeconds,
+          thumbnailUrl: videoDetails.thumbnailUrl,
+          source: 'youtube',
+          channelPointReward: request.channelPointReward,
+          priority: request.priority || 'normal'
+      };
+
+      console.log('Created song request object:', songRequest);
+
+      let queuePosition = 0;
+      // Add the song with appropriate priority
+      if (songRequest.priority === 'high') {
+         state.queue.unshift(songRequest); // Add to beginning
+         console.log(`Added high priority song ${songRequest.id} to queue.`);
+         queuePosition = 1; // High priority is always first
+      } else {
+         state.queue.push(songRequest); // Add to end
+         console.log(`Added normal/low priority song ${songRequest.id} to queue.`);
+         queuePosition = state.queue.length; // Position is the new length
+      }
+
+      // Emit updates to all clients
+      io.emit('newSongRequest', songRequest); // Keep this for potential UI feedback
+      io.emit('queueUpdate', state.queue);
+
+      console.log('Queue updated. Current queue length:', state.queue.length);
+      // Optionally send a success message to chat
+      sendChatMessage(`@${request.requester} requested "${songRequest.title}". You're #${queuePosition} in the queue!`);
+
+  } catch (fetchError) {
+      console.error('Error fetching video details:', fetchError);
+      sendChatMessage(`@${request.requester}, sorry, I couldn't fetch the details for that YouTube link.`);
+  }
+}
+// --- END NEW Function ---
+
+// --- MODIFIED processRequest ---
 async function processRequest(filePath) {
     if (isProcessing) return
-    
+
     try {
         isProcessing = true
-        
+
         // Add a small delay to ensure the file is completely written
         await new Promise(resolve => setTimeout(resolve, 100))
-        
+
         // Read and parse the request file
         const content = await readFile(filePath, 'utf-8')
-        
+
         // Skip if we've already processed this content
         if (content === lastProcessedContent) {
             console.log('Skipping already processed content')
+            isProcessing = false; // Reset flag here
             return
         }
-        
+
         // Validate JSON format
         let request
         try {
             request = JSON.parse(content.trim())
             lastProcessedContent = content
-            console.log('Successfully parsed request JSON:', request)
+            console.log('Successfully parsed request JSON from file:', request)
         } catch (parseError) {
-            console.error('Invalid JSON content:', content)
+            console.error('Invalid JSON content in file:', content)
             console.error('Parse error:', parseError)
-            return
-        }
-        
-        console.log('Processing request:', request)
-
-        // --- START: Fetch Twitch Profile ---
-        let requesterAvatar = '/placeholder.svg?height=32&width=32'; // Default placeholder
-        if (request.requester) {
-            try {
-                const twitchProfile = await getTwitchUserProfile(request.requester);
-                if (twitchProfile && twitchProfile.profile_image_url) {
-                    requesterAvatar = twitchProfile.profile_image_url;
-                    console.log(`Fetched Twitch avatar for ${request.requester}: ${requesterAvatar}`);
-                } else {
-                    console.warn(`Could not find Twitch profile or avatar for ${request.requester}. Using placeholder.`);
-                }
-            } catch (twitchError) {
-                console.error(`Error fetching Twitch profile for ${request.requester}:`, twitchError);
-                // Keep placeholder on error
-            }
-        } else {
-             console.warn('Request is missing requester username.');
-        }
-        // --- END: Fetch Twitch Profile ---
-
-        // Extract video ID
-        const videoId = extractVideoId(request.youtubeUrl)
-        if (!videoId) {
-            console.error('Invalid YouTube URL:', request.youtubeUrl)
-            return
-        }
-        
-        console.log('Extracted video ID:', videoId)
-
-        // Check if requester is blocked
-        const blockedUsers = state.blockedUsers || []
-        if (blockedUsers.some(user => user.username.toLowerCase() === request.requester.toLowerCase())) {
-            console.log(`Request from blocked user ${request.requester} - rejecting`)
+            isProcessing = false; // Reset flag here
             return
         }
 
-        // Fetch video details
-        try {
-            const videoDetails = await fetchYouTubeDetails(videoId)
-            console.log('Successfully fetched video details:', videoDetails)
-            
-            // Check for duration limits
-            if (state.settings && state.settings.maxDuration) {
-                const maxDurationInSeconds = state.settings.maxDuration * 60
-                if (videoDetails.durationSeconds > maxDurationInSeconds) {
-                    console.log(`Video duration (${videoDetails.durationSeconds}s) exceeds maximum allowed (${maxDurationInSeconds}s) - rejecting`)
-                    return
-                }
-            }
-            
-            // Check for blacklisted content
-            const blacklist = state.blacklist || []
-            const songTitle = videoDetails.title.toLowerCase()
-            const artistName = videoDetails.channelTitle.toLowerCase()
-            
-            // Check for blacklisted songs
-            const blacklistedSong = blacklist.find(item => 
-                item.type === 'song' && songTitle.includes(item.term.toLowerCase())
-            )
-            if (blacklistedSong) {
-                console.log(`Song "${videoDetails.title}" contains blacklisted term "${blacklistedSong.term}" - rejecting`)
-                return
-            }
-            
-            // Check for blacklisted artists
-            const blacklistedArtist = blacklist.find(item => 
-                item.type === 'artist' && artistName.includes(item.term.toLowerCase())
-            )
-            if (blacklistedArtist) {
-                console.log(`Artist "${videoDetails.channelTitle}" contains blacklisted term "${blacklistedArtist.term}" - rejecting`)
-                return
-            }
-            
-            // Check for blacklisted keywords
-            const blacklistedKeyword = blacklist.find(item => 
-                item.type === 'keyword' && 
-                (songTitle.includes(item.term.toLowerCase()) || artistName.includes(item.term.toLowerCase()))
-            )
-            if (blacklistedKeyword) {
-                console.log(`Song contains blacklisted keyword "${blacklistedKeyword.term}" - rejecting`)
-                return
-            }
-            
-            // Create song request object
-            const songRequest = {
-                id: request.id,
-                youtubeUrl: request.youtubeUrl,
-                requester: request.requester,
-                requesterAvatar: requesterAvatar,
-                timestamp: request.timestamp,
-                title: videoDetails.title,
-                artist: videoDetails.channelTitle,
-                duration: videoDetails.duration,
-                durationSeconds: videoDetails.durationSeconds,
-                thumbnailUrl: videoDetails.thumbnailUrl,
-                source: 'youtube',
-                channelPointReward: request.channelPointReward,
-                priority: request.priority || 'normal'
-            }
-            
-            console.log('Created song request object:', songRequest)
+        // Call the centralized validation and adding function
+        await validateAndAddSong(request);
 
-            // Update state
-            state.queue.push(songRequest)
-            
-            // Emit updates to all clients
-            io.emit('newSongRequest', songRequest)
-            io.emit('queueUpdate', state.queue)
-            
-            console.log('Queue updated. Current queue:', state.queue)
-        } catch (fetchError) {
-            console.error('Error fetching video details:', fetchError)
-        }
     } catch (error) {
-        console.error('Error processing request:', error)
+        console.error('Error processing request from file:', error)
     } finally {
         isProcessing = false
     }
 }
+// --- END MODIFIED processRequest ---
 
 // Socket.IO connection handling
 io.on('connection', (socket) => {
@@ -319,22 +403,26 @@ io.on('connection', (socket) => {
         socket.emit('historyUpdate', state.history)
     })
 
-    // Handle queue updates
+    // Handle queue updates (mostly for admin drag/drop?)
     socket.on('updateQueue', (updatedQueue) => {
+        console.log('[Server] Received \'updateQueue\' (likely admin action)');
         state.queue = updatedQueue
-        socket.broadcast.emit('queueUpdate', state.queue)
+        socket.broadcast.emit('queueUpdate', state.queue) // Inform other clients
     })
 
-    // Handle add song
-    socket.on('addSong', (song) => {
-        // Add the song with appropriate priority
-        if (song.priority === 'high') {
-            state.queue.unshift(song) // Add to beginning
-        } else {
-            state.queue.push(song) // Add to end
+    // --- MODIFIED addSong Handler ---
+    socket.on('addSong', async (songRequestData) => {
+        console.log('[Server] Received \'addSong\' event via socket:', songRequestData);
+        // Ensure the incoming data has necessary fields before validating
+        if (!songRequestData || !songRequestData.youtubeUrl || !songRequestData.requester) {
+             console.error('Received invalid song request data via socket:', songRequestData);
+             // Cannot easily notify user as this might be an admin action without a clear target
+             return;
         }
-        io.emit('queueUpdate', state.queue)
+        // Call the centralized validation and adding function
+        await validateAndAddSong(songRequestData);
     })
+    // --- END MODIFIED addSong Handler ---
 
     // Handle remove song
     socket.on('removeSong', (songId) => {
@@ -404,22 +492,33 @@ io.on('connection', (socket) => {
         console.log(`[Server] State BEFORE update: nowPlaying=${state.nowPlaying?.id}, history[0]=${state.history[0]?.id}`);
         
         let historyUpdated = false; 
-        
+        const previousSong = state.nowPlaying; // Store previous song
+
         if (song) {
-            // Move current song to history if it exists
-            if (state.nowPlaying) {
-                console.log(`[Server] Adding previous song ${state.nowPlaying.id} to history.`);
-                state.history.unshift(state.nowPlaying);
-                historyUpdated = true;
+            // Move current song to history if it exists and is not already the most recent history item
+            if (previousSong && (!state.history.length || state.history[0].id !== previousSong.id)) {
+                 // *** Check for duplicates before adding ***
+                 if (!state.history.some(historySong => historySong.id === previousSong.id)) {
+                     console.log(`[Server] Adding previous song ${previousSong.id} to history.`);
+                     state.history.unshift(previousSong);
+                     historyUpdated = true;
+                 } else {
+                    console.log(`[Server] Skipped adding previous song ${previousSong.id} to history (duplicate ID found).`);
+                 }
             }
             state.nowPlaying = song
             state.queue = state.queue.filter(s => s.id !== song.id)
         } else {
             // Song finished or stopped
-            if (state.nowPlaying) {
-                console.log(`[Server] Adding finished song ${state.nowPlaying.id} to history.`);
-                state.history.unshift(state.nowPlaying);
-                historyUpdated = true;
+            if (previousSong && (!state.history.length || state.history[0].id !== previousSong.id)) {
+                // *** Check for duplicates before adding ***
+                if (!state.history.some(historySong => historySong.id === previousSong.id)) {
+                    console.log(`[Server] Adding finished song ${previousSong.id} to history.`);
+                    state.history.unshift(previousSong);
+                    historyUpdated = true;
+                } else {
+                    console.log(`[Server] Skipped adding finished song ${previousSong.id} to history (duplicate ID found).`);
+                }
             }
             state.nowPlaying = null
         }
@@ -436,8 +535,8 @@ io.on('connection', (socket) => {
         io.emit('queueUpdate', state.queue)
         // Emit history update if it actually changed
         if (historyUpdated) { 
-          console.log(`[Server] Emitting historyUpdate.`); // Restore emission log
-          io.emit('historyUpdate', state.history) // Restore history emission
+          console.log(`[Server] Emitting historyUpdate.`); 
+          io.emit('historyUpdate', state.history)
         }
     })
 
