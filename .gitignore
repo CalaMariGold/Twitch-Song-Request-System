@@ -28,3 +28,5 @@ pids/
 .DS_Store
 Thumbs.db 
 /.next/cache
+queue/history.json
+queue/requests.json
