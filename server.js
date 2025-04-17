@@ -213,8 +213,8 @@ async function validateAndAddSong(request) {
   console.log('Validating and adding song request:', request);
 
   // Validate essential request data
-  if (!request || !request.youtubeUrl || !request.requester) {
-      console.error('Invalid request object received in validateAndAddSong:', request);
+  if (!request || !request.youtubeUrl || !request.requester || !request.requestType) {
+      console.error('Invalid request object received (missing url, requester, or requestType):', request);
       // Optionally send a generic error message if possible, though requester might be unknown
       return;
   }
@@ -228,19 +228,44 @@ async function validateAndAddSong(request) {
       return; // Stop processing
   }
 
-  // Fetch Twitch Profile for Avatar (Best effort)
-  let requesterAvatar = '/placeholder.svg?height=32&width=32';
+  // --- Check User Queue Limit for Channel Point Requests ---
+  if (request.requestType === 'channelPoint') {
+    const existingRequest = state.queue.find(song => song.requester.toLowerCase() === request.requester.toLowerCase());
+    if (existingRequest) {
+      console.log(`User ${request.requester} already has a song in the queue - rejecting channel point request`);
+      sendChatMessage(`@${request.requester}, you already have a song in the queue. Please wait for it to play.`);
+      return; // Stop processing
+    }
+  }
+  // --- END User Limit Check ---
+
+  // --- Always fetch Twitch Profile for Avatar AND Login Name ---
+  let requesterAvatar = '/placeholder.svg?height=32&width=32'; // Default placeholder
+  let requesterLogin = request.requester.toLowerCase(); // Default to lowercase display name for URL
+  let twitchProfile = null; // Store profile to get login name later
   try {
-      const twitchProfile = await getTwitchUserProfile(request.requester);
-      if (twitchProfile && twitchProfile.profile_image_url) {
-          requesterAvatar = twitchProfile.profile_image_url;
-          console.log(`Fetched Twitch avatar for ${request.requester}: ${requesterAvatar}`);
+      twitchProfile = await getTwitchUserProfile(request.requester);
+      if (twitchProfile) {
+          if (twitchProfile.profile_image_url) {
+              requesterAvatar = twitchProfile.profile_image_url;
+              console.log(`Fetched Twitch avatar for ${request.requester}: ${requesterAvatar}`);
+          } else {
+              console.warn(`Could not find Twitch avatar for ${request.requester}. Using placeholder.`);
+          }
+          if (twitchProfile.login) {
+              requesterLogin = twitchProfile.login;
+              console.log(`Fetched Twitch login for ${request.requester}: ${requesterLogin}`);
+          } else {
+              console.warn(`Could not find Twitch login name for ${request.requester}. Using default.`);
+          }
       } else {
-          console.warn(`Could not find Twitch profile or avatar for ${request.requester}. Using placeholder.`);
+          console.warn(`Could not find Twitch profile for ${request.requester}. Using placeholders.`);
       }
   } catch (twitchError) {
       console.error(`Error fetching Twitch profile for ${request.requester}:`, twitchError);
+      // Keep default placeholders on error
   }
+  // --- END TWITCH FETCH ---
 
   // Extract video ID
   const videoId = extractVideoId(request.youtubeUrl);
@@ -256,15 +281,21 @@ async function validateAndAddSong(request) {
       const videoDetails = await fetchYouTubeDetails(videoId);
       console.log('Successfully fetched video details:', videoDetails);
 
-      // Check for duration limits
-      if (state.settings && state.settings.maxDuration) {
-          const maxDurationInSeconds = state.settings.maxDuration * 60;
-          if (videoDetails.durationSeconds > maxDurationInSeconds) {
-              console.log(`Video duration (${videoDetails.durationSeconds}s) exceeds maximum allowed (${maxDurationInSeconds}s) - rejecting`);
-              sendChatMessage(`@${request.requester}, sorry, the song "${videoDetails.title}" is too long (>${state.settings.maxDuration} mins).`);
-              return;
-          }
+      // --- NEW: Duration Checks based on Request Type ---
+      const MAX_CHANNEL_POINT_DURATION_SECONDS = 300; // 5 minutes
+      const MAX_DONATION_DURATION_SECONDS = 600; // 10 minutes
+
+      if (request.requestType === 'channelPoint' && videoDetails.durationSeconds > MAX_CHANNEL_POINT_DURATION_SECONDS) {
+          console.log(`Channel Point request duration (${videoDetails.durationSeconds}s) exceeds limit (${MAX_CHANNEL_POINT_DURATION_SECONDS}s) - rejecting`);
+          sendChatMessage(`@${request.requester} Sorry, channel point requests cannot be longer than 5 minutes.`);
+          return; // Stop processing this request
       }
+      if (request.requestType === 'donation' && videoDetails.durationSeconds > MAX_DONATION_DURATION_SECONDS) {
+          console.log(`Donation request duration (${videoDetails.durationSeconds}s) exceeds limit (${MAX_DONATION_DURATION_SECONDS}s) - rejecting`);
+          sendChatMessage(`@${request.requester} Sorry, donation requests cannot be longer than 10 minutes.`);
+          return; // Stop processing this request
+      }
+      // --- END Duration Checks ---
 
       // Check for blacklisted content
       const blacklist = state.blacklist || [];
@@ -301,34 +332,49 @@ async function validateAndAddSong(request) {
 
       // Create song request object
       const songRequest = {
-          id: request.id || Date.now().toString(), // Ensure ID exists
+          id: request.id || Date.now().toString(),
           youtubeUrl: request.youtubeUrl,
-          requester: request.requester,
+          requester: request.requester, // Display name
+          requesterLogin: requesterLogin, // Login name for URL
           requesterAvatar: requesterAvatar,
-          timestamp: request.timestamp || new Date().toISOString(), // Ensure timestamp exists
+          timestamp: request.timestamp || new Date().toISOString(),
           title: videoDetails.title,
           artist: videoDetails.channelTitle,
+          channelId: videoDetails.channelId, // Added channelId
           duration: videoDetails.duration,
           durationSeconds: videoDetails.durationSeconds,
           thumbnailUrl: videoDetails.thumbnailUrl,
           source: 'youtube',
-          channelPointReward: request.channelPointReward,
-          priority: request.priority || 'normal'
+          channelPointReward: request.requestType === 'channelPoint' ? request.channelPointReward : undefined,
+          requestType: request.requestType
       };
 
       console.log('Created song request object:', songRequest);
 
+      // --- NEW: Queue Insertion Logic based on Request Type ---
+      let insertIndex = state.queue.length; // Default to end
       let queuePosition = 0;
-      // Add the song with appropriate priority
-      if (songRequest.priority === 'high') {
-         state.queue.unshift(songRequest); // Add to beginning
-         console.log(`Added high priority song ${songRequest.id} to queue.`);
-         queuePosition = 1; // High priority is always first
-      } else {
-         state.queue.push(songRequest); // Add to end
-         console.log(`Added normal/low priority song ${songRequest.id} to queue.`);
-         queuePosition = state.queue.length; // Position is the new length
+
+      if (songRequest.requestType === 'donation') {
+          // Find the index of the first non-donation (channelPoint) request
+          const firstChannelPointIndex = state.queue.findIndex(song => song.requestType === 'channelPoint');
+          if (firstChannelPointIndex !== -1) {
+              insertIndex = firstChannelPointIndex; // Insert before the first channel point request
+          } else {
+              insertIndex = state.queue.length; // If no channel point requests, insert at the end (among donations)
+          }
+          console.log(`Adding donation song ${songRequest.id} at index ${insertIndex}`);
+      } else { // channelPoint
+          insertIndex = state.queue.length; // Always add channel point requests to the end
+          console.log(`Adding channelPoint song ${songRequest.id} at index ${insertIndex}`);
       }
+      
+      // Insert the song
+      state.queue.splice(insertIndex, 0, songRequest);
+
+      // Calculate user-facing queue position (1-based index)
+      queuePosition = state.queue.findIndex(song => song.id === songRequest.id) + 1;
+      // --- END Queue Insertion Logic ---
 
       // Emit updates to all clients
       io.emit('newSongRequest', songRequest); // Keep this for potential UI feedback
@@ -378,8 +424,14 @@ async function processRequest(filePath) {
             return
         }
 
+        // *** Add requestType for file-based requests ***
+        const requestWithType = {
+            ...request,
+            requestType: 'channelPoint' // Assume file requests are channel point requests
+        };
+
         // Call the centralized validation and adding function
-        await validateAndAddSong(request);
+        await validateAndAddSong(requestWithType); // Pass the modified request
 
     } catch (error) {
         console.error('Error processing request from file:', error)
@@ -686,6 +738,7 @@ async function fetchYouTubeDetails(videoId) {
         return {
             title: item.snippet.title,
             channelTitle: item.snippet.channelTitle,
+            channelId: item.snippet.channelId,
             duration: formatDuration(duration),
             durationSeconds,
             thumbnailUrl

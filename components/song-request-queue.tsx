@@ -13,6 +13,8 @@ import { ErrorBoundary } from "@/components/error-boundary"
 import { SongRequest, QueueState } from "@/lib/types"
 import { constants, socketEvents } from "@/lib/config"
 import { Header } from "./header"
+import { Badge } from "@/components/ui/badge"
+import Link from 'next/link'
 
 /**
  * Main queue component that displays current queue, history, and now playing
@@ -204,14 +206,32 @@ function NowPlaying({ song, isLoading }: { song: SongRequest | null, isLoading: 
             </Avatar>
             <div>
               <h3 className="text-lg font-medium">{song.title}</h3>
-              <p className="text-gray-400">{song.artist}</p>
-              <p className="text-sm text-gray-500 flex items-center mt-1">
-                Requested by:
-                <Avatar className="w-4 h-4 rounded-full ml-1.5 mr-1 inline-block">
+              {song.channelId ? (
+                <Link href={`https://www.youtube.com/channel/${song.channelId}`} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-gray-300 underline transition-colors">
+                  {song.artist || 'Unknown Artist'}
+                </Link>
+              ) : (
+                <p className="text-gray-400">{song.artist || 'Unknown Artist'}</p>
+              )}
+              <p className="text-sm text-gray-500 flex items-center gap-1.5 mt-1">
+                Requested by:{' '}
+                <Avatar className="w-4 h-4 rounded-full inline-block">
                   <AvatarImage src={song.requesterAvatar} alt={song.requester} />
                   <AvatarFallback className="text-xs">{song.requester.slice(0, 1)}</AvatarFallback>
                 </Avatar>
-                {song.requester}
+                <Link href={`https://www.twitch.tv/${song.requesterLogin || song.requester.toLowerCase()}`} target="_blank" rel="noopener noreferrer" className="hover:text-gray-300 underline transition-colors">
+                  <span>{song.requester}</span>
+                </Link>
+                {song.requestType === 'donation' && (
+                  <Badge variant="secondary" className="px-1.5 py-0.5 text-xs bg-green-800 text-green-200 border-green-700">
+                    Paid
+                  </Badge>
+                )}
+                {song.requestType === 'channelPoint' && (
+                  <Badge variant="outline" className="px-1.5 py-0.5 text-xs bg-purple-800 text-purple-200 border-purple-700">
+                    Points
+                  </Badge>
+                )}
               </p>
             </div>
           </div>
@@ -241,31 +261,69 @@ function SongList({ songs }: { songs: SongRequest[] }) {
           exit={{ opacity: 0, y: -20 }}
           transition={{ duration: 0.3, delay: index * 0.1 }}
         >
-          <div className="flex items-center justify-between space-x-4 p-3 rounded-lg hover:bg-gray-700 transition-colors mb-2">
-            <div className="flex items-center space-x-4 flex-grow min-w-0">
-              {song.thumbnailUrl && (
-                <Avatar className="w-16 h-9 rounded-sm flex-shrink-0">
-                  <AvatarImage src={song.thumbnailUrl} alt={`${song.title} thumbnail`} className="object-cover" />
-                  <AvatarFallback className="rounded-sm">?</AvatarFallback>
+          {/* Match Admin Page Item Structure */}
+          <div className="flex items-center space-x-3 p-3 rounded-md bg-gray-800 hover:bg-gray-700 transition mb-2">
+            <div className="flex-shrink-0 font-semibold text-gray-400 w-6 text-center">
+              {index + 1}
+            </div>
+            <div className="relative w-16 h-9 rounded-md overflow-hidden flex-shrink-0">
+              {song.thumbnailUrl ? (
+                <img 
+                  src={song.thumbnailUrl} 
+                  alt={song.title || 'Video thumbnail'}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <Avatar className="w-full h-full rounded-md">
+                  <AvatarImage src={song.requesterAvatar} alt={song.requester} />
+                  <AvatarFallback className="rounded-md">{song.requester.slice(0, 2).toUpperCase()}</AvatarFallback>
                 </Avatar>
               )}
-              <div className="flex-grow min-w-0">
-                <h3 className="font-semibold truncate">{song.title}</h3>
-                <p className="text-sm text-gray-400 truncate">{song.artist}</p>
+            </div>
+            <div className="flex-grow min-w-0">
+              <p className="font-medium text-white truncate flex items-center gap-1">
+                {song.title || song.youtubeUrl}
+              </p>
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1">
+                {song.channelId ? (
+                  <Link href={`https://www.youtube.com/channel/${song.channelId}`} target="_blank" rel="noopener noreferrer" className="hover:text-purple-300 transition-colors group">
+                    <Badge variant="outline" className="text-xs font-normal cursor-pointer group-hover:border-purple-400 group-hover:text-purple-300 transition-colors">
+                      {song.artist || 'Unknown Artist'}
+                    </Badge>
+                  </Link>
+                ) : (
+                  <Badge variant="outline" className="text-xs font-normal">
+                    {song.artist || 'Unknown Artist'}
+                  </Badge>
+                )}
+                <span className="text-xs text-gray-400">
+                  {song.duration || '?:'}
+                </span>
+                <span className="text-xs text-gray-400 flex items-center gap-1">
+                  by{' '}
+                  <Avatar className="w-3 h-3 rounded-full inline-block">
+                    <AvatarImage src={song.requesterAvatar} alt={song.requester} />
+                    <AvatarFallback className="text-[8px]">{song.requester.slice(0,1)}</AvatarFallback>
+                  </Avatar>
+                  <Link href={`https://www.twitch.tv/${song.requesterLogin || song.requester.toLowerCase()}`} target="_blank" rel="noopener noreferrer" className="hover:text-gray-300 underline transition-colors">
+                    {song.requester}
+                  </Link>
+                </span>
+                {/* Conditional Badge for Request Type */} 
+                {song.requestType === 'donation' && (
+                  <Badge variant="secondary" className="px-1.5 py-0.5 text-xs bg-green-800 text-green-200 border-green-700">
+                    Paid
+                  </Badge>
+                )}
+                {song.requestType === 'channelPoint' && (
+                  <Badge variant="outline" className="px-1.5 py-0.5 text-xs bg-purple-800 text-purple-200 border-purple-700">
+                    Points
+                  </Badge>
+                )}
               </div>
             </div>
-            <div className="flex items-center space-x-3 flex-shrink-0">
-              <div className="text-sm text-gray-400 flex items-center">
-                <Clock className="mr-1" size={14} />
-                {song.duration}
-              </div>
-              <div className="text-sm text-gray-400 hidden sm:flex items-center">
-                <Avatar className="w-4 h-4 rounded-full mr-1.5">
-                  <AvatarImage src={song.requesterAvatar} alt={song.requester} />
-                  <AvatarFallback className="text-xs">{song.requester.slice(0,1)}</AvatarFallback>
-                </Avatar>
-                {song.requester}
-              </div>
+            <div className="flex space-x-1 flex-shrink-0">
+              {/* Only keep YouTube link button for public view */}
               <a href={song.youtubeUrl} target="_blank" rel="noopener noreferrer" aria-label="Watch on YouTube">
                 <Button variant="ghost" className="p-1">
                   <Youtube className="h-5 w-5 text-red-600" />

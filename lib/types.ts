@@ -14,6 +14,8 @@ export interface SongRequest {
   youtubeUrl: string
   /** Username of the person who requested the song */
   requester: string
+  /** Login name of the requester (for Twitch URL) */
+  requesterLogin?: string
   /** Avatar URL of the requester */
   requesterAvatar: string
   /** ISO timestamp of when the request was made */
@@ -22,6 +24,8 @@ export interface SongRequest {
   title?: string
   /** Artist/channel name (from YouTube) */
   artist?: string
+  /** YouTube Channel ID (for linking) */
+  channelId?: string
   /** Formatted duration (e.g., "3:45") */
   duration?: string
   /** Duration in seconds */
@@ -30,7 +34,7 @@ export interface SongRequest {
   thumbnailUrl?: string
   /** Source of the song (youtube, spotify, etc.) */
   source?: 'youtube' | 'spotify'
-  /** Channel point redemption details */
+  /** Channel point redemption details (Indicates a 'channelPoint' type request) */
   channelPointReward?: {
     /** Unique identifier for the reward */
     rewardId: string
@@ -39,8 +43,8 @@ export interface SongRequest {
     /** Cost in channel points */
     cost: number
   }
-  /** Priority level of the request */
-  priority?: 'high' | 'normal' | 'low'
+  /** Type of request (determines priority and limits) */
+  requestType: 'channelPoint' | 'donation'
   /** Current status of the request */
   status?: 'pending' | 'playing' | 'completed' | 'skipped'
 }
@@ -51,7 +55,10 @@ export interface SongRequest {
 export interface YouTubeVideoDetails {
   title: string
   channelTitle: string
+  channelId: string
   duration: string
+  durationSeconds: number
+  thumbnailUrl: string
 }
 
 /**
@@ -91,7 +98,7 @@ export interface QueueActions {
   removeSong: (id: string) => void
   skipSong: (id: string) => void
   clearQueue: () => void
-  updatePriority: (id: string, priority: SongRequest['priority']) => void
+  // updatePriority: (id: string, priority: SongRequest['priority']) => void // Removed as priority is replaced by requestType
 }
 
 /**

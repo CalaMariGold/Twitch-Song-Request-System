@@ -72,6 +72,7 @@ import {
 } from "lucide-react"
 import { SongRequest, QueueState } from "@/lib/types"
 import { io, Socket } from "socket.io-client"
+import Link from 'next/link'
 
 interface TwitchUser {
   id: string
@@ -97,6 +98,7 @@ interface BlacklistedContent {
 export default function AdminPage() {
   // State
   const [videoUrl, setVideoUrl] = useState("")
+  const [requesterUsername, setRequesterUsername] = useState("")
   const [user, setUser] = useState<TwitchUser | null>(null)
   const [isConnected, setIsConnected] = useState(false)
   const [queueState, setQueueState] = useState<QueueState>({
@@ -116,7 +118,7 @@ export default function AdminPage() {
   const [blacklistReason, setBlacklistReason] = useState("")
   const [isAutoplay, setIsAutoplay] = useState(true)
   const [maxSongDuration, setMaxSongDuration] = useState(5)
-  const [priority, setPriority] = useState<'high' | 'normal' | 'low'>('normal')
+  const [requestType, setRequestType] = useState<'channelPoint' | 'donation'>('channelPoint')
   const { toast } = useToast()
 
   // Socket Connection
@@ -320,20 +322,17 @@ export default function AdminPage() {
       return
     }
 
-    // Create request object
-    const requestObj = {
+    // Use provided username or default to Admin
+    const finalRequester = requesterUsername.trim() || "CalaMariGold";
+
+    // Create request object - Use requestType, remove channelPointReward for admin adds
+    const requestObj: Partial<SongRequest> = {
       id: Date.now().toString(),
       youtubeUrl: `https://www.youtube.com/watch?v=${videoId}`,
-      requester: user?.display_name || "Admin",
-      requesterAvatar: user?.profile_image_url || "/placeholder.svg?height=32&width=32",
+      requester: finalRequester,
       timestamp: new Date().toISOString(),
-      priority: priority,
+      requestType: requestType,
       source: 'youtube',
-      channelPointReward: {
-        rewardId: "admin-add",
-        rewardTitle: "Admin Added",
-        cost: 0
-      }
     }
 
     // Send to server
@@ -344,6 +343,8 @@ export default function AdminPage() {
       description: "Video added to queue",
     })
     setVideoUrl("")
+    setRequesterUsername("")
+    setRequestType('channelPoint')
   }
 
   // Block user management
@@ -586,15 +587,36 @@ export default function AdminPage() {
                         <Youtube size={16} className="text-red-500" />
                       )}
                     </h3>
-                    <p className="text-gray-400">{queueState.nowPlaying.artist || 'Unknown Artist'}</p>
-                    <div className="flex items-center mt-1">
-                      <Badge variant="secondary" className="mr-2">
+                    {/* Artist Link */} 
+                    {queueState.nowPlaying.channelId ? (
+                      <Link href={`https://www.youtube.com/channel/${queueState.nowPlaying.channelId}`} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-gray-300 underline transition-colors">
+                        {queueState.nowPlaying.artist || 'Unknown Artist'}
+                      </Link>
+                    ) : (
+                      <p className="text-gray-400">{queueState.nowPlaying.artist || 'Unknown Artist'}</p>
+                    )}
+                    <div className="flex items-center flex-wrap gap-2 mt-1">
+                      <Badge variant="secondary" className="text-xs">
                         <Clock className="w-3 h-3 mr-1" />
                         {queueState.nowPlaying.duration || '?:??'}
                       </Badge>
-                      <span className="text-sm text-gray-400">
-                        Requested by: {queueState.nowPlaying.requester}
+                      <span className="text-sm text-gray-400 flex items-center gap-1">
+                        Requested by:{' '} 
+                         {/* Requester Link */} 
+                         <Link href={`https://www.twitch.tv/${queueState.nowPlaying.requesterLogin || queueState.nowPlaying.requester.toLowerCase()}`} target="_blank" rel="noopener noreferrer" className="hover:text-gray-300 underline transition-colors">
+                           <span>{queueState.nowPlaying.requester}</span>
+                         </Link>
                       </span>
+                      {queueState.nowPlaying.requestType === 'donation' && (
+                        <Badge variant="secondary" className="px-1.5 py-0.5 text-xs bg-green-800 text-green-200 border-green-700">
+                          Paid
+                        </Badge>
+                      )}
+                      {queueState.nowPlaying.requestType === 'channelPoint' && (
+                        <Badge variant="outline" className="px-1.5 py-0.5 text-xs bg-purple-800 text-purple-200 border-purple-700">
+                          Points
+                        </Badge>
+                      )}
                     </div>
                   </div>
                   <div className="flex space-x-2">
@@ -676,7 +698,7 @@ export default function AdminPage() {
                         <div className="space-y-2">
                           {queueState.queue.map((song, index) => (
                             <div key={song.id} 
-                              className="flex items-center space-x-3 p-3 rounded-md bg-gray-700 hover:bg-gray-600 transition">
+                              className="flex items-center space-x-3 p-3 rounded-md bg-gray-800 hover:bg-gray-700 transition">
                               <div className="flex-shrink-0 font-semibold text-gray-400">
                                 {index + 1}
                               </div>
@@ -702,15 +724,35 @@ export default function AdminPage() {
                                   )}
                                 </p>
                                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1">
-                                  <Badge variant="outline" className="text-xs font-normal">
-                                    {song.artist || 'Unknown Artist'}
-                                  </Badge>
+                                   {/* Artist Link */} 
+                                   {song.channelId ? (
+                                     <Link href={`https://www.youtube.com/channel/${song.channelId}`} target="_blank" rel="noopener noreferrer" className="hover:text-purple-300 transition-colors">
+                                       <Badge variant="outline" className="text-xs font-normal cursor-pointer hover:border-purple-400">
+                                         {song.artist || 'Unknown Artist'}
+                                       </Badge>
+                                     </Link>
+                                   ) : (
+                                     <Badge variant="outline" className="text-xs font-normal">
+                                       {song.artist || 'Unknown Artist'}
+                                     </Badge>
+                                   )}
                                   <span className="text-xs text-gray-400">
-                                    {song.duration || '?:??'}
+                                    by{' '} 
+                                     {/* Requester Link */} 
+                                     <Link href={`https://www.twitch.tv/${song.requesterLogin || song.requester.toLowerCase()}`} target="_blank" rel="noopener noreferrer" className="hover:text-gray-300 underline transition-colors">
+                                       {song.requester}
+                                     </Link>
                                   </span>
-                                  <span className="text-xs text-gray-400">
-                                    by {song.requester}
-                                  </span>
+                                  {song.requestType === 'donation' && (
+                                    <Badge variant="secondary" className="px-1.5 py-0.5 text-xs bg-green-800 text-green-200 border-green-700">
+                                      Paid
+                                    </Badge>
+                                  )}
+                                  {song.requestType === 'channelPoint' && (
+                                    <Badge variant="outline" className="px-1.5 py-0.5 text-xs bg-purple-800 text-purple-200 border-purple-700">
+                                      Points
+                                    </Badge>
+                                  )}
                                 </div>
                               </div>
                               <div className="flex space-x-1 flex-shrink-0">
@@ -780,7 +822,7 @@ export default function AdminPage() {
                         <div className="space-y-2">
                           {queueState.history.map((song) => (
                             <div key={song.id} 
-                              className="flex items-center space-x-3 p-3 rounded-md bg-gray-700">
+                              className="flex items-center space-x-3 p-3 rounded-md bg-gray-800">
                               <div className="relative w-10 h-10 rounded-md overflow-hidden flex-shrink-0">
                                 {song.thumbnailUrl ? (
                                   <img 
@@ -802,12 +844,25 @@ export default function AdminPage() {
                                     <Youtube size={14} className="text-red-500 flex-shrink-0" />
                                   )}
                                 </p>
-                                <div className="flex items-center mt-1">
-                                  <Badge variant="outline" className="mr-2 text-xs">
-                                    {song.artist || 'Unknown Artist'}
-                                  </Badge>
+                                <div className="flex items-center mt-1 gap-2">
+                                   {/* Artist Link */} 
+                                   {song.channelId ? (
+                                     <Link href={`https://www.youtube.com/channel/${song.channelId}`} target="_blank" rel="noopener noreferrer" className="hover:text-purple-300 transition-colors">
+                                       <Badge variant="outline" className="text-xs font-normal cursor-pointer hover:border-purple-400">
+                                         {song.artist || 'Unknown Artist'}
+                                       </Badge>
+                                     </Link>
+                                   ) : (
+                                     <Badge variant="outline" className="text-xs font-normal">
+                                       {song.artist || 'Unknown Artist'}
+                                     </Badge>
+                                   )}
                                   <span className="text-xs text-gray-400">
-                                    Requested by {song.requester}
+                                    Requested by{' '} 
+                                     {/* Requester Link */} 
+                                     <Link href={`https://www.twitch.tv/${song.requesterLogin || song.requester.toLowerCase()}`} target="_blank" rel="noopener noreferrer" className="hover:text-gray-300 underline transition-colors">
+                                       {song.requester}
+                                     </Link>
                                   </span>
                                 </div>
                               </div>
@@ -1031,18 +1086,29 @@ export default function AdminPage() {
                     />
                   </div>
                   <div>
-                    <Label htmlFor="priority" className="text-white">Priority</Label>
+                    <Label htmlFor="requesterUsername" className="text-white">Requester Twitch Username (Optional)</Label>
+                    <Input
+                      id="requesterUsername"
+                      type="text"
+                      placeholder="Leave blank to use 'CalaMariGold'"
+                      value={requesterUsername}
+                      onChange={(e) => setRequesterUsername(e.target.value)}
+                      className="bg-gray-700 text-white border-gray-600"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="requestType" className="text-white">Request Type</Label>
                     <Select 
-                      defaultValue="normal" 
-                      onValueChange={(value) => setPriority(value as 'high' | 'normal' | 'low')}
+                      defaultValue="channelPoint"
+                      value={requestType}
+                      onValueChange={(value) => setRequestType(value as 'channelPoint' | 'donation')}
                     >
                       <SelectTrigger className="bg-gray-700 text-white border-gray-600">
-                        <SelectValue placeholder="Select priority" />
+                        <SelectValue placeholder="Select request type" />
                       </SelectTrigger>
                       <SelectContent className="bg-gray-700 text-white border-gray-600">
-                        <SelectItem value="high">High</SelectItem>
-                        <SelectItem value="normal">Normal</SelectItem>
-                        <SelectItem value="low">Low</SelectItem>
+                        <SelectItem value="channelPoint">Channel Point (Free)</SelectItem>
+                        <SelectItem value="donation">Donation (Paid)</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
