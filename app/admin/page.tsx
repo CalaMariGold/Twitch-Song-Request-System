@@ -116,8 +116,6 @@ export default function AdminPage() {
   const [newBlockedTerm, setNewBlockedTerm] = useState("")
   const [newBlockedType, setNewBlockedType] = useState<'song' | 'artist' | 'keyword'>('keyword')
   const [blacklistReason, setBlacklistReason] = useState("")
-  const [isAutoplay, setIsAutoplay] = useState(true)
-  const [maxSongDuration, setMaxSongDuration] = useState(5)
   const [requestType, setRequestType] = useState<'channelPoint' | 'donation'>('channelPoint')
   const { toast } = useToast()
 
@@ -448,21 +446,6 @@ export default function AdminPage() {
       title: "Removed from Blacklist",
       description: `"${term}" has been removed from the blacklist`,
     })
-  }
-
-  // Settings
-  const handleAutoplayChange = (checked: boolean) => {
-    setIsAutoplay(checked)
-    if (socket) {
-      socket.emit('setAutoplay', checked)
-    }
-  }
-
-  const handleMaxDurationChange = (value: number[]) => {
-    setMaxSongDuration(value[0])
-    if (socket) {
-      socket.emit('setMaxDuration', value[0])
-    }
   }
 
   // Authentication
@@ -1161,83 +1144,6 @@ export default function AdminPage() {
                     </div>
                   </div>
                 )}
-              </CardContent>
-            </Card>
-
-            {/* Settings */}
-            <Card className="bg-gray-800 border-gray-700">
-              <CardHeader>
-                <CardTitle className="text-white flex items-center gap-2">
-                  <Settings size={18} />
-                  Queue Settings
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="autoplay" className="text-white">Autoplay Next Song</Label>
-                    <Switch 
-                      id="autoplay" 
-                      checked={isAutoplay}
-                      onCheckedChange={handleAutoplayChange}
-                    />
-                  </div>
-                  <p className="text-xs text-gray-400">
-                    Automatically play the next song in queue
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <div>
-                    <Label className="text-white">Maximum Song Duration</Label>
-                    <div className="flex items-center space-x-2 mt-2">
-                      <Slider 
-                        defaultValue={[maxSongDuration]} 
-                        max={15}
-                        min={1}
-                        step={1}
-                        onValueChange={handleMaxDurationChange}
-                      />
-                      <span className="w-12 text-right text-white">{maxSongDuration} min</span>
-                    </div>
-                  </div>
-                  <p className="text-xs text-gray-400">
-                    Maximum allowed song duration in minutes
-                  </p>
-                </div>
-
-                <Dialog>
-                  <DialogTrigger asChild>
-                    <Button variant="destructive" className="w-full">
-                      <AlertTriangle size={16} className="mr-2" />
-                      Reset System
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="bg-gray-800 text-white border-gray-700">
-                    <DialogHeader>
-                      <DialogTitle>Reset Song Request System?</DialogTitle>
-                      <DialogDescription className="text-gray-400">
-                        This will clear all songs from the queue, history, and stop the currently playing song.
-                      </DialogDescription>
-                    </DialogHeader>
-                    <DialogFooter>
-                      <Button variant="outline" onClick={() => {}}>Cancel</Button>
-                      <Button 
-                        variant="destructive" 
-                        onClick={() => {
-                          if (!socket) return;
-                          socket.emit('resetSystem');
-                          toast({
-                            title: "System Reset",
-                            description: "Song request system has been reset",
-                          });
-                        }}
-                      >
-                        Reset System
-                      </Button>
-                    </DialogFooter>
-                  </DialogContent>
-                </Dialog>
               </CardContent>
             </Card>
           </div>
