@@ -592,7 +592,7 @@ export default function AdminPage() {
                       </span>
                       {queueState.nowPlaying.requestType === 'donation' && (
                         <Badge variant="secondary" className="px-1.5 py-0.5 text-xs bg-green-800 text-green-200 border-green-700">
-                          Paid
+                          Dono
                         </Badge>
                       )}
                       {queueState.nowPlaying.requestType === 'channelPoint' && (
@@ -728,7 +728,7 @@ export default function AdminPage() {
                                   </span>
                                   {song.requestType === 'donation' && (
                                     <Badge variant="secondary" className="px-1.5 py-0.5 text-xs bg-green-800 text-green-200 border-green-700">
-                                      Paid
+                                      Dono
                                     </Badge>
                                   )}
                                   {song.requestType === 'channelPoint' && (

@@ -224,7 +224,7 @@ function NowPlaying({ song, isLoading }: { song: SongRequest | null, isLoading: 
                 </Link>
                 {song.requestType === 'donation' && (
                   <Badge variant="secondary" className="px-1.5 py-0.5 text-xs bg-green-800 text-green-200 border-green-700">
-                    Paid
+                    Dono
                   </Badge>
                 )}
                 {song.requestType === 'channelPoint' && (
@@ -312,7 +312,7 @@ function SongList({ songs }: { songs: SongRequest[] }) {
                 {/* Conditional Badge for Request Type */} 
                 {song.requestType === 'donation' && (
                   <Badge variant="secondary" className="px-1.5 py-0.5 text-xs bg-green-800 text-green-200 border-green-700">
-                    Paid
+                    Dono
                   </Badge>
                 )}
                 {song.requestType === 'channelPoint' && (
