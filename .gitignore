@@ -3,6 +3,7 @@ node_modules/
 
 # Environment variables
 .env
+.env*.local
 
 # Database
 data/*.db
@@ -27,6 +28,13 @@ pids/
 # OS
 .DS_Store
 Thumbs.db 
+
+# Next.js build output
+.next/
+out/
+
+# Cache
 /.next/cache
+
 queue/history.json
 queue/requests.json
