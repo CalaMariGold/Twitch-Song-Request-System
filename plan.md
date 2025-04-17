@@ -1,56 +1,143 @@
-# Song Request System Implementation Plan
+# Song Request System Development Plan
 
-## Phase 1: Basic Setup and Core Infrastructure ✓
-1. Initialize Node.js project and set up basic Express server ✓
-2. Set up SQLite database with initial schema ✓
-3. Create basic API endpoints structure ✓
-4. Implement basic front-end queue display ✓
-5. Implement YouTube metadata integration ✓
-6. Enhance queue display with video information ✓
+## Project Overview
+A Twitch-integrated song request system for drum streams that prioritizes donation requests and displays a real-time queue. Built with Next.js, TypeScript, and Tailwind CSS.
 
-## Phase 2: Authentication and User Features
-1. Implement Twitch OAuth integration
-   - Set up Passport.js with Twitch strategy ✓
-   - Add session management ✓
-   - Create authentication routes ✓
-2. User-specific features
-   - Add request history view for authenticated users
-   - Personal statistics (total requests, favorites, etc.)
-   - Request preferences saving
-3. Add environment configuration ✓
-4. Implement security middleware ✓
+## Key Features
+- 🟢 Twitch Authentication
+- 🟡 Request Prioritization
+- 🟡 Real-Time Updates
+- 🟢 User Request History
+- 🟡 Queue Management
+- 🟡 Performance Optimization
+- 🟢 Deployment Setup
+- 🟢 Streamer.bot Integration
+- 🟢 Testing & Docs
 
-## Phase 3: Request System ✓
-1. Implement channel point request handling ✓
-2. Add donation request handling ✓
-3. Create queue management logic ✓
-4. Set up WebSocket connections ✓
+## Component Implementation Status
 
-## Phase 4: Front-end Development
-1. Create responsive queue display ✓
-2. Implement real-time updates ✓
-3. Add streamer controls
-4. Create OBS overlay view
-5. Add user profile section
-   - Request history display
-   - Personal statistics
-   - Preferences management
+### 1. Twitch Authentication System (🟢 Not Started)
 
-## Phase 5: Integration and Testing
-1. Integrate with Streamer.bot
-2. Add validation and error handling ✓
-3. Implement rate limiting
-4. Add logging system ✓
+```typescript
+// Required in: app/page.tsx
+// New auth components needed: components/auth/
+```
 
-## Current Focus: Phase 2
-- [x] Create project structure
-- [x] Set up Node.js and Express
-- [x] Initialize SQLite database
-- [x] Create basic API endpoints
-- [x] Implement simple front-end
-- [x] Add YouTube metadata integration
-- [x] Enhance queue display
-- [x] Set up Twitch OAuth
-- [ ] Implement user request history
-- [ ] Add personal statistics
-- [ ] Create user preferences system 
+- [ ] Implement OAuth2 flow with Twitch
+- [ ] Create login/logout UI components
+- [ ] Add session management
+- [ ] Connect to user database
+
+### 2. Request Prioritization (🟡 Partially Implemented)
+
+```typescript
+// app/layout.tsx
+interface Song {
+    // Needs priority field
+    priority: "donation" | "channel-point"
+}
+```
+
+- [ ] Add priority field to Song type
+- [ ] Implement queue sorting logic
+- [ ] Create priority indicators in UI
+- [ ] Update admin panel for priority handling
+
+### 3. Real-Time Communication (🟡 Partially Implemented)
+
+```
+// song-request-queue.tsx
+// Current mock implementation
+useEffect(() => {
+    const interval = setInterval(() => {
+        // Simulated queue processing
+    }, 10000)
+})
+```
+
+- [ ] Replace mock with WebSocket/SSE
+- [ ] Create Streamer.bot API endpoints
+- [ ] Implement push notifications
+- [ ] Handle concurrent updates
+
+### 4. User Request History (🟢 Not Started)
+
+```typescript
+// Needs connection to user database
+// New component: components/user-profile.tsx
+```
+
+- [ ] Create user profile component
+- [ ] Implement history filtering
+- [ ] Add request cancellation
+- [ ] Connect to database storage
+
+### 5. Queue Management (🟡 Partially Implemented)
+
+```typescript
+// app/admin/page.tsx
+// Current admin capabilities:
+// - Basic video URL submission
+```
+
+- [ ] Add skip/clear controls
+- [ ] Implement user blocking
+- [ ] Create priority adjustment
+- [ ] Build moderation audit log
+
+### 7. Performance (🟡 Partial)
+
+```typescript
+// animated-background.tsx
+// Current optimizations:
+particleCount = 50 // Reduced from 100
+size = Math.random() * 3 + 1 // Smaller particles
+```
+
+- [ ] Add virtualized scrolling
+- [ ] Implement loading states
+- [ ] Optimize animation FPS
+- [ ] Create error boundaries
+
+### 8. Deployment (🟢 Not Started)
+
+```typescript
+// Needs infrastructure setup
+// Required: .github/workflows/
+```
+
+- [ ] Set up production database
+- [ ] Configure CI/CD pipeline
+- [ ] Implement monitoring
+- [ ] Create backup system
+
+### 9. Streamer.bot (🟢 Not Started)
+
+```typescript
+// Needs WebSocket integration
+// New: lib/streamerbot.ts
+```
+
+- [ ] Build WebSocket API
+- [ ] Handle redemption events
+- [ ] Implement donation handlers
+- [ ] Create mod action integration
+
+### 10. Testing & Docs (🟢 Not Started)
+
+```typescript
+// Needs test setup
+// New: tests/tests/
+```
+
+- [ ] Write unit tests
+- [ ] Create user docs
+- [ ] Build admin guide
+- [ ] Implement error tracking
+
+## Next Steps Recommendation
+1. Start with Twitch Authentication (🔑 Foundation)
+2. Implement Real-Time Communication (⚡ Core Functionality)
+3. Complete Queue Management (🎵 Core Functionality)
+
+> Legend: 🟢 Not Started | 🟡 Partial | ✅ Complete

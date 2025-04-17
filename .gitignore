@@ -27,3 +27,4 @@ pids/
 # OS
 .DS_Store
 Thumbs.db 
+/.next/cache
