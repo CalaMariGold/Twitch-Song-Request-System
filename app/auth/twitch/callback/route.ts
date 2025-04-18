@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server'
 import { exchangeCodeForToken, getTwitchUserInfo, isAdmin } from '@/lib/auth'
 import { config } from '@/lib/config'
+import { writeFile } from 'fs/promises'
+import path from 'path'
+
+// Define path for storing the token (relative to project root)
+const tokenFilePath = path.join(process.cwd(), 'queue', 'user_token.json');
 
 export async function GET(request: Request) {
   try {
@@ -18,6 +23,38 @@ export async function GET(request: Request) {
     // Get user info
     const userInfo = await getTwitchUserInfo(tokenData.access_token)
     
+    // --- NEW: Save the token to a file --- 
+    // IMPORTANT: This is for local development ONLY. 
+    // In production, tokens should be stored securely (e.g., encrypted DB).
+    // Access TWITCH_CHANNEL_NAME directly from process.env in API routes
+    const broadcasterLogin = process.env.TWITCH_CHANNEL_NAME;
+    if (!broadcasterLogin) {
+        console.error("TWITCH_CHANNEL_NAME environment variable is not set!");
+        // Handle the error appropriately - maybe redirect with a specific error?
+        throw new Error("Server configuration error: Missing TWITCH_CHANNEL_NAME");
+    }
+
+    if (userInfo.login.toLowerCase() === broadcasterLogin.toLowerCase()) {
+        console.log(`Broadcaster ${userInfo.login} logged in. Saving token...`);
+        const tokenToSave = {
+            access_token: tokenData.access_token,
+            refresh_token: tokenData.refresh_token, // Good practice to save refresh token
+            expires_at: Date.now() + tokenData.expires_in * 1000, // Calculate expiry timestamp
+            scope: tokenData.scope
+        };
+        try {
+            await writeFile(tokenFilePath, JSON.stringify(tokenToSave, null, 2), 'utf-8');
+            console.log(`User token saved to ${tokenFilePath}`);
+        } catch (fileError) {
+            console.error(`Error saving user token to file ${tokenFilePath}:`, fileError);
+            // Decide if this should prevent login or just log an error
+            // For now, we'll just log it and continue.
+        }
+    } else {
+         console.log(`User ${userInfo.login} logged in, but is not the configured broadcaster (${broadcasterLogin}). Token not saved.`);
+    }
+    // --- END: Save token --- 
+
     // Create response with redirect
     const response = NextResponse.redirect(`${process.env.NEXT_PUBLIC_APP_URL}?auth=success`)
 

@@ -5,25 +5,49 @@ const { readFile, writeFile } = require('fs/promises')
 const path = require('path')
 const fetch = require('node-fetch')
 const tmi = require('tmi.js')
+const crypto = require('crypto')
+const url = require('url')
+const ioClient = require('socket.io-client')
 require('dotenv').config()
 
 const SOCKET_PORT = 3002
 const httpServer = createServer()
 const historyFilePath = path.join(__dirname, 'queue', 'history.json');
+const userTokenFilePath = path.join(__dirname, 'queue', 'user_token.json');
 
 // Twitch API configuration
 const TWITCH_CLIENT_ID = process.env.NEXT_PUBLIC_TWITCH_CLIENT_ID;
 const TWITCH_CLIENT_SECRET = process.env.TWITCH_CLIENT_SECRET;
 let twitchAppAccessToken = null;
 let twitchTokenExpiry = null;
+let twitchBroadcasterId = null;
+let targetRewardId = null;
+let broadcasterUserAccessToken = null;
 
 // Twitch Chat Bot Configuration
 const TWITCH_BOT_USERNAME = process.env.TWITCH_BOT_USERNAME;
 const TWITCH_BOT_OAUTH_TOKEN = process.env.TWITCH_BOT_OAUTH_TOKEN;
 const TWITCH_CHANNEL_NAME = process.env.TWITCH_CHANNEL_NAME;
 
+// EventSub Configuration
+const EVENTSUB_SECRET = process.env.EVENTSUB_SECRET;
+const CALLBACK_URL = process.env.CALLBACK_URL;
+const TARGET_REWARD_ID = process.env.TARGET_REWARD_ID;
+
+// StreamElements Configuration
+const SE_JWT_TOKEN = process.env.STREAMELEMENTS_JWT_TOKEN;
+const SE_ACCOUNT_ID = process.env.STREAMELEMENTS_ACCOUNT_ID;
+const SE_WEBHOOK_SECRET = process.env.STREAMELEMENTS_WEBHOOK_SECRET;
+
+if (!SE_JWT_TOKEN || !SE_ACCOUNT_ID) {
+  console.warn('StreamElements configuration (JWT token, account ID) are missing in .env file. StreamElements donations disabled.');
+}
+
 if (!TWITCH_BOT_USERNAME || !TWITCH_BOT_OAUTH_TOKEN || !TWITCH_CHANNEL_NAME) {
   console.error('Twitch bot credentials (username, token, channel) are missing in .env file. Chat features disabled.');
+}
+if (!EVENTSUB_SECRET || !CALLBACK_URL) {
+    console.error('EVENTSUB_SECRET or CALLBACK_URL not configured in .env. EventSub disabled.');
 }
 
 const tmiOpts = {
@@ -100,9 +124,9 @@ async function getTwitchAppAccessToken() {
 }
 
 // Function to get Twitch User Profile
-async function getTwitchUserProfile(username) {
+async function getTwitchUser(username) {
   if (!username) {
-    console.warn('getTwitchUserProfile called with no username.');
+    console.warn('getTwitchUser called with no username.');
     return null; // Return null if no username provided
   }
   if (!TWITCH_CLIENT_ID || !TWITCH_CLIENT_SECRET) {
@@ -156,6 +180,32 @@ async function getTwitchUserProfile(username) {
   }
 }
 
+// --- NEW: Function to get Broadcaster ID ---
+async function getBroadcasterId() {
+    if (twitchBroadcasterId) {
+        return twitchBroadcasterId;
+    }
+    if (!TWITCH_CHANNEL_NAME) {
+        console.error("Cannot get Broadcaster ID: TWITCH_CHANNEL_NAME not set in .env");
+        return null;
+    }
+    console.log(`Fetching Broadcaster ID for channel: ${TWITCH_CHANNEL_NAME}...`);
+    try {
+        const user = await getTwitchUser(TWITCH_CHANNEL_NAME);
+        if (user && user.id) {
+            twitchBroadcasterId = user.id;
+            console.log(`Found Broadcaster ID: ${twitchBroadcasterId}`);
+            return twitchBroadcasterId;
+        } else {
+            console.error(`Could not find Twitch user for channel: ${TWITCH_CHANNEL_NAME}`);
+            return null;
+        }
+    } catch (error) {
+        console.error("Error fetching broadcaster ID:", error);
+        return null;
+    }
+}
+
 // Server state
 const state = {
   queue: [],
@@ -174,11 +224,7 @@ const io = new Server(httpServer, {
     }
 })
 
-// File watcher setup
-const queueDir = path.join(process.cwd(), 'queue')
-const requestsFile = path.join(queueDir, 'requests.json')
-let isProcessing = false
-let lastProcessedContent = ''
+const queueDir = path.join(process.cwd(), 'queue') // Define queueDir here
 
 // Function to load history from file
 async function loadHistory() {
@@ -244,7 +290,7 @@ async function validateAndAddSong(request) {
   let requesterLogin = request.requester.toLowerCase(); // Default to lowercase display name for URL
   let twitchProfile = null; // Store profile to get login name later
   try {
-      twitchProfile = await getTwitchUserProfile(request.requester);
+      twitchProfile = await getTwitchUser(request.requester);
       if (twitchProfile) {
           if (twitchProfile.profile_image_url) {
               requesterAvatar = twitchProfile.profile_image_url;
@@ -270,8 +316,10 @@ async function validateAndAddSong(request) {
   // Extract video ID
   const videoId = extractVideoId(request.youtubeUrl);
   if (!videoId) {
-      console.error('Invalid YouTube URL:', request.youtubeUrl);
-      sendChatMessage(`@${request.requester}, the YouTube link you provided seems invalid.`);
+      console.error('Invalid or missing YouTube URL:', request.youtubeUrl);
+      if (request.source !== 'eventsub') {
+           sendChatMessage(`@${request.requester}, the YouTube link you provided seems invalid or wasn't found in your message.`);
+      }
       return;
   }
   console.log('Extracted video ID:', videoId);
@@ -392,61 +440,6 @@ async function validateAndAddSong(request) {
 }
 // --- END NEW Function ---
 
-// --- MODIFIED processRequest ---
-async function processRequest(filePath) {
-    if (isProcessing) return
-
-    try {
-        isProcessing = true
-
-        // Add a small delay to ensure the file is completely written
-        await new Promise(resolve => setTimeout(resolve, 100))
-
-        // Read and parse the request file
-        const content = await readFile(filePath, 'utf-8')
-
-        // Skip if we've already processed this content
-        if (content === lastProcessedContent) {
-            console.log('Skipping already processed content')
-            isProcessing = false; // Reset flag here
-            return
-        }
-
-        // Validate JSON format
-        let request
-        try {
-            request = JSON.parse(content.trim())
-            lastProcessedContent = content
-            console.log('Successfully parsed request JSON from file:', request)
-        } catch (parseError) {
-            console.error('Invalid JSON content in file:', content)
-            console.error('Parse error:', parseError)
-            isProcessing = false; // Reset flag here
-            return
-        }
-
-        // Determine request type: Use file data if present, otherwise default to channelPoint
-        const determinedRequestType = request.hasOwnProperty('requestType') && request.requestType 
-                                      ? request.requestType 
-                                      : 'channelPoint';
-
-        const finalRequest = {
-            ...request,
-            requestType: determinedRequestType
-        };
-        console.log(`Processing file request. Determined type: ${finalRequest.requestType}`); // Add log
-
-        // Call the centralized validation and adding function
-        await validateAndAddSong(finalRequest); // Pass the request with ensured requestType
-
-    } catch (error) {
-        console.error('Error processing request from file:', error)
-    } finally {
-        isProcessing = false
-    }
-}
-// --- END MODIFIED processRequest ---
-
 // Socket.IO connection handling
 io.on('connection', (socket) => {
     console.log('Client connected:', socket.id)
@@ -478,7 +471,7 @@ io.on('connection', (socket) => {
              return;
         }
         // Call the centralized validation and adding function
-        await validateAndAddSong(songRequestData);
+        await validateAndAddSong({ ...songRequestData, source: 'socket' });
     })
     // --- END MODIFIED addSong Handler ---
 
@@ -615,6 +608,110 @@ io.on('connection', (socket) => {
     })
 })
 
+// StreamElements Socket.io connection
+let seSocket = null;
+
+// Function to connect to StreamElements Socket API
+function connectToStreamElements() {
+    if (!SE_JWT_TOKEN) {
+        console.warn('No StreamElements JWT token provided, skipping StreamElements connection');
+        return;
+    }
+
+    console.log('Connecting to StreamElements Socket API...');
+    
+    // Connect to StreamElements socket server
+    seSocket = ioClient.connect('https://realtime.streamelements.com', {
+        transports: ['websocket']
+    });
+
+    // Connection event handlers
+    seSocket.on('connect', () => {
+        console.log('Successfully connected to StreamElements Socket API');
+        
+        // Authenticate with JWT
+        seSocket.emit('authenticate', {
+            method: 'jwt',
+            token: SE_JWT_TOKEN
+        });
+    });
+
+    seSocket.on('authenticated', () => {
+        console.log('Successfully authenticated with StreamElements');
+    });
+
+    // Handle connection errors
+    seSocket.on('unauthorized', (reason) => {
+        console.error('StreamElements authentication failed:', reason);
+    });
+
+    seSocket.on('disconnect', () => {
+        console.warn('Disconnected from StreamElements Socket API');
+        // Attempt to reconnect after a delay
+        setTimeout(connectToStreamElements, 5000);
+    });
+
+    seSocket.on('connect_error', (error) => {
+        console.error('StreamElements connection error:', error);
+    });
+
+    // Listen for events (tips/donations)
+    seSocket.on('event', async (event) => {
+        console.log('Received StreamElements event:', JSON.stringify(event, null, 2));
+
+        // Check if it's a tip/donation event
+        if (event.type === 'tip') {
+            try {
+                // Extract donation information
+                const userName = event.data.username || 'Anonymous';
+                const amount = event.data.amount || 0;
+                const currency = event.data.currency || 'USD';
+                const message = event.data.message || '';
+
+                console.log(`Received donation from ${userName}: ${amount} ${currency} - Message: ${message}`);
+                
+                // Extract YouTube URL from donation message
+                const youtubeUrl = extractYouTubeUrlFromText(message);
+
+                // If no YouTube URL, thank them for the donation but don't process as song request
+                if (!youtubeUrl) {
+                    console.warn(`No YouTube URL found in donation message from ${userName}: "${message}"`);
+                    sendChatMessage(`Thanks @${userName} for the ${amount} ${currency} donation!`);
+                    return;
+                }
+                
+                // Now that we found a YouTube link, check minimum donation amount ($3)
+                const MIN_DONATION_AMOUNT = 3;
+                if (amount < MIN_DONATION_AMOUNT) {
+                    console.log(`Donation with YouTube link from ${userName}, but amount (${amount} ${currency}) is below minimum required (${MIN_DONATION_AMOUNT} ${currency})`);
+                    sendChatMessage(`Thanks @${userName} for the ${amount} ${currency} donation! Song requests require a minimum donation of ${MIN_DONATION_AMOUNT} ${currency}.`);
+                    return;
+                }
+
+                // Create song request from donation
+                const songRequest = {
+                    id: event.data._id || Date.now().toString(),
+                    youtubeUrl: youtubeUrl,
+                    requester: userName,
+                    timestamp: new Date().toISOString(),
+                    requestType: 'donation',
+                    donationInfo: {
+                        amount: amount,
+                        currency: currency
+                    },
+                    source: 'streamelements'
+                };
+
+                console.log(`Processing StreamElements donation request from ${userName} for URL: ${youtubeUrl}`);
+                await validateAndAddSong(songRequest);
+                
+            } catch (error) {
+                console.error('Error processing StreamElements donation:', error);
+            }
+        }
+    });
+}
+
 // Function to gracefully shutdown and save state
 function shutdown(signal) {
   console.log(`Received ${signal}. Shutting down server...`);
@@ -658,9 +755,78 @@ watch(queueDir, { persistent: true }, async (eventType, filename) => {
     }
 })
 
+// Function to check Tailscale connectivity
+async function checkTailscaleConnectivity() {
+  try {
+    console.log(`Checking if Tailscale URL (${CALLBACK_URL}) is accessible...`);
+    // Check if the callback URL can be reached from the server
+    const response = await fetch(`${CALLBACK_URL}/health-check`, { 
+      method: 'GET',
+      timeout: 5000 // 5 second timeout
+    }).catch(err => {
+      console.error(`Fetch error: ${err.message}`);
+      return null;
+    });
+    
+    if (!response) {
+      console.warn(`❌ Tailscale connectivity check failed - no response from ${CALLBACK_URL}/health-check`);
+      console.warn(`  Make sure Tailscale is running and your machine is connected to the Tailscale network.`);
+      return false;
+    }
+    
+    if (!response.ok) {
+      console.warn(`❌ Tailscale connectivity check failed - status: ${response.status}`);
+      return false;
+    }
+    
+    console.log(`✅ Tailscale connectivity check passed: ${CALLBACK_URL} is accessible!`);
+    return true;
+  } catch (error) {
+    console.error(`❌ Tailscale connectivity check error:`, error);
+    console.warn(`  Make sure Tailscale is running and your machine is connected to the Tailscale network.`);
+    return false;
+  }
+}
+
 // Start the server and load initial data
 async function startServer() {
   await loadHistory(); // Load history before starting watcher/server
+
+  // Check Tailscale connectivity
+  if (CALLBACK_URL && CALLBACK_URL.includes('.ts.net')) {
+    const tailscaleConnected = await checkTailscaleConnectivity();
+    if (!tailscaleConnected) {
+      console.warn(`⚠️ Tailscale connectivity issues detected. Twitch EventSub notifications may not work.`);
+      console.warn(`⚠️ Check that Tailscale is running and your machine is connected to the Tailscale network.`);
+      // Continue anyway to allow local development and testing
+    }
+  }
+
+  // Try to load the broadcaster's user token
+  await loadBroadcasterUserToken();
+
+  // Fetch necessary Twitch Broadcaster ID
+  const broadcasterId = await getBroadcasterId();
+
+  // Use the Target Reward ID directly from environment variable
+  targetRewardId = TARGET_REWARD_ID; // Assign to the global variable for the webhook handler
+
+  // Create EventSub subscription if IDs were found AND broadcaster has logged in (token exists)
+  if (broadcasterId && targetRewardId) {
+      // Check if Callback URL and Secret are also present
+      if (!CALLBACK_URL || !EVENTSUB_SECRET) {
+          console.error("CALLBACK_URL or EVENTSUB_SECRET missing in .env. Cannot create EventSub subscription.");
+      } else {
+        // Create subscription with App Token
+        console.log("Proceeding to create subscription with App Token...");
+        await createEventSubSubscription(broadcasterId, targetRewardId);
+      }
+  } else {
+      console.error(`Could not find necessary IDs (Broadcaster: ${broadcasterId}, Reward: ${targetRewardId}), EventSub subscription skipped.`);
+  }
+
+  // Connect to StreamElements Socket API for donation events
+  connectToStreamElements();
 
   // Start file watcher only after loading history
   watch(queueDir, async (eventType, filename) => {
@@ -675,8 +841,11 @@ async function startServer() {
       }
   })
 
-  httpServer.listen(SOCKET_PORT, () => {
-      console.log(`Socket.IO server running at http://localhost:${SOCKET_PORT}/`)
+  // Use the custom HTTP server for listening
+  // Explicitly bind to 0.0.0.0 to allow access from all interfaces
+  customHttpServer.listen(SOCKET_PORT, '0.0.0.0', () => {
+      console.log(`HTTP/Socket.IO server running at http://0.0.0.0:${SOCKET_PORT}/`)
+      console.log(`EventSub expecting requests at ${CALLBACK_URL}/twitch/eventsub`);
       console.log(`Watching directory: ${queueDir}`)
   })
 }
@@ -797,4 +966,374 @@ function parseIsoDuration(isoDuration) {
     const seconds = match[3] ? parseInt(match[3]) : 0
     
     return hours * 3600 + minutes * 60 + seconds
-} 
+}
+
+// --- NEW: Twitch EventSub Webhook Verification Middleware ---
+function verifyTwitchSignature(req, reqBodyBuffer) {
+    const messageId = req.headers['twitch-eventsub-message-id'];
+    const timestamp = req.headers['twitch-eventsub-message-timestamp'];
+    const signature = req.headers['twitch-eventsub-message-signature'];
+
+    if (!messageId || !timestamp || !signature) {
+        console.warn('Missing Twitch signature headers');
+        return false;
+    }
+
+    const computedSignature = 'sha256=' + crypto.createHmac('sha256', EVENTSUB_SECRET)
+        .update(messageId + timestamp + reqBodyBuffer)
+        .digest('hex');
+
+    if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(computedSignature))) {
+        console.warn('Twitch signature validation failed!');
+        return false;
+    }
+    console.log('Twitch signature verified.');
+    return true;
+}
+
+// --- NEW: StreamElements Webhook Verification ---
+function verifyStreamElementsSignature(req, reqBodyBuffer) {
+    const signature = req.headers['x-signature'];
+    
+    if (!signature || !SE_WEBHOOK_SECRET) {
+        console.warn('Missing StreamElements signature header or webhook secret');
+        return false;
+    }
+
+    const computedSignature = crypto.createHmac('sha256', SE_WEBHOOK_SECRET)
+        .update(reqBodyBuffer)
+        .digest('hex');
+    
+    if (signature !== computedSignature) {
+        console.warn('StreamElements signature validation failed!');
+        return false;
+    }
+    console.log('StreamElements signature verified.');
+    return true;
+}
+
+// --- REVERTED: EventSub Subscription Function - Uses App Token ---
+async function createEventSubSubscription(broadcasterId, rewardId) { // <-- Removed userAccessToken parameter
+    if (!broadcasterId || !rewardId) {
+        console.error("Cannot create subscription: Missing broadcaster or reward ID.");
+        return;
+    }
+    if (!EVENTSUB_SECRET || !CALLBACK_URL) {
+         console.error("Cannot create subscription: Missing EVENTSUB_SECRET or CALLBACK_URL.");
+        return;
+    }
+    // REMOVED Check for userAccessToken
+    // if (!userAccessToken) {
+    //     console.error("Cannot create subscription: Missing Broadcaster User Access Token. Please log in via the website.");
+    //     return; 
+    // }
+
+    console.log(`Attempting to create EventSub subscription for reward ${rewardId} using App Token...`);
+    // Get the App Access Token for this call
+    const appAccessToken = await getTwitchAppAccessToken();
+    if (!appAccessToken) {
+        console.error("Cannot create subscription: Failed to get App Access Token.");
+        return;
+    }
+
+    const body = {
+        type: "channel.channel_points_custom_reward_redemption.add",
+        version: "1",
+        condition: {
+            broadcaster_user_id: broadcasterId,
+            reward_id: rewardId // Only subscribe to the specific reward
+        },
+        transport: {
+            method: "webhook",
+            callback: CALLBACK_URL + '/twitch/eventsub', // Ensure this matches the endpoint path
+            secret: EVENTSUB_SECRET
+        }
+    };
+
+    try {
+        const response = await fetch('https://api.twitch.tv/helix/eventsub/subscriptions', {
+            method: 'POST',
+            body: JSON.stringify(body),
+            headers: {
+                'Client-ID': TWITCH_CLIENT_ID,
+                'Authorization': `Bearer ${appAccessToken}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+             // Check for 409 Conflict (Subscription already exists) - often safe to ignore
+             if (response.status === 409) {
+                console.warn(`EventSub subscription likely already exists (Status 409). ${errorText}`);
+                // Optional: Query existing subscriptions and delete/recreate if needed,
+                // or just assume it's okay if it exists. For simplicity, we'll proceed.
+            } else {
+                throw new Error(`Subscription request failed with status ${response.status}: ${errorText}`);
+            }
+        } else {
+             const data = await response.json();
+             console.log("Successfully created/verified EventSub subscription:", data);
+             // You might want to store data.data[0].id (the subscription ID) if you plan to manage/delete it later
+        }
+
+    } catch (error) {
+        console.error("Error creating EventSub subscription:", error);
+    }
+}
+
+// --- NEW: Regex to find YouTube URL in text ---
+function extractYouTubeUrlFromText(text) {
+    if (!text) return null;
+    // Basic regex to find YouTube watch URLs or short URLs
+    const regex = /(https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w-]+))/i;
+    const match = text.match(regex);
+    return match ? match[0] : null; // Return the full matched URL
+}
+
+// --- NEW: Function to load Broadcaster User Token from file ---
+async function loadBroadcasterUserToken() {
+    console.log(`Attempting to load broadcaster user token from ${userTokenFilePath}...`);
+    try {
+        const data = await readFile(userTokenFilePath, 'utf-8');
+        const tokenData = JSON.parse(data);
+        // Basic validation: Check if token exists and maybe if it has expired
+        if (tokenData && tokenData.access_token) {
+            // Optional: Check expiry (add a buffer, e.g., 5 minutes)
+            if (tokenData.expires_at && tokenData.expires_at < (Date.now() + 5 * 60 * 1000)) {
+                console.warn(`Broadcaster user token found in ${userTokenFilePath} has expired or will expire soon.`);
+                 // TODO: Implement refresh token logic here if needed later
+                 broadcasterUserAccessToken = null; // Don't use expired token
+                 return false;
+            }
+            console.log("Successfully loaded broadcaster user token.");
+            broadcasterUserAccessToken = tokenData.access_token;
+            return true;
+        } else {
+            console.warn(`Invalid token data structure found in ${userTokenFilePath}.`);
+            broadcasterUserAccessToken = null;
+            return false;
+        }
+    } catch (error) {
+        if (error.code === 'ENOENT') {
+            console.warn(`Broadcaster user token file not found: ${userTokenFilePath}. Broadcaster needs to log in via website.`);
+        } else {
+            console.error(`Error loading broadcaster user token from ${userTokenFilePath}:`, error);
+        }
+        broadcasterUserAccessToken = null;
+        return false;
+    }
+}
+
+// --- MODIFIED: HTTP Server Request Handler ---
+const customHttpServer = createServer((req, res) => {
+    const parsedUrl = url.parse(req.url, true);
+    const { pathname } = parsedUrl;
+    const method = req.method;
+
+    // Simple health check endpoint for Tailscale connectivity testing
+    if (pathname === '/health-check' && method === 'GET') {
+        console.log(`[${new Date().toISOString()}] Received health check request`);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ status: 'ok', server: 'twitch-integration-server' }));
+        return;
+    }
+
+    // Route for Twitch EventSub Webhook
+    if (pathname === '/twitch/eventsub' && method === 'POST') {
+        console.log(`[${new Date().toISOString()}] Received POST request on /twitch/eventsub`);
+        console.log(`Headers: ${JSON.stringify(req.headers, null, 2)}`);
+        
+        let rawBody = [];
+        req.on('data', (chunk) => {
+            rawBody.push(chunk);
+        }).on('end', async () => {
+            const bodyBuffer = Buffer.concat(rawBody);
+            console.log(`Request body: ${bodyBuffer.toString('utf-8')}`);
+
+            // 1. Verify Signature
+            if (!verifyTwitchSignature(req, bodyBuffer)) {
+                console.error('❌ Signature validation failed - this could mean:');
+                console.error('   1. The request is not from Twitch');
+                console.error('   2. The EVENTSUB_SECRET in .env does not match the one used when creating the subscription');
+                console.error('   3. The request payload was tampered with during transmission');
+                res.writeHead(403);
+                res.end("Signature validation failed.");
+                return;
+            }
+
+            const bodyString = bodyBuffer.toString('utf-8');
+            const notification = JSON.parse(bodyString);
+            const messageType = req.headers['twitch-eventsub-message-type'];
+
+            // 2. Handle Challenge Request
+            if (messageType === 'webhook_callback_verification') {
+                console.log('Received Twitch webhook verification challenge.');
+                res.writeHead(200, { 'Content-Type': 'text/plain' });
+                res.end(notification.challenge); // Send challenge back
+                console.log('Responded to challenge.');
+                return;
+            }
+
+            // 3. Handle Notification Request
+            if (messageType === 'notification') {
+                console.log('Received Twitch notification:', JSON.stringify(notification.event, null, 2));
+                const { event, subscription } = notification;
+
+                // Check if it's the correct event type and reward ID
+                if (targetRewardId && 
+                    subscription.type === 'channel.channel_points_custom_reward_redemption.add' &&
+                    event.reward.id === targetRewardId) {
+
+                    // Extract needed info
+                    const youtubeUrl = extractYouTubeUrlFromText(event.user_input);
+                    const requester = event.user_name; // Display Name
+                    const requesterLogin = event.user_login; // Login Name
+
+                    if (!youtubeUrl) {
+                        console.warn(`No YouTube URL found in redemption input from ${requester}: "${event.user_input}"`);
+                         // Send a failure message to Twitch chat
+                         sendChatMessage(`@${requester}, I couldn't find a YouTube link in your channel point redemption message!`);
+                        // Respond 200 OK to Twitch anyway, as we acknowledged the event
+                        res.writeHead(200);
+                        res.end("OK");
+                        return;
+                    }
+
+                    // Construct the request object for validateAndAddSong
+                    const songRequest = {
+                        id: event.id, // Use the redemption event ID
+                        youtubeUrl: youtubeUrl,
+                        requester: requester,
+                        timestamp: event.redeemed_at || new Date().toISOString(),
+                        requestType: 'channelPoint',
+                        channelPointReward: {
+                            id: event.reward.id,
+                            title: event.reward.title,
+                            cost: event.reward.cost,
+                            prompt: event.reward.prompt
+                        },
+                        source: 'eventsub' // Indicate the source
+                    };
+
+                    console.log(`Processing EventSub request from ${requester} for URL: ${youtubeUrl}`);
+                    // Call the existing validation function
+                    await validateAndAddSong(songRequest);
+
+                } else {
+                     console.log(`Received notification for ignored type (${subscription.type}) or reward ID (${event.reward?.id}).`);
+                }
+
+                // Respond 200 OK to Twitch to acknowledge receipt
+                res.writeHead(200);
+                res.end("OK");
+                return;
+            }
+
+            // Handle other message types if needed (e.g., 'revocation')
+             console.log(`Received unhandled message type: ${messageType}`);
+             res.writeHead(200); // Acknowledge receipt even if not fully handled
+             res.end("OK");
+
+
+        });
+    } else if (pathname === '/streamelements/webhook' && method === 'POST') {
+        console.log(`[${new Date().toISOString()}] Received POST request on /streamelements/webhook`);
+        console.log(`Headers: ${JSON.stringify(req.headers, null, 2)}`);
+        
+        let rawBody = [];
+        req.on('data', (chunk) => {
+            rawBody.push(chunk);
+        }).on('end', async () => {
+            const bodyBuffer = Buffer.concat(rawBody);
+            console.log(`StreamElements request body: ${bodyBuffer.toString('utf-8')}`);
+
+            // 1. Verify signature if secret is configured
+            if (SE_WEBHOOK_SECRET) {
+                if (!verifyStreamElementsSignature(req, bodyBuffer)) {
+                    console.error('❌ StreamElements signature validation failed');
+                    res.writeHead(403);
+                    res.end("Signature validation failed");
+                    return;
+                }
+            } else {
+                console.warn('⚠️ StreamElements webhook secret not configured, skipping signature verification');
+            }
+
+            try {
+                const bodyString = bodyBuffer.toString('utf-8');
+                const event = JSON.parse(bodyString);
+                
+                // 2. Verify it's a donation event
+                if (event.type !== 'tip' && event.type !== 'donation') {
+                    console.log(`Ignoring non-donation StreamElements event: ${event.type}`);
+                    res.writeHead(200);
+                    res.end("OK");
+                    return;
+                }
+                
+                console.log('Received StreamElements donation event:', JSON.stringify(event, null, 2));
+                
+                // 3. Extract data from the donation
+                const userName = event.data.username || 'Anonymous';
+                const amount = event.data.amount || 0;
+                const currency = event.data.currency || 'USD';
+                const message = event.data.message || '';
+                
+                // 4. Check minimum donation amount ($3)
+                const MIN_DONATION_AMOUNT = 3;
+                if (amount < MIN_DONATION_AMOUNT) {
+                    console.log(`Donation amount (${amount} ${currency}) is below minimum required (${MIN_DONATION_AMOUNT} ${currency})`);
+                    sendChatMessage(`Thanks @${userName} for the ${amount} ${currency} donation! Song requests require a minimum donation of ${MIN_DONATION_AMOUNT} ${currency}.`);
+                    res.writeHead(200);
+                    res.end("OK");
+                    return;
+                }
+                
+                // 5. Extract YouTube URL from the donation message
+                const youtubeUrl = extractYouTubeUrlFromText(message);
+                
+                if (!youtubeUrl) {
+                    console.warn(`No YouTube URL found in donation message from ${userName}: "${message}"`);
+                    sendChatMessage(`Thanks @${userName} for the ${amount} ${currency} donation! To request a song, include a YouTube link in your donation message.`);
+                    res.writeHead(200);
+                    res.end("OK");
+                    return;
+                }
+                
+                // 6. Create song request from donation
+                const songRequest = {
+                    id: event.data._id || Date.now().toString(),
+                    youtubeUrl: youtubeUrl,
+                    requester: userName,
+                    timestamp: event.data.createdAt || new Date().toISOString(),
+                    requestType: 'donation',
+                    donationInfo: {
+                        amount: amount,
+                        currency: currency
+                    },
+                    source: 'streamelements'
+                };
+                
+                console.log(`Processing StreamElements donation request from ${userName} for URL: ${youtubeUrl}`);
+                await validateAndAddSong(songRequest);
+                
+                // 7. Respond to StreamElements
+                res.writeHead(200);
+                res.end("OK");
+                
+            } catch (error) {
+                console.error('Error processing StreamElements webhook:', error);
+                res.writeHead(400);
+                res.end("Error processing webhook");
+            }
+        });
+    } else {
+        // Default: Not Found or handle other routes if necessary
+        res.writeHead(404);
+        res.end('Not Found');
+    }
+});
+
+// Attach Socket.IO to the custom HTTP server
+io.attach(customHttpServer); 

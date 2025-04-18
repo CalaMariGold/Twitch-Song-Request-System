@@ -24,7 +24,7 @@ export interface TwitchAuthResponse {
  * Get Twitch OAuth URL for login
  */
 export function getTwitchAuthUrl(): string {
-  const scopes = ['user:read:email']
+  const scopes = ['user:read:email', 'channel:read:redemptions']
   
   return `https://id.twitch.tv/oauth2/authorize?` +
     `client_id=${config.NEXT_PUBLIC_TWITCH_CLIENT_ID}&` +
