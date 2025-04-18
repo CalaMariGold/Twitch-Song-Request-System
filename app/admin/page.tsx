@@ -68,7 +68,9 @@ import {
   AlertTriangle,
   Link as LinkIcon,
   BarChart2,
-  Youtube
+  Youtube,
+  ChevronUp,
+  ChevronDown
 } from "lucide-react"
 import { SongRequest, QueueState } from "@/lib/types"
 import { io, Socket } from "socket.io-client"
@@ -284,7 +286,7 @@ export default function AdminPage() {
 
   const handlePrioritize = (id: string) => {
     if (!socket) return
-    socket.emit('prioritizeSong', id)
+    socket.emit("prioritizeSong", id)
     toast({
       title: "Prioritized",
       description: "Song moved to the top of the queue",
@@ -497,6 +499,34 @@ export default function AdminPage() {
       .slice(0, 3)
   }
 
+  // --- NEW: Queue Reordering Handlers ---
+  const handleMoveUp = (songId: string) => {
+    if (!socket) return;
+    const currentIndex = queueState.queue.findIndex(song => song.id === songId);
+    if (currentIndex > 0) {
+      const newQueue = [...queueState.queue];
+      const [movedSong] = newQueue.splice(currentIndex, 1);
+      newQueue.splice(currentIndex - 1, 0, movedSong);
+      setQueueState(prev => ({ ...prev, queue: newQueue }));
+      socket.emit("updateQueue", newQueue);
+      toast({ title: "Moved Up", description: `"${movedSong.title}" moved up.` });
+    }
+  };
+
+  const handleMoveDown = (songId: string) => {
+    if (!socket) return;
+    const currentIndex = queueState.queue.findIndex(song => song.id === songId);
+    if (currentIndex < queueState.queue.length - 1 && currentIndex !== -1) {
+      const newQueue = [...queueState.queue];
+      const [movedSong] = newQueue.splice(currentIndex, 1);
+      newQueue.splice(currentIndex + 1, 0, movedSong);
+      setQueueState(prev => ({ ...prev, queue: newQueue }));
+      socket.emit("updateQueue", newQueue);
+      toast({ title: "Moved Down", description: `"${movedSong.title}" moved down.` });
+    }
+  };
+  // --- END NEW Handlers ---
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 p-8">
       <div className="max-w-6xl mx-auto">
@@ -566,9 +596,6 @@ export default function AdminPage() {
                   <div className="flex-grow">
                     <h3 className="text-lg font-semibold text-white flex items-center gap-2">
                       {queueState.nowPlaying.title || 'Unknown Title'}
-                      {queueState.nowPlaying.source === 'youtube' && (
-                        <Youtube size={16} className="text-red-500" />
-                      )}
                     </h3>
                     {/* Artist Link */} 
                     {queueState.nowPlaying.channelId ? (
@@ -585,8 +612,12 @@ export default function AdminPage() {
                       </Badge>
                       <span className="text-sm text-gray-400 flex items-center gap-1">
                         Requested by:{' '} 
-                         {/* Requester Link */} 
-                         <Link href={`https://www.twitch.tv/${queueState.nowPlaying.requesterLogin || queueState.nowPlaying.requester.toLowerCase()}`} target="_blank" rel="noopener noreferrer" className="hover:text-gray-300 underline transition-colors">
+                         {/* Requester Link with Avatar */} 
+                         <Link href={`https://www.twitch.tv/${queueState.nowPlaying.requesterLogin || queueState.nowPlaying.requester.toLowerCase()}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 hover:text-gray-300 underline transition-colors">
+                           <Avatar className="w-4 h-4">
+                             <AvatarImage src={queueState.nowPlaying.requesterAvatar} alt={queueState.nowPlaying.requester} />
+                             <AvatarFallback>{queueState.nowPlaying.requester.slice(0, 1).toUpperCase()}</AvatarFallback>
+                           </Avatar>
                            <span>{queueState.nowPlaying.requester}</span>
                          </Link>
                       </span>
@@ -702,9 +733,6 @@ export default function AdminPage() {
                               <div className="flex-grow min-w-0">
                                 <p className="font-medium text-white truncate flex items-center gap-1">
                                   {song.title || song.youtubeUrl}
-                                  {song.source === 'youtube' && (
-                                    <Youtube size={14} className="text-red-500 flex-shrink-0" />
-                                  )}
                                 </p>
                                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1">
                                    {/* Artist Link */} 
@@ -719,11 +747,15 @@ export default function AdminPage() {
                                        {song.artist || 'Unknown Artist'}
                                      </Badge>
                                    )}
-                                  <span className="text-xs text-gray-400">
+                                  <span className="text-xs text-gray-400 flex items-center gap-1">
                                     by{' '} 
-                                     {/* Requester Link */} 
-                                     <Link href={`https://www.twitch.tv/${song.requesterLogin || song.requester.toLowerCase()}`} target="_blank" rel="noopener noreferrer" className="hover:text-gray-300 underline transition-colors">
-                                       {song.requester}
+                                     {/* Requester Link with Avatar */} 
+                                     <Link href={`https://www.twitch.tv/${song.requesterLogin || song.requester.toLowerCase()}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 hover:text-gray-300 underline transition-colors">
+                                       <Avatar className="w-4 h-4">
+                                         <AvatarImage src={song.requesterAvatar} alt={song.requester} />
+                                         <AvatarFallback>{song.requester.slice(0, 1).toUpperCase()}</AvatarFallback>
+                                       </Avatar>
+                                       <span>{song.requester}</span>
                                      </Link>
                                   </span>
                                   {song.requestType === 'donation' && (
@@ -740,37 +772,27 @@ export default function AdminPage() {
                               </div>
                               <div className="flex space-x-1 flex-shrink-0">
                                 <Button variant="ghost" size="sm" 
-                                  onClick={() => handlePrioritize(song.id)}
-                                  title="Prioritize">
-                                  <Star size={16} className="text-yellow-400" />
-                                </Button>
-                                <Button variant="ghost" size="sm" 
                                   onClick={() => handlePlaySong(song)}
                                   title="Play Now">
                                   <Play size={16} className="text-green-400" />
                                 </Button>
-                                <Button variant="ghost" size="sm" 
-                                  onClick={() => {
-                                    if (navigator.clipboard) {
-                                      navigator.clipboard.writeText(song.youtubeUrl)
-                                        .then(() => {
-                                          toast({
-                                            title: "URL Copied",
-                                            description: "YouTube URL copied to clipboard",
-                                          });
-                                        })
-                                        .catch(err => {
-                                          console.error('Failed to copy: ', err);
-                                          toast({
-                                            title: "Error",
-                                            description: "Failed to copy URL to clipboard",
-                                          });
-                                        });
-                                    }
-                                  }}
-                                  title="Copy URL">
-                                  <LinkIcon size={16} className="text-blue-400" />
+                                <Button variant="ghost" size="sm"
+                                  onClick={() => handleMoveUp(song.id)}
+                                  disabled={index === 0}
+                                  title="Move Up">
+                                  <ChevronUp size={16} className={index === 0 ? "text-gray-600" : "text-blue-400"} />
                                 </Button>
+                                <Button variant="ghost" size="sm"
+                                  onClick={() => handleMoveDown(song.id)}
+                                  disabled={index === queueState.queue.length - 1}
+                                  title="Move Down">
+                                  <ChevronDown size={16} className={index === queueState.queue.length - 1 ? "text-gray-600" : "text-blue-400"} />
+                                </Button>
+                                <a href={song.youtubeUrl} target="_blank" rel="noopener noreferrer" aria-label="Watch on YouTube">
+                                  <Button variant="ghost" size="sm" title="Watch on YouTube">
+                                    <Youtube size={16} className="text-red-500" />
+                                  </Button>
+                                </a>
                                 <Button variant="ghost" size="sm" 
                                   onClick={() => handleRemoveSong(song.id)}
                                   title="Remove from Queue">
@@ -823,9 +845,6 @@ export default function AdminPage() {
                               <div className="flex-grow min-w-0">
                                 <p className="font-medium text-white truncate flex items-center gap-1">
                                   {song.title || song.youtubeUrl}
-                                  {song.source === 'youtube' && (
-                                    <Youtube size={14} className="text-red-500 flex-shrink-0" />
-                                  )}
                                 </p>
                                 <div className="flex items-center mt-1 gap-2">
                                    {/* Artist Link */} 
@@ -840,11 +859,15 @@ export default function AdminPage() {
                                        {song.artist || 'Unknown Artist'}
                                      </Badge>
                                    )}
-                                  <span className="text-xs text-gray-400">
+                                  <span className="text-xs text-gray-400 flex items-center gap-1">
                                     Requested by{' '} 
-                                     {/* Requester Link */} 
-                                     <Link href={`https://www.twitch.tv/${song.requesterLogin || song.requester.toLowerCase()}`} target="_blank" rel="noopener noreferrer" className="hover:text-gray-300 underline transition-colors">
-                                       {song.requester}
+                                     {/* Requester Link with Avatar */} 
+                                     <Link href={`https://www.twitch.tv/${song.requesterLogin || song.requester.toLowerCase()}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 hover:text-gray-300 underline transition-colors">
+                                       <Avatar className="w-4 h-4">
+                                         <AvatarImage src={song.requesterAvatar} alt={song.requester} />
+                                         <AvatarFallback>{song.requester.slice(0, 1).toUpperCase()}</AvatarFallback>
+                                       </Avatar>
+                                       <span>{song.requester}</span>
                                      </Link>
                                   </span>
                                 </div>

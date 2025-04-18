@@ -487,18 +487,6 @@ io.on('connection', (socket) => {
         io.emit('queueUpdate', state.queue)
     })
 
-    // Handle prioritize song
-    socket.on('prioritizeSong', (songId) => {
-        const song = state.queue.find(s => s.id === songId)
-        if (song) {
-            // Remove the song from its current position
-            state.queue = state.queue.filter(s => s.id !== songId)
-            // Add it to the beginning
-            state.queue.unshift(song)
-            io.emit('queueUpdate', state.queue)
-        }
-    })
-
     // Handle playback controls
     socket.on('pausePlaying', () => {
         // Emit pause event to clients
