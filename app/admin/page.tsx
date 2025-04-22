@@ -432,7 +432,15 @@ export default function AdminDashboard() {
   const formatTimestamp = (isoString?: string): string => {
     if (!isoString) return 'N/A'
     try {
-      return new Date(isoString).toLocaleString()
+      // Use Eastern Time (UTC-4) for timestamp display
+      return new Date(isoString).toLocaleString('en-US', {
+        timeZone: 'America/New_York',
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+      })
     } catch (e) {
       return 'Invalid Date'
     }

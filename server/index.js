@@ -188,8 +188,7 @@ try {
             requesterAvatar TEXT,
             thumbnailUrl TEXT,
             requestType TEXT NOT NULL, -- 'channelPoint' or 'donation'
-            playedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            completedAt TIMESTAMP
+            completedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
     `;
     db.exec(createHistoryTableStmt);
@@ -263,7 +262,7 @@ try {
         CREATE INDEX IF NOT EXISTS idx_requester ON song_history (requester);
         CREATE INDEX IF NOT EXISTS idx_artist ON song_history (artist);
         CREATE INDEX IF NOT EXISTS idx_title ON song_history (title);
-        CREATE INDEX IF NOT EXISTS idx_playedAt ON song_history (playedAt);
+        CREATE INDEX IF NOT EXISTS idx_completedAt ON song_history (completedAt);
     `;
     db.exec(createHistoryIndexes);
 
@@ -344,7 +343,7 @@ try {
 // Server state - Initial state will be loaded from DB
 const state = {
   queue: [], // Will be loaded from active_queue table
-  history: [], // History loading from DB deferred for now
+  history: [], // Will be loaded from song_history table
   activeSong: null,
   settings: {}, // Will be loaded from settings table
   blacklist: [], // Will be loaded from blacklist table
@@ -671,7 +670,7 @@ function logCompletedSong(song) {
                 requesterLogin: row.requesterLogin,
                 requesterAvatar: row.requesterAvatar,
                 thumbnailUrl: row.thumbnailUrl,
-                timestamp: row.completedAt || row.playedAt,
+                timestamp: row.completedAt,
                 requestType: row.requestType,
                 source: 'database_history'
             }));
@@ -895,7 +894,7 @@ io.on('connection', (socket) => {
              requesterLogin: row.requesterLogin,
              requesterAvatar: row.requesterAvatar,
              thumbnailUrl: row.thumbnailUrl,
-             timestamp: row.completedAt || row.playedAt, // Use completed/played time
+             timestamp: row.completedAt, // Use completed time
              requestType: row.requestType,
              source: 'database_history'
          }));
@@ -928,7 +927,7 @@ io.on('connection', (socket) => {
                  requesterLogin: row.requesterLogin,
                  requesterAvatar: row.requesterAvatar,
                  thumbnailUrl: row.thumbnailUrl,
-                 timestamp: row.completedAt || row.playedAt, // Use completed/played time
+                 timestamp: row.completedAt, // Use completed time
                  requestType: row.requestType,
                  source: 'database_history'
              }));
@@ -1055,7 +1054,7 @@ io.on('connection', (socket) => {
                                  requesterLogin: row.requesterLogin,
                                  requesterAvatar: row.requesterAvatar,
                                  thumbnailUrl: row.thumbnailUrl,
-                                 timestamp: row.completedAt || row.playedAt,
+                                 timestamp: row.completedAt,
                                  requestType: row.requestType,
                                  source: 'database_history'
                              }));
@@ -1107,7 +1106,7 @@ io.on('connection', (socket) => {
                                  requesterLogin: row.requesterLogin,
                                  requesterAvatar: row.requesterAvatar,
                                  thumbnailUrl: row.thumbnailUrl,
-                                 timestamp: row.completedAt || row.playedAt,
+                                 timestamp: row.completedAt,
                                  requestType: row.requestType,
                                  source: 'database_history'
                              }));
@@ -1212,7 +1211,7 @@ io.on('connection', (socket) => {
                         requesterLogin: row.requesterLogin,
                         requesterAvatar: row.requesterAvatar,
                         thumbnailUrl: row.thumbnailUrl,
-                        timestamp: row.completedAt || row.playedAt,
+                        timestamp: row.completedAt,
                         requestType: row.requestType,
                         source: 'database_history'
                     }));
@@ -1281,7 +1280,7 @@ io.on('connection', (socket) => {
                     requesterLogin: row.requesterLogin,
                     requesterAvatar: row.requesterAvatar,
                     thumbnailUrl: row.thumbnailUrl,
-                    timestamp: row.completedAt || row.playedAt,
+                    timestamp: row.completedAt,
                     requestType: row.requestType,
                     source: 'database_history'
                 }));

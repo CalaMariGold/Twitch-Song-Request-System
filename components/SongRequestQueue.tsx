@@ -19,6 +19,23 @@ import Link from 'next/link'
 /*
  * Main queue component that displays current queue, history, and active song
  */
+function formatTimestamp(isoString?: string): string {
+  if (!isoString) return 'N/A'
+  try {
+    // Use Eastern Time (UTC-4) for timestamp display
+    return new Date(isoString).toLocaleString('en-US', {
+      timeZone: 'America/New_York',
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    })
+  } catch (e) {
+    return 'Invalid Date'
+  }
+}
+
 export default function SongRequestQueue() {
   const [state, setState] = useState<AppState>({
     queue: [],
@@ -328,6 +345,13 @@ function SongList({ songs }: { songs: SongRequest[] }) {
                     {song.requester}
                   </Link>
                 </div>
+                {/* History item timestamp display */}
+                {song.source === 'database_history' && (
+                  <span className="text-xs text-gray-500 ml-auto pl-2 whitespace-nowrap">
+                    {formatTimestamp(song.timestamp)}
+                  </span>
+                )}
+                {/* Request type badges */}
                 {song.requestType === 'donation' && (
                   <Badge variant="secondary" className="px-1.5 py-0.5 text-xs bg-green-800 text-green-200 border-green-700">
                     Dono
@@ -336,6 +360,11 @@ function SongList({ songs }: { songs: SongRequest[] }) {
                 {song.requestType === 'channelPoint' && (
                   <Badge variant="outline" className="px-1.5 py-0.5 text-xs bg-purple-800 text-purple-200 border-purple-700">
                     Points
+                  </Badge>
+                )}
+                {song.requestType === 'manual_admin' && (
+                  <Badge variant="outline" className="px-1.5 py-0.5 text-xs bg-blue-800 text-blue-200 border-blue-700">
+                    Manual
                   </Badge>
                 )}
               </div>

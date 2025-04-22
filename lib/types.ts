@@ -18,8 +18,8 @@ export interface SongRequest {
   requesterLogin?: string
   /** Avatar URL of the requester */
   requesterAvatar: string
-  /** ISO timestamp of when the request was made or completed */
-  timestamp: string // Could be addedAt or completedAt depending on context
+  /** ISO timestamp - for queue items: when requested, for history items: completedAt */
+  timestamp: string
   /** Title of the song (from YouTube) */
   title?: string
   /** Artist/channel name (from YouTube) */
