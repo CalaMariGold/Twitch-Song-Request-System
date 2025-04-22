@@ -5,7 +5,7 @@ declare global {
 }
 
 /**
- * Represents a song request in the queue
+ * Represents a song request in the queue or history
  */
 export interface SongRequest {
   /** Unique identifier for the request */
@@ -18,8 +18,8 @@ export interface SongRequest {
   requesterLogin?: string
   /** Avatar URL of the requester */
   requesterAvatar: string
-  /** ISO timestamp of when the request was made */
-  timestamp: string
+  /** ISO timestamp of when the request was made or completed */
+  timestamp: string // Could be addedAt or completedAt depending on context
   /** Title of the song (from YouTube) */
   title?: string
   /** Artist/channel name (from YouTube) */
@@ -33,25 +33,33 @@ export interface SongRequest {
   /** Thumbnail URL of the song */
   thumbnailUrl?: string
   /** Source of the song (youtube, spotify, etc.) */
-  source?: 'youtube' | 'spotify'
-  /** Channel point redemption details (Indicates a 'channelPoint' type request) */
-  channelPointReward?: {
-    /** Unique identifier for the reward */
-    rewardId: string
-    /** Display name of the reward */
-    rewardTitle: string
-    /** Cost in channel points */
-    cost: number
-  }
+  source?: string // Be more flexible than just 'youtube' | 'spotify'
   /** Type of request (determines priority and limits) */
-  requestType: 'channelPoint' | 'donation'
+  requestType: 'channelPoint' | 'donation' | string // Allow for other types potentially
   /** Donation details (if requestType is 'donation') */
   donationInfo?: {
     amount: number;
     currency: string;
   }
-  /** Current status of the request */
-  status?: 'pending' | 'playing' | 'completed' | 'skipped'
+  /** Channel point redemption details */
+  channelPointReward?: {
+      title: string; // Simplified from backend for frontend use
+  };
+  /** Status for history display if needed */
+  status?: 'completed' | 'skipped'
+  /** Origin of the data (database, socket event, etc.) */
+  origin?: string;
+}
+
+/**
+ * Simplified state for the public page queue view
+ */
+export interface QueueState {
+  queue: SongRequest[];
+  history: SongRequest[];
+  nowPlaying: SongRequest | null;
+  isLoading: boolean;
+  error: Error | null;
 }
 
 /**
@@ -67,12 +75,87 @@ export interface YouTubeVideoDetails {
 }
 
 /**
- * Socket event types
+ * Application Settings
+ */
+export interface Settings {
+  maxDuration?: number; // in minutes
+}
+
+/**
+ * Blacklist Item
+ */
+export interface BlacklistItem {
+    id: string; // From DB
+    term: string; // 'pattern' in DB
+    type: 'song' | 'artist' | 'keyword';
+    addedAt?: string; // ISO timestamp
+}
+
+/**
+ * Blocked User
+ */
+export interface BlockedUser {
+    id: string; // From DB
+    username: string;
+    addedAt?: string; // ISO timestamp
+}
+
+/**
+ * All-Time Statistics Structure
+ */
+export interface AllTimeStats {
+    topRequesters: { requester: string; request_count: number }[];
+    topSongs: { title: string | null; artist: string | null; play_count: number }[]; // Title/Artist can be null
+    topArtists: { artist: string | null; play_count: number }[]; // Artist can be null
+}
+
+/**
+ * Overall application state managed via Socket.IO
+ */
+export interface AppState {
+  queue: SongRequest[]
+  history: SongRequest[] // Typically recent history for display
+  nowPlaying: SongRequest | null
+  settings: Settings
+  blacklist: BlacklistItem[]
+  blockedUsers: BlockedUser[]
+  isLoading: boolean
+  error: Error | null
+}
+
+/**
+ * Socket event types (consider defining payload types more strictly)
  */
 export interface SocketEvents {
-  newSongRequest: (request: SongRequest) => void
-  queueUpdate: (queue: SongRequest[]) => void
-  nowPlaying: (song: SongRequest | null) => void
+    // Emitted by Server
+    initialState: (state: AppState) => void;
+    queueUpdate: (queue: SongRequest[]) => void;
+    historyUpdate: (history: SongRequest[]) => void; // For broadcasting recent history changes
+    nowPlaying: (song: SongRequest | null) => void;
+    newSongRequest: (request: SongRequest) => void; // Feedback for successful request
+    settingsUpdate: (settings: Settings) => void;
+    blacklistUpdate: (blacklist: BlacklistItem[]) => void;
+    blockedUsersUpdate: (blockedUsers: BlockedUser[]) => void;
+    songFinished: (song: SongRequest) => void; // When a song completes or is skipped
+    allTimeStatsUpdate: (stats: AllTimeStats) => void;
+    allTimeStatsError: (error: { message: string }) => void;
+
+    // Emitted by Client (Admin)
+    getState: () => void;
+    updateQueue: (updatedQueue: SongRequest[]) => void; // For reordering
+    addSong: (songRequestData: Partial<SongRequest> & { youtubeUrl: string; requester: string }) => void; // Manual add
+    removeSong: (songId: string) => void;
+    clearQueue: () => void;
+    resetSystem: () => void; // Consider removing if clearQueue/stop is enough
+    setMaxDuration: (minutes: number) => void; // Or seconds, match backend
+    updateNowPlaying: (song: SongRequest | null) => void; // When admin forces next song or stops
+    updateBlacklist: (newBlacklist: BlacklistItem[]) => void;
+    updateBlockedUsers: (newBlockedUsers: BlockedUser[]) => void;
+    getAllTimeStats: () => void;
+    clearHistory: () => void; // Clear all history
+    deleteHistoryItem: (id: string) => void; // Delete a single history item
+    markSongAsFinished: (song: SongRequest) => void; // Mark the current song as finished and move to history
+    returnToQueue: (song: SongRequest) => void; // Return a song from history to the top of the queue
 }
 
 /**
@@ -85,25 +168,7 @@ export interface EnvConfig {
   NEXT_PUBLIC_TWITCH_CLIENT_ID: string
   TWITCH_CLIENT_SECRET: string
   NEXT_PUBLIC_TWITCH_REDIRECT_URI: string
-}
-
-/**
- * Queue state management types
- */
-export interface QueueState {
-  queue: SongRequest[]
-  history: SongRequest[]
-  nowPlaying: SongRequest | null
-  isLoading: boolean
-  error: Error | null
-}
-
-export interface QueueActions {
-  addSong: (song: SongRequest) => void
-  removeSong: (id: string) => void
-  skipSong: (id: string) => void
-  clearQueue: () => void
-  // updatePriority: (id: string, priority: SongRequest['priority']) => void // Removed as priority is replaced by requestType
+  NEXT_PUBLIC_SOCKET_URL?: string; // Added optional socket URL
 }
 
 /**

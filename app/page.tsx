@@ -36,15 +36,35 @@ export default function Home() {
     })
     
     socketInstance.on('queueUpdate', (queue: SongRequest[]) => {
-      setQueueState(prev => ({ ...prev, queue, isLoading: false }))
+      setQueueState((prev: QueueState) => ({ ...prev, queue, isLoading: false }))
     })
     
     socketInstance.on('nowPlaying', (song: SongRequest | null) => {
-      setQueueState(prev => ({ ...prev, nowPlaying: song, isLoading: false }))
+      setQueueState((prev: QueueState) => ({ ...prev, nowPlaying: song, isLoading: false }))
     })
     
     socketInstance.on('historyUpdate', (history: SongRequest[]) => {
-      setQueueState(prev => ({ ...prev, history, isLoading: false }))
+      setQueueState((prev: QueueState) => ({ ...prev, history, isLoading: false }))
+    })
+    
+    socketInstance.on('songFinished', (finishedSong: SongRequest) => {
+      console.log('Song finished and moved to history:', finishedSong.title)
+      // The server will also send historyUpdate so we don't need to update history directly here
+    })
+    
+    // Handle initial state - critical for loading history correctly on first connection
+    socketInstance.on('initialState', (initialState: any) => {
+      console.log('Received initial state on public page:', 
+        `Queue: ${initialState.queue?.length || 0} items, ` +
+        `History: ${initialState.history?.length || 0} items`
+      )
+      setQueueState(prev => ({
+        ...prev,
+        queue: initialState.queue || [],
+        history: initialState.history || [],
+        nowPlaying: initialState.nowPlaying,
+        isLoading: false
+      }))
     })
     
     // Request initial state
@@ -77,7 +97,7 @@ export default function Home() {
   };
 
   // Calculate total queue duration
-  const totalQueueSeconds = queueState.queue.reduce((sum, song) => {
+  const totalQueueSeconds = queueState.queue.reduce((sum: number, song: SongRequest) => {
     // Use song.durationSeconds if available, otherwise default to 0 or a reasonable estimate
     return sum + (song.durationSeconds || 0); 
   }, 0);

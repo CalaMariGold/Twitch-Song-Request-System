@@ -10,20 +10,23 @@ import { Search, Music, Clock, History, Loader2, Youtube } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { motion, AnimatePresence } from "framer-motion"
 import { ErrorBoundary } from "@/components/error-boundary"
-import { SongRequest, QueueState } from "@/lib/types"
+import { SongRequest, AppState } from "@/lib/types"
 import { constants, socketEvents } from "@/lib/config"
 import { Header } from "./header"
 import { Badge } from "@/components/ui/badge"
 import Link from 'next/link'
 
-/**
- * Main queue component that displays current queue, history, and now playing
+/*
+ * Main queue component that displays current queue, history, and active song
  */
 export default function SongRequestQueue() {
-  const [state, setState] = useState<QueueState>({
+  const [state, setState] = useState<AppState>({
     queue: [],
     history: [],
     nowPlaying: null,
+    settings: {},
+    blacklist: [],
+    blockedUsers: [],
     isLoading: true,
     error: null
   })
@@ -47,22 +50,25 @@ export default function SongRequestQueue() {
     newSocket.on(socketEvents.DISCONNECT, (reason) => {
       console.log('Disconnected from WebSocket server:', reason)
       setIsConnected(false)
-      setState(prev => ({ ...prev, error: new Error('Connection lost') }))
+      setState((prev: AppState) => ({ ...prev, error: new Error('Connection lost') }))
     })
 
     newSocket.on(socketEvents.ERROR, (error) => {
       console.error('Socket error:', error)
-      setState(prev => ({ ...prev, error: new Error('Connection error') }))
+      setState((prev: AppState) => ({ ...prev, error: new Error('Connection error') }))
     })
 
     // Handle initial state from server
-    newSocket.on('initialState', (serverState: QueueState) => {
+    newSocket.on('initialState', (serverState: AppState) => {
       console.log('Received initial state:', serverState)
-      setState(prev => ({
+      setState((prev: AppState) => ({
         ...prev,
         queue: serverState.queue || [],
         history: serverState.history || [],
         nowPlaying: serverState.nowPlaying,
+        settings: serverState.settings || {},
+        blacklist: serverState.blacklist || [],
+        blockedUsers: serverState.blockedUsers || [],
         isLoading: false
       }))
     })
@@ -70,7 +76,7 @@ export default function SongRequestQueue() {
     // Event handlers for queue updates
     newSocket.on(socketEvents.NEW_SONG_REQUEST, (song: SongRequest) => {
       console.log('Received new song request:', song)
-      setState(prev => ({
+      setState((prev: AppState) => ({
         ...prev,
         queue: [...prev.queue, song].slice(0, constants.MAX_QUEUE_SIZE)
       }))
@@ -78,19 +84,25 @@ export default function SongRequestQueue() {
 
     newSocket.on(socketEvents.QUEUE_UPDATE, (updatedQueue: SongRequest[]) => {
       console.log('Queue updated:', updatedQueue)
-      setState(prev => ({ ...prev, queue: updatedQueue }))
+      setState((prev: AppState) => ({ ...prev, queue: updatedQueue }))
     })
 
     // *** Add History Update Listener ***
     newSocket.on('historyUpdate', (updatedHistory: SongRequest[]) => {
       console.log('History updated:', updatedHistory); // Add log for debugging
-      setState(prev => ({ ...prev, history: updatedHistory }));
+      setState((prev: AppState) => ({ ...prev, history: updatedHistory }));
+    })
+    
+    // Add listener for song finished event
+    newSocket.on('songFinished', (finishedSong: SongRequest) => {
+      console.log('Song finished:', finishedSong); 
+      // The server will also send historyUpdate so we don't need to update history directly here
     })
     // ********************************
 
     newSocket.on(socketEvents.NOW_PLAYING, (song: SongRequest | null) => {
       console.log('Now playing updated:', song)
-      setState(prev => ({
+      setState((prev: AppState) => ({
         ...prev,
         nowPlaying: song,
       }))
@@ -106,7 +118,7 @@ export default function SongRequestQueue() {
 
   // Filter handlers
   const filteredQueue = useCallback(() => 
-    state.queue.filter(song => 
+    state.queue.filter((song: SongRequest) => 
       song.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       song.artist?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       song.requester.toLowerCase().includes(searchTerm.toLowerCase())
@@ -115,7 +127,7 @@ export default function SongRequestQueue() {
   )
 
   const filteredHistory = useCallback(() => 
-    state.history.filter(song => 
+    state.history.filter((song: SongRequest) => 
       song.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       song.artist?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       song.requester.toLowerCase().includes(searchTerm.toLowerCase())
@@ -127,7 +139,7 @@ export default function SongRequestQueue() {
     <ErrorBoundary>
       <div className="w-full max-w-4xl mx-auto p-6 bg-gray-900 text-white rounded-lg shadow-xl">
         <Header isConnected={isConnected} />
-        <NowPlaying song={state.nowPlaying} isLoading={state.isLoading} />
+        <ActiveSong song={state.nowPlaying} isLoading={state.isLoading} />
 
         <div className="mb-4 relative">
           <Input
@@ -183,12 +195,12 @@ function LoadingState() {
   )
 }
 
-function NowPlaying({ song, isLoading }: { song: SongRequest | null, isLoading: boolean }) {
+function ActiveSong({ song, isLoading }: { song: SongRequest | null, isLoading: boolean }) {
   return (
     <div className="mb-6 p-4 bg-gray-800 rounded-lg shadow-md">
       <h2 className="text-xl font-semibold mb-2 flex items-center">
         <Music className="mr-2" size={24} />
-        Now Playing
+        Current Active Song
       </h2>
       {isLoading ? (
         <LoadingState />
@@ -213,7 +225,7 @@ function NowPlaying({ song, isLoading }: { song: SongRequest | null, isLoading: 
               ) : (
                 <p className="text-gray-400">{song.artist || 'Unknown Artist'}</p>
               )}
-              <p className="text-sm text-gray-500 flex items-center gap-1.5 mt-1">
+              <div className="text-sm text-gray-500 flex items-center flex-wrap gap-x-2 gap-y-1 mt-1">
                 Requested by:{' '}
                 <Avatar className="w-4 h-4 rounded-full inline-block">
                   <AvatarImage src={song.requesterAvatar} alt={song.requester} />
@@ -232,8 +244,14 @@ function NowPlaying({ song, isLoading }: { song: SongRequest | null, isLoading: 
                     Points
                   </Badge>
                 )}
-              </p>
+              </div>
             </div>
+          </div>
+
+          {/* Duration - ADDED */}
+          <div className="text-sm text-gray-400">
+             <Clock className="inline-block mr-1 -mt-0.5" size={16} />
+             {song.duration || '0:00'}
           </div>
 
           {/* YouTube Link Button */}
@@ -244,7 +262,7 @@ function NowPlaying({ song, isLoading }: { song: SongRequest | null, isLoading: 
           </a>
         </motion.div>
       ) : (
-        <p className="text-gray-400">No song is currently playing</p>
+        <p className="text-gray-400">No active song.</p>
       )}
     </div>
   )
@@ -274,9 +292,10 @@ function SongList({ songs }: { songs: SongRequest[] }) {
                   className="w-full h-full object-cover"
                 />
               ) : (
-                <Avatar className="w-full h-full rounded-md">
-                  <AvatarImage src={song.requesterAvatar} alt={song.requester} />
-                  <AvatarFallback className="rounded-md">{song.requester.slice(0, 2).toUpperCase()}</AvatarFallback>
+                <Avatar className="w-full h-full rounded-md bg-gray-700">
+                  <AvatarFallback className="rounded-md bg-transparent flex items-center justify-center">
+                    <Music size={24} className="text-gray-400"/>
+                  </AvatarFallback>
                 </Avatar>
               )}
             </div>
@@ -299,7 +318,7 @@ function SongList({ songs }: { songs: SongRequest[] }) {
                 <span className="text-xs text-gray-400">
                   {song.duration || '?:'}
                 </span>
-                <span className="text-xs text-gray-400 flex items-center gap-1">
+                <div className="text-xs text-gray-400 flex items-center gap-1">
                   by{' '}
                   <Avatar className="w-3 h-3 rounded-full inline-block">
                     <AvatarImage src={song.requesterAvatar} alt={song.requester} />
@@ -308,8 +327,7 @@ function SongList({ songs }: { songs: SongRequest[] }) {
                   <Link href={`https://www.twitch.tv/${song.requesterLogin || song.requester.toLowerCase()}`} target="_blank" rel="noopener noreferrer" className="hover:text-gray-300 underline transition-colors">
                     {song.requester}
                   </Link>
-                </span>
-                {/* Conditional Badge for Request Type */} 
+                </div>
                 {song.requestType === 'donation' && (
                   <Badge variant="secondary" className="px-1.5 py-0.5 text-xs bg-green-800 text-green-200 border-green-700">
                     Dono

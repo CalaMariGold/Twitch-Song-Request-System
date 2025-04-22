@@ -1,20 +1,15 @@
 const { createServer } = require('http')
 const { Server } = require('socket.io')
-const { watch, writeFileSync } = require('fs')
-const { readFile, writeFile } = require('fs/promises')
-const path = require('path')
 const fetch = require('node-fetch')
 const tmi = require('tmi.js')
-const crypto = require('crypto')
-const url = require('url')
-const ioClient = require('socket.io-client')
 const chalk = require('chalk')
+const path = require('path')
+const Database = require('better-sqlite3')
 require('dotenv').config()
 
 const SOCKET_PORT = 3002
 const httpServer = createServer()
-const historyFilePath = path.join(__dirname, 'queue', 'history.json');
-
+const dbPath = path.join(__dirname, 'data', 'songhistory.db');
 
 // Twitch API configuration
 const TWITCH_CLIENT_ID = process.env.NEXT_PUBLIC_TWITCH_CLIENT_ID;
@@ -170,14 +165,159 @@ async function getTwitchUser(username) {
   }
 }
 
-// Server state
+// --- SQLite Database Setup ---
+let db;
+try {
+    db = new Database(dbPath, { /* verbose: console.log */ }); // Connect to DB
+    console.log(chalk.blue(`[Database] Connected to SQLite database at ${dbPath}`));
+
+    // Enable WAL mode for better concurrency
+    db.pragma('journal_mode = WAL');
+
+    // Schema Setup (Create tables if they don't exist)
+    const createHistoryTableStmt = `
+        CREATE TABLE IF NOT EXISTS song_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            youtubeUrl TEXT NOT NULL,
+            title TEXT,
+            artist TEXT,
+            channelId TEXT,
+            durationSeconds INTEGER,
+            requester TEXT NOT NULL,
+            requesterLogin TEXT,
+            requesterAvatar TEXT,
+            thumbnailUrl TEXT,
+            requestType TEXT NOT NULL, -- 'channelPoint' or 'donation'
+            playedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            completedAt TIMESTAMP
+        );
+    `;
+    db.exec(createHistoryTableStmt);
+
+    const createActiveQueueTableStmt = `
+        CREATE TABLE IF NOT EXISTS active_queue (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            youtubeUrl TEXT NOT NULL UNIQUE,
+            title TEXT,
+            artist TEXT,
+            channelId TEXT,
+            durationSeconds INTEGER,
+            requester TEXT NOT NULL,
+            requesterLogin TEXT,
+            requesterAvatar TEXT,
+            thumbnailUrl TEXT,
+            requestType TEXT NOT NULL, -- 'channelPoint' or 'donation'
+            priority INTEGER DEFAULT 0, -- e.g., 0=channelPoint, 1=donation
+            addedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    `;
+    db.exec(createActiveQueueTableStmt);
+
+    const createSettingsTableStmt = `
+        CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY,
+            value TEXT -- Store complex values as JSON strings
+        );
+    `;
+    db.exec(createSettingsTableStmt);
+
+    const createBlacklistTableStmt = `
+        CREATE TABLE IF NOT EXISTS blacklist (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            pattern TEXT NOT NULL UNIQUE,
+            type TEXT NOT NULL, -- song, artist, keyword
+            addedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    `;
+    db.exec(createBlacklistTableStmt);
+
+    const createBlockedUsersTableStmt = `
+        CREATE TABLE IF NOT EXISTS blocked_users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL UNIQUE COLLATE NOCASE, -- Store usernames case-insensitively
+            addedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    `;
+    db.exec(createBlockedUsersTableStmt);
+
+    // Index Creation
+    const createHistoryIndexes = `
+        CREATE INDEX IF NOT EXISTS idx_requester ON song_history (requester);
+        CREATE INDEX IF NOT EXISTS idx_artist ON song_history (artist);
+        CREATE INDEX IF NOT EXISTS idx_title ON song_history (title);
+        CREATE INDEX IF NOT EXISTS idx_playedAt ON song_history (playedAt);
+    `;
+    db.exec(createHistoryIndexes);
+
+    const createQueueIndexes = `
+        CREATE INDEX IF NOT EXISTS idx_queue_order ON active_queue (priority DESC, addedAt ASC);
+    `;
+    db.exec(createQueueIndexes);
+
+    console.log(chalk.blue('[Database] Schema and indexes verified/created.'));
+
+} catch (err) {
+    console.error(chalk.red('[Database] Failed to connect or initialize SQLite database:'), err);
+    process.exit(1); // Exit if DB connection fails
+}
+// --- END SQLite Database Setup ---
+
+// --- SQLite Prepared Statements ---
+let insertHistoryStmt, insertQueueStmt, deleteQueueStmt, clearQueueStmt;
+let saveSettingStmt, addBlacklistStmt, removeBlacklistStmt, addBlockedUserStmt, removeBlockedUserStmt;
+
+try {
+    // History & Queue (define now, use later)
+    insertHistoryStmt = db.prepare(`
+        INSERT INTO song_history (
+            youtubeUrl, title, artist, channelId, durationSeconds,
+            requester, requesterLogin, requesterAvatar, thumbnailUrl, requestType, completedAt
+        ) VALUES (
+            @youtubeUrl, @title, @artist, @channelId, @durationSeconds,
+            @requester, @requesterLogin, @requesterAvatar, @thumbnailUrl, @requestType, CURRENT_TIMESTAMP
+        )
+    `);
+    insertQueueStmt = db.prepare(`
+        INSERT INTO active_queue (
+            youtubeUrl, title, artist, channelId, durationSeconds,
+            requester, requesterLogin, requesterAvatar, thumbnailUrl, requestType, priority
+        ) VALUES (
+            @youtubeUrl, @title, @artist, @channelId, @durationSeconds,
+            @requester, @requesterLogin, @requesterAvatar, @thumbnailUrl, @requestType, @priority
+        )
+    `);
+    deleteQueueStmt = db.prepare('DELETE FROM active_queue WHERE youtubeUrl = ?');
+    clearQueueStmt = db.prepare('DELETE FROM active_queue');
+
+    // Settings
+    saveSettingStmt = db.prepare(`
+        INSERT OR REPLACE INTO settings (key, value) VALUES (@key, @value)
+    `);
+
+    // Blacklist
+    addBlacklistStmt = db.prepare('INSERT OR IGNORE INTO blacklist (pattern, type) VALUES (?, ?)');
+    removeBlacklistStmt = db.prepare('DELETE FROM blacklist WHERE pattern = ? AND type = ?');
+
+    // Blocked Users
+    addBlockedUserStmt = db.prepare('INSERT OR IGNORE INTO blocked_users (username) VALUES (?)');
+    removeBlockedUserStmt = db.prepare('DELETE FROM blocked_users WHERE username = ?');
+
+    console.log(chalk.blue('[Database] Prepared statements created.'));
+
+} catch (err) {
+    console.error(chalk.red('[Database] Failed to prepare SQL statements:'), err);
+    process.exit(1); // Exit if statement preparation fails
+}
+// --- END SQLite Prepared Statements ---
+
+// Server state - Initial state will be loaded from DB
 const state = {
-  queue: [],
-  history: [],
+  queue: [], // Will be loaded from active_queue table
+  history: [], // History loading from DB deferred for now
   nowPlaying: null,
-  settings: {},
-  blacklist: [],
-  blockedUsers: []
+  settings: {}, // Will be loaded from settings table
+  blacklist: [], // Will be loaded from blacklist table
+  blockedUsers: [] // Will be loaded from blocked_users table
 }
 
 const io = new Server(httpServer, {
@@ -188,31 +328,258 @@ const io = new Server(httpServer, {
     }
 })
 
-// Function to load history from file
-async function loadHistory() {
-  try {
-    const data = await readFile(historyFilePath, 'utf-8');
-    state.history = JSON.parse(data);
-    console.log(chalk.blue(`[History] Loaded ${state.history.length} items from ${path.basename(historyFilePath)}`));
-  } catch (error) {
-    if (error.code === 'ENOENT') {
-      console.log(chalk.yellow(`[History] File not found (${path.basename(historyFilePath)}), starting empty.`));
-      state.history = [];
-    } else {
-      console.error(chalk.red('[History] Error loading file:'), error);
-      state.history = []; // Start with empty history on error
+// Function to load initial state from Database
+function loadInitialState() {
+    console.log(chalk.blue('[Database] Loading initial state...'));
+    let loadedState = { queue: [], settings: {}, blacklist: [], blockedUsers: [] };
+    try {
+        // Load Active Queue
+        const loadQueueStmt = db.prepare(`
+            SELECT id, youtubeUrl, title, artist, channelId, durationSeconds,
+                   requester, requesterLogin, requesterAvatar, thumbnailUrl, requestType, addedAt
+            FROM active_queue ORDER BY priority DESC, addedAt ASC
+        `);
+        const queueRows = loadQueueStmt.all();
+        // Map DB columns to state.queue song format (adjust if necessary)
+        loadedState.queue = queueRows.map(row => ({
+             id: row.id.toString(), // Ensure ID is string like original state
+             youtubeUrl: row.youtubeUrl,
+             title: row.title,
+             artist: row.artist,
+             channelId: row.channelId,
+             duration: row.durationSeconds ? formatDurationFromSeconds(row.durationSeconds) : '0:00', // Format duration string
+             durationSeconds: row.durationSeconds,
+             requester: row.requester,
+             requesterLogin: row.requesterLogin,
+             requesterAvatar: row.requesterAvatar,
+             thumbnailUrl: row.thumbnailUrl,
+             timestamp: row.addedAt, // Use addedAt as timestamp
+             requestType: row.requestType,
+             source: 'database', // Indicate source
+             // priority is DB-only concept for ordering, not needed in state item
+        }));
+        console.log(chalk.blue(`[Database] Loaded ${loadedState.queue.length} songs into the active queue.`));
+
+        // Load Settings
+        const loadSettingsStmt = db.prepare('SELECT key, value FROM settings');
+        const settingsRows = loadSettingsStmt.all();
+        loadedState.settings = settingsRows.reduce((acc, row) => {
+            try {
+                acc[row.key] = JSON.parse(row.value);
+            } catch (e) {
+                acc[row.key] = row.value; // Fallback to raw value if not JSON
+            }
+            return acc;
+        }, {});
+        console.log(chalk.blue(`[Database] Loaded ${Object.keys(loadedState.settings).length} settings.`));
+
+        // Load Blacklist - adapting to new schema with 'type'
+        const loadBlacklistStmt = db.prepare('SELECT id, pattern, type, addedAt FROM blacklist');
+        const blacklistRows = loadBlacklistStmt.all(); // Added detailed logging
+        // Map DB columns to state.blacklist format
+        loadedState.blacklist = blacklistRows.map(row => ({
+            id: row.id.toString(), // Use DB ID
+            term: row.pattern, // 'pattern' in DB is 'term' in state
+            type: row.type,
+            addedAt: row.addedAt
+        }));
+        console.log(chalk.blue(`[Database] Loaded ${loadedState.blacklist.length} blacklist items.`));
+
+        // Load Blocked Users - adapting to new schema with 'username'
+        const loadBlockedUsersStmt = db.prepare('SELECT id, username, addedAt FROM blocked_users');
+        const blockedUserRows = loadBlockedUsersStmt.all(); // Added detailed logging
+         // Map DB columns to state.blockedUsers format
+        loadedState.blockedUsers = blockedUserRows.map(row => ({
+            id: row.id.toString(), // Use DB ID
+            username: row.username,
+            addedAt: row.addedAt
+        }));
+        console.log(chalk.blue(`[Database] Loaded ${loadedState.blockedUsers.length} blocked users.`));
+
+    } catch (err) {
+        console.error(chalk.red('[Database] Error loading initial state:'), err);
+        // Return empty state on error to allow server to start, but log the issue
     }
-  }
+    return loadedState;
 }
 
-// Function to save history to file
-async function saveHistory() {
-  try {
-    await writeFile(historyFilePath, JSON.stringify(state.history, null, 2), 'utf-8');
-  } catch (error) {
-    console.error(chalk.red('[History] Error saving file:'), error);
-  }
+// --- Database Update Functions ---
+
+function saveSetting(key, value) {
+    try {
+        const valueToStore = typeof value === 'string' ? value : JSON.stringify(value);
+        saveSettingStmt.run({ key, value: valueToStore });
+        console.log(chalk.grey(`[DB Write] Saved setting: ${key} = ${valueToStore}`));
+    } catch (err) {
+        console.error(chalk.red(`[Database] Failed to save setting ${key}:`), err);
+    }
 }
+
+function addBlacklistPattern(pattern, type) {
+    try {
+        const result = addBlacklistStmt.run(pattern, type);
+        if (result.changes > 0) {
+            console.log(chalk.grey(`[DB Write] Added blacklist pattern: ${pattern} (Type: ${type})`));
+        }
+    } catch (err) {
+        console.error(chalk.red(`[Database] Failed to add blacklist pattern ${pattern}:`), err);
+    }
+}
+
+function removeBlacklistPattern(pattern, type) {
+    try {
+        const result = removeBlacklistStmt.run(pattern, type);
+        if (result.changes > 0) {
+            console.log(chalk.grey(`[DB Write] Removed blacklist pattern: ${pattern} (Type: ${type})`));
+        }
+    } catch (err) {
+        console.error(chalk.red(`[Database] Failed to remove blacklist pattern ${pattern}:`), err);
+    }
+}
+
+function addBlockedUser(username) {
+    try {
+        const result = addBlockedUserStmt.run(username);
+        if (result.changes > 0) {
+            console.log(chalk.grey(`[DB Write] Added blocked user: ${username}`));
+        }
+    } catch (err) {
+        console.error(chalk.red(`[Database] Failed to add blocked user ${username}:`), err);
+    }
+}
+
+function removeBlockedUser(username) {
+    try {
+        const result = removeBlockedUserStmt.run(username);
+        if (result.changes > 0) {
+            console.log(chalk.grey(`[DB Write] Removed blocked user: ${username}`));
+        }
+    } catch (err) {
+        console.error(chalk.red(`[Database] Failed to remove blocked user ${username}:`), err);
+    }
+}
+
+// --- END Database Update Functions ---
+
+// --- Database Queue Functions ---
+
+function addSongToDbQueue(song) {
+    try {
+        // Determine priority (e.g., higher value for donations)
+        const priority = song.requestType === 'donation' ? 1 : 0;
+        // Use the prepared statement defined earlier
+        insertQueueStmt.run({
+            youtubeUrl: song.youtubeUrl,
+            title: song.title || null,
+            artist: song.artist || null,
+            channelId: song.channelId || null,
+            durationSeconds: song.durationSeconds || null,
+            requester: song.requester,
+            requesterLogin: song.requesterLogin || null,
+            requesterAvatar: song.requesterAvatar || null,
+            thumbnailUrl: song.thumbnailUrl || null,
+            requestType: song.requestType,
+            priority: priority
+        });
+        console.log(chalk.grey(`[DB Write] Added song to active_queue: ${song.title}`));
+    } catch (err) {
+        // Handle potential UNIQUE constraint violation if URL already exists
+        if (err.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+            console.warn(chalk.yellow(`[DB Write] Attempted to add duplicate YouTube URL to active_queue: ${song.youtubeUrl}. Skipping DB insert.`));
+        } else {
+             console.error(chalk.red('[Database] Failed to add song to active_queue:'), err);
+        }
+    }
+}
+
+function removeSongFromDbQueue(youtubeUrl) {
+    if (!youtubeUrl) {
+        console.warn(chalk.yellow('[DB Write] removeSongFromDbQueue called with null/undefined youtubeUrl'));
+        return;
+    }
+    try {
+        // Use the prepared statement defined earlier
+        const result = deleteQueueStmt.run(youtubeUrl);
+        if (result.changes > 0) {
+            console.log(chalk.grey(`[DB Write] Removed song from active_queue: ${youtubeUrl}`));
+        }
+    } catch (err) {
+        console.error(chalk.red(`[Database] Failed to remove song from active_queue (${youtubeUrl}):`), err);
+    }
+}
+
+function clearDbQueue() {
+    try {
+        // Use the prepared statement defined earlier
+        clearQueueStmt.run();
+        console.log(chalk.grey('[DB Write] Cleared active_queue table.'));
+    } catch (err) {
+        console.error(chalk.red('[Database] Failed to clear active_queue:'), err);
+    }
+}
+
+// --- END Database Queue Functions ---
+
+// --- Database History Functions ---
+
+function logCompletedSong(song) {
+    if (!song || !song.youtubeUrl) {
+        console.warn(chalk.yellow('[DB Write] logCompletedSong called with invalid song object'), song);
+        return false;
+    }
+    try {
+        // Use the prepared statement defined earlier
+        insertHistoryStmt.run({
+            youtubeUrl: song.youtubeUrl,
+            title: song.title || null,
+            artist: song.artist || null,
+            channelId: song.channelId || null,
+            durationSeconds: song.durationSeconds || null,
+            requester: song.requester,
+            requesterLogin: song.requesterLogin || null,
+            requesterAvatar: song.requesterAvatar || null, // Store URL at time of play
+            thumbnailUrl: song.thumbnailUrl || null,
+            requestType: song.requestType
+            // completedAt is handled by DEFAULT CURRENT_TIMESTAMP in the table
+        });
+        console.log(chalk.grey(`[DB Write] Logged completed song to history: ${song.title}`));
+        
+        // Fetch updated history after logging
+        try {
+            const getHistoryStmt = db.prepare('SELECT * FROM song_history ORDER BY id DESC LIMIT 50');
+            const recentHistory = getHistoryStmt.all().map(row => ({
+                id: row.id.toString(),
+                youtubeUrl: row.youtubeUrl,
+                title: row.title,
+                artist: row.artist,
+                channelId: row.channelId,
+                duration: row.durationSeconds ? formatDurationFromSeconds(row.durationSeconds) : '0:00',
+                durationSeconds: row.durationSeconds,
+                requester: row.requester,
+                requesterLogin: row.requesterLogin,
+                requesterAvatar: row.requesterAvatar,
+                thumbnailUrl: row.thumbnailUrl,
+                timestamp: row.completedAt || row.playedAt,
+                requestType: row.requestType,
+                source: 'database_history'
+            }));
+            
+            // Return success and the updated history (but don't emit here - leave that to the caller)
+            return {
+                success: true,
+                history: recentHistory
+            };
+        } catch (err) {
+            console.error(chalk.red('[Database] Error fetching history after logging song:'), err);
+            return true; // Still return true for backward compatibility
+        }
+    } catch (err) {
+        console.error(chalk.red(`[Database] Failed to log song to history (${song.youtubeUrl}):`), err);
+        return false;
+    }
+}
+
+// --- END Database History Functions ---
 
 // --- Function to validate and add a song request ---
 async function validateAndAddSong(request) {
@@ -367,8 +734,10 @@ async function validateAndAddSong(request) {
           insertIndex = state.queue.length; // Always add channel point requests to the end
       }
       
-      // Insert the song
+      // Insert the song into the in-memory queue
       state.queue.splice(insertIndex, 0, songRequest);
+      // Persist the newly added song to the database queue
+      addSongToDbQueue(songRequest);
 
       // Calculate user-facing queue position (1-based index)
       queuePosition = state.queue.findIndex(song => song.id === songRequest.id) + 1;
@@ -392,28 +761,94 @@ async function validateAndAddSong(request) {
       sendChatMessage(`@${request.requester}, sorry, I couldn't fetch the details for that YouTube link.`);
   }
 }
-// --- END NEW Function ---
 
 // Socket.IO connection handling
 io.on('connection', (socket) => {
     console.log(chalk.blue(`[Socket.IO] Client connected: ${socket.id}`))
     
-    // Send initial state to newly connected client
-    socket.emit('initialState', state)
-
-    // Handle get state request
+    // Send initial state to newly connected client - fetch history from DB first
+    let recentHistory = [];
+    try {
+        // Fetch recent history from DB (e.g., last 50 played)
+        const getHistoryStmt = db.prepare('SELECT * FROM song_history ORDER BY id DESC LIMIT 50');
+        recentHistory = getHistoryStmt.all().map(row => ({ // Map DB columns to SongRequest structure
+             id: row.id.toString(),
+             youtubeUrl: row.youtubeUrl,
+             title: row.title,
+             artist: row.artist,
+             channelId: row.channelId,
+             duration: row.durationSeconds ? formatDurationFromSeconds(row.durationSeconds) : '0:00',
+             durationSeconds: row.durationSeconds,
+             requester: row.requester,
+             requesterLogin: row.requesterLogin,
+             requesterAvatar: row.requesterAvatar,
+             thumbnailUrl: row.thumbnailUrl,
+             timestamp: row.completedAt || row.playedAt, // Use completed/played time
+             requestType: row.requestType,
+             source: 'database_history'
+         }));
+         console.log(chalk.blue(`[Database] Fetched ${recentHistory.length} recent history items for initial connection.`));
+    } catch (err) {
+         console.error(chalk.red('[Database] Error fetching recent history for initial connection:'), err);
+    }
+    
+    // Send initial state including fetched history
+    socket.emit('initialState', {
+         ...state,
+         history: recentHistory // Include history from DB
+    })
+    
+    // Handle explicit getState request
     socket.on('getState', () => {
-        socket.emit('queueUpdate', state.queue)
-        socket.emit('nowPlaying', state.nowPlaying)
-        socket.emit('historyUpdate', state.history)
+        let recentHistory = [];
+        try {
+            // Fetch recent history from DB (e.g., last 50 played)
+            const getHistoryStmt = db.prepare('SELECT * FROM song_history ORDER BY id DESC LIMIT 50');
+            recentHistory = getHistoryStmt.all().map(row => ({ // Map DB columns to SongRequest structure
+                 id: row.id.toString(),
+                 youtubeUrl: row.youtubeUrl,
+                 title: row.title,
+                 artist: row.artist,
+                 channelId: row.channelId,
+                 duration: row.durationSeconds ? formatDurationFromSeconds(row.durationSeconds) : '0:00',
+                 durationSeconds: row.durationSeconds,
+                 requester: row.requester,
+                 requesterLogin: row.requesterLogin,
+                 requesterAvatar: row.requesterAvatar,
+                 thumbnailUrl: row.thumbnailUrl,
+                 timestamp: row.completedAt || row.playedAt, // Use completed/played time
+                 requestType: row.requestType,
+                 source: 'database_history'
+             }));
+             console.log(chalk.blue(`[Database] Fetched ${recentHistory.length} recent history items for getState request.`));
+        } catch (err) {
+             console.error(chalk.red('[Database] Error fetching recent history for getState request:'), err);
+        }
+        // Send current state including recent history
+        socket.emit('initialState', {
+             ...state,
+             history: recentHistory // Overwrite in-memory history with recent DB history
+         });
     })
 
     // Handle queue updates
     socket.on('updateQueue', (updatedQueue) => {
-        console.log(chalk.grey(`[Socket.IO] Received ${updatedQueue} event`));
-        state.queue = updatedQueue
-        socket.broadcast.emit('queueUpdate', state.queue) // Inform other clients
-        console.log(chalk.magenta('[Admin] Queue updated via socket.'));
+        console.log(chalk.grey(`[Socket.IO] Received updateQueue event with ${updatedQueue.length} items.`));
+        // Update in-memory queue first
+        state.queue = updatedQueue;
+
+        // Sync Database: Clear existing DB queue and re-insert all items from updatedQueue
+        clearDbQueue();
+        if (Array.isArray(state.queue)) { // Ensure it's an array before iterating
+             state.queue.forEach(song => addSongToDbQueue(song));
+             console.log(chalk.grey(`[DB Write] Re-synced active_queue table with ${state.queue.length} items.`));
+        } else {
+            console.error(chalk.red('[DB Write] Received non-array data in updateQueue event. Cannot sync DB.'));
+        }
+
+        // Inform ALL clients (including sender) of the updated queue
+        io.emit('queueUpdate', state.queue);
+        console.log(chalk.magenta(`[Admin] Queue updated and DB re-synced via socket.`));
     })
 
     // Handle addSong event
@@ -430,38 +865,35 @@ io.on('connection', (socket) => {
 
     // Handle remove song
     socket.on('removeSong', (songId) => {
-        state.queue = state.queue.filter(song => song.id !== songId)
-        io.emit('queueUpdate', state.queue)
-        console.log(chalk.magenta(`[Admin] Song removed via socket: ${songId}`));
+        const songToRemove = state.queue.find(song => song.id === songId);
+        if (songToRemove) {
+            state.queue = state.queue.filter(song => song.id !== songId);
+            removeSongFromDbQueue(songToRemove.youtubeUrl); // Remove from DB
+            io.emit('queueUpdate', state.queue);
+            console.log(chalk.magenta(`[Admin] Song removed via socket: ${songId} (URL: ${songToRemove.youtubeUrl})`));
+        } else {
+            console.warn(chalk.yellow(`[Admin] Attempted to remove non-existent song ID: ${songId}`));
+        }
     })
 
     // Handle clear queue
     socket.on('clearQueue', () => {
-        state.queue = []
-        io.emit('queueUpdate', state.queue)
-        console.log(chalk.magenta('[Admin] Queue cleared via socket.'));
+        state.queue = [];
+        clearDbQueue(); // Clear DB
+        io.emit('queueUpdate', state.queue);
+        console.log(chalk.yellow(`[Queue] Active song: "${song.title}" (Requester: ${song.requester}) - Removed from queue & DB.`));
     })
 
-    // Handle playback controls
-    socket.on('pausePlaying', () => {
-        // Emit pause event to clients
-        io.emit('playerControl', { action: 'pause' })
-        console.log(chalk.magenta('[Admin] Playback paused via socket.'));
-    })
-
-    socket.on('resumePlaying', () => {
-        // Emit resume event to clients
-        io.emit('playerControl', { action: 'resume' })
-        console.log(chalk.magenta('[Admin] Playback resumed via socket.'));
-    })
 
     socket.on('resetSystem', async () => {
-        // Clear everything
+        // Clear in-memory state
         state.queue = []
         state.nowPlaying = null
         state.history = []
 
-        await saveHistory();
+        // Clear persistent state (Queue)
+        clearDbQueue();
+        // Note: History table is NOT cleared by reset. Settings/Blacklist/Blocked are also NOT cleared.
 
         // Emit updates to all clients
         io.emit('queueUpdate', state.queue)
@@ -471,79 +903,275 @@ io.on('connection', (socket) => {
     })
 
     // Handle settings
-    socket.on('setAutoplay', (enabled) => {
-        state.settings = state.settings || {}
-        state.settings.autoplay = enabled
-        io.emit('settingsUpdate', state.settings)
-        console.log(chalk.magenta(`[Admin] Autoplay set to ${enabled} via socket.`));
-    })
-
     socket.on('setMaxDuration', (minutes) => {
         state.settings = state.settings || {}
         state.settings.maxDuration = minutes
+        saveSetting('maxDuration', minutes); // Save setting to DB
         io.emit('settingsUpdate', state.settings)
         console.log(chalk.magenta(`[Admin] Max Duration set to ${minutes} mins via socket.`));
     })
 
     // Handle now playing updates
     socket.on('updateNowPlaying', async (song) => {
-        let historyUpdated = false;
         const previousSong = state.nowPlaying; // Store previous song
+        console.log(chalk.grey(`[Socket.IO] Received updateNowPlaying. New song: ${song ? `ID: ${song.id}, Title: ${song.title}` : 'null'}. Previous song: ${previousSong ? `ID: ${previousSong.id}, Title: ${previousSong.title}` : 'null'}`)); 
 
         if (song) {
-            // Move current song to history if it exists and is not already the most recent history item
-            if (previousSong && (!state.history.length || state.history[0].id !== previousSong.id)) {
-                 // Check for duplicates before adding to history
-                 if (!state.history.some(historySong => historySong.id === previousSong.id)) {
-                     state.history.unshift(previousSong);
-                     historyUpdated = true;
+            if (previousSong) { // No need to check history array anymore, just log if previous existed
+                 const result = logCompletedSong(previousSong); // Log previous song to DB
+                 if (result) {
+                     io.emit('songFinished', previousSong); // Emit event for clients
+                     
+                     // Check if result has history array (new format) or is boolean (old format)
+                     if (typeof result === 'object' && result.history) {
+                         io.emit('historyUpdate', result.history);
+                         console.log(chalk.blue(`[Database] Emitted historyUpdate with ${result.history.length} items after song completion.`));
+                     } else {
+                         // Fallback to fetching history (should not happen with updated code)
+                         try {
+                             const getHistoryStmt = db.prepare('SELECT * FROM song_history ORDER BY id DESC LIMIT 50');
+                             const recentHistory = getHistoryStmt.all().map(row => ({
+                                 id: row.id.toString(),
+                                 youtubeUrl: row.youtubeUrl,
+                                 title: row.title,
+                                 artist: row.artist,
+                                 channelId: row.channelId,
+                                 duration: row.durationSeconds ? formatDurationFromSeconds(row.durationSeconds) : '0:00',
+                                 durationSeconds: row.durationSeconds,
+                                 requester: row.requester,
+                                 requesterLogin: row.requesterLogin,
+                                 requesterAvatar: row.requesterAvatar,
+                                 thumbnailUrl: row.thumbnailUrl,
+                                 timestamp: row.completedAt || row.playedAt,
+                                 requestType: row.requestType,
+                                 source: 'database_history'
+                             }));
+                             io.emit('historyUpdate', recentHistory);
+                             console.log(chalk.blue(`[Database] Emitted historyUpdate with ${recentHistory.length} items after song completion (fallback).`));
+                         } catch (err) {
+                             console.error(chalk.red('[Database] Error fetching history for historyUpdate:'), err);
+                         }
+                     }
                  }
             }
             state.nowPlaying = song
-            state.queue = state.queue.filter(s => s.id !== song.id)
-            console.log(chalk.yellow(`[Player] Now Playing: "${song.title}" (ID: ${song.id})`));
+            // Remove song from IN-MEMORY queue first
+            const queueBeforeFilterLength = state.queue.length;
+            state.queue = state.queue.filter(s => s.id !== song.id);
+            const queueAfterFilterLength = state.queue.length;
+            if (queueBeforeFilterLength === queueAfterFilterLength) {
+            }
+            // THEN remove from DB queue
+            removeSongFromDbQueue(song.youtubeUrl);
+            console.log(chalk.yellow(`[Queue] Active song: "${song.title}" (Requester: ${song.requester}) - Removed from queue & DB.`));
         } else {
             // Song finished or stopped
-            if (previousSong && (!state.history.length || state.history[0].id !== previousSong.id)) {
-                // Check for duplicates before adding to history
-                if (!state.history.some(historySong => historySong.id === previousSong.id)) {
-                    state.history.unshift(previousSong);
-                    historyUpdated = true;
-                }
+            if (previousSong) { // Log previous song if it existed
+                const result = logCompletedSong(previousSong); // Log previous song to DB
+                 if (result) {
+                     io.emit('songFinished', previousSong); // Emit event for clients
+                     
+                     // Check if result has history array (new format) or is boolean (old format)
+                     if (typeof result === 'object' && result.history) {
+                         io.emit('historyUpdate', result.history);
+                         console.log(chalk.blue(`[Database] Emitted historyUpdate with ${result.history.length} items after song completion.`));
+                     } else {
+                         // Fallback to fetching history (should not happen with updated code)
+                         try {
+                             const getHistoryStmt = db.prepare('SELECT * FROM song_history ORDER BY id DESC LIMIT 50');
+                             const recentHistory = getHistoryStmt.all().map(row => ({
+                                 id: row.id.toString(),
+                                 youtubeUrl: row.youtubeUrl,
+                                 title: row.title,
+                                 artist: row.artist,
+                                 channelId: row.channelId,
+                                 duration: row.durationSeconds ? formatDurationFromSeconds(row.durationSeconds) : '0:00',
+                                 durationSeconds: row.durationSeconds,
+                                 requester: row.requester,
+                                 requesterLogin: row.requesterLogin,
+                                 requesterAvatar: row.requesterAvatar,
+                                 thumbnailUrl: row.thumbnailUrl,
+                                 timestamp: row.completedAt || row.playedAt,
+                                 requestType: row.requestType,
+                                 source: 'database_history'
+                             }));
+                             io.emit('historyUpdate', recentHistory);
+                             console.log(chalk.blue(`[Database] Emitted historyUpdate with ${recentHistory.length} items after song completion (fallback).`));
+                         } catch (err) {
+                             console.error(chalk.red('[Database] Error fetching history for historyUpdate:'), err);
+                         }
+                     }
+                 }
             }
-            if (previousSong) { // Only log if there *was* a song playing
-                console.log(chalk.yellow(`[Player] Playback stopped/finished for: "${previousSong.title}"`));
+            if (previousSong) { // Only log console message if there *was* a song playing
+                console.log(chalk.yellow(`[Queue] Song finished/removed: "${previousSong.title}"`));
             }
             state.nowPlaying = null
         }
         
-        // Save history if it was updated in this event
-        if (historyUpdated) {
-          await saveHistory(); // Save whenever history changed
-        }
-
         // Broadcast updates
         io.emit('nowPlaying', state.nowPlaying)
         io.emit('queueUpdate', state.queue)
-        // Emit history update if it actually changed
-        if (historyUpdated) {
-          io.emit('historyUpdate', state.history)
-        }
     })
 
     // Handle blacklist updates
-    socket.on('updateBlacklist', (blacklist) => {
-        state.blacklist = blacklist
+    socket.on('updateBlacklist', (newBlacklist) => {
+        const oldBlacklist = state.blacklist || [];
+        state.blacklist = newBlacklist || [];
+
+        // Find added and removed items for DB update
+        const addedItems = state.blacklist.filter(newItem => 
+            !oldBlacklist.some(oldItem => oldItem.term === newItem.term && oldItem.type === newItem.type)
+        );
+        const removedItems = oldBlacklist.filter(oldItem => 
+            !state.blacklist.some(newItem => newItem.term === oldItem.term && newItem.type === oldItem.type)
+        );
+
+        addedItems.forEach(item => addBlacklistPattern(item.term, item.type));
+        removedItems.forEach(item => removeBlacklistPattern(item.term, item.type));
+
         io.emit('blacklistUpdate', state.blacklist)
-        console.log(chalk.magenta(`[Admin] Blacklist updated via socket (${blacklist.length} items).`));
+        console.log(chalk.magenta(`[Admin] Blacklist updated via socket (${state.blacklist.length} items). Added: ${addedItems.length}, Removed: ${removedItems.length}`));
     })
 
     // Handle blocked users
-    socket.on('updateBlockedUsers', (blockedUsers) => {
-        state.blockedUsers = blockedUsers
+    socket.on('updateBlockedUsers', (newBlockedUsers) => {
+        const oldBlockedUsers = state.blockedUsers || [];
+        state.blockedUsers = newBlockedUsers || [];
+
+        // Find added and removed users for DB update
+        const addedUsers = state.blockedUsers.filter(newUser => 
+            !oldBlockedUsers.some(oldUser => oldUser.username.toLowerCase() === newUser.username.toLowerCase())
+        );
+        const removedUsers = oldBlockedUsers.filter(oldUser => 
+            !state.blockedUsers.some(newUser => newUser.username.toLowerCase() === oldUser.username.toLowerCase())
+        );
+
+        addedUsers.forEach(user => addBlockedUser(user.username));
+        removedUsers.forEach(user => removeBlockedUser(user.username));
+
         io.emit('blockedUsersUpdate', state.blockedUsers)
-        console.log(chalk.magenta(`[Admin] Blocked users updated via socket (${blockedUsers.length} users).`));
+        console.log(chalk.magenta(`[Admin] Blocked users updated via socket (${state.blockedUsers.length} users). Added: ${addedUsers.length}, Removed: ${removedUsers.length}`));
     })
+
+    // Handle marking a song as finished (from admin)
+    socket.on('markSongAsFinished', (song) => {
+        if (!song) {
+            console.warn(chalk.yellow('[Socket.IO] markSongAsFinished called with null/undefined song'));
+            return;
+        }
+
+        console.log(chalk.magenta(`[Admin] Marking song "${song.title}" (ID: ${song.id}) as finished via socket.`));
+        
+        // Log the song to history
+        const result = logCompletedSong(song);
+        if (result) {
+            // Clear the nowPlaying state
+            state.nowPlaying = null;
+            
+            // Emit events to clients
+            io.emit('songFinished', song);
+            io.emit('nowPlaying', null);
+
+            // Update history for all clients
+            if (typeof result === 'object' && result.history) {
+                io.emit('historyUpdate', result.history);
+            } else {
+                // Fallback to fetching history
+                try {
+                    const getHistoryStmt = db.prepare('SELECT * FROM song_history ORDER BY id DESC LIMIT 50');
+                    const recentHistory = getHistoryStmt.all().map(row => ({
+                        id: row.id.toString(),
+                        youtubeUrl: row.youtubeUrl,
+                        title: row.title,
+                        artist: row.artist,
+                        channelId: row.channelId,
+                        duration: row.durationSeconds ? formatDurationFromSeconds(row.durationSeconds) : '0:00',
+                        durationSeconds: row.durationSeconds,
+                        requester: row.requester,
+                        requesterLogin: row.requesterLogin,
+                        requesterAvatar: row.requesterAvatar,
+                        thumbnailUrl: row.thumbnailUrl,
+                        timestamp: row.completedAt || row.playedAt,
+                        requestType: row.requestType,
+                        source: 'database_history'
+                    }));
+                    io.emit('historyUpdate', recentHistory);
+                } catch (err) {
+                    console.error(chalk.red('[Database] Error fetching history after marking song as finished:'), err);
+                }
+            }
+        }
+    });
+
+    // Handle returning a song from history to the queue
+    socket.on('returnToQueue', (song) => {
+        if (!song) {
+            console.warn(chalk.yellow('[Socket.IO] returnToQueue called with null/undefined song'));
+            return;
+        }
+
+        console.log(chalk.magenta(`[Admin] Returning song "${song.title}" (ID: ${song.id}) to queue from history via socket.`));
+        
+        // Create a new song object with a new ID
+        const newSong = {
+            ...song,
+            id: Date.now().toString(), // Generate a new ID
+            timestamp: new Date().toISOString(), // Update timestamp to now
+            requestType: song.requestType || 'manual_admin', // Keep original request type or default
+            source: 'history_requeue'
+        };
+
+        // Add to the beginning of the queue
+        state.queue.unshift(newSong);
+        
+        // Add to DB queue
+        addSongToDbQueue(newSong);
+
+        // Emit queue update to all clients
+        io.emit('queueUpdate', state.queue);
+    });
+
+    // Add handler for clearing history
+    socket.on('clearHistory', () => {
+        const success = clearDbHistory();
+        if (success) {
+            // Send empty history to all clients
+            io.emit('historyUpdate', []);
+            console.log(chalk.magenta('[Admin] History cleared via socket.'));
+        }
+    });
+
+    // Add handler for deleting individual history items
+    socket.on('deleteHistoryItem', (id) => {
+        const success = deleteHistoryItem(id);
+        if (success) {
+            // Fetch and send updated history to all clients
+            try {
+                const getHistoryStmt = db.prepare('SELECT * FROM song_history ORDER BY id DESC LIMIT 50');
+                const recentHistory = getHistoryStmt.all().map(row => ({
+                    id: row.id.toString(),
+                    youtubeUrl: row.youtubeUrl,
+                    title: row.title,
+                    artist: row.artist,
+                    channelId: row.channelId,
+                    duration: row.durationSeconds ? formatDurationFromSeconds(row.durationSeconds) : '0:00',
+                    durationSeconds: row.durationSeconds,
+                    requester: row.requester,
+                    requesterLogin: row.requesterLogin,
+                    requesterAvatar: row.requesterAvatar,
+                    thumbnailUrl: row.thumbnailUrl,
+                    timestamp: row.completedAt || row.playedAt,
+                    requestType: row.requestType,
+                    source: 'database_history'
+                }));
+                io.emit('historyUpdate', recentHistory);
+                console.log(chalk.magenta(`[Admin] History item ${id} deleted via socket.`));
+            } catch (err) {
+                console.error(chalk.red('[Database] Error fetching history after deletion:'), err);
+            }
+        }
+    });
 
     socket.on('disconnect', () => {
         console.log(chalk.blue(`[Socket.IO] Client disconnected: ${socket.id}`))
@@ -560,6 +1188,8 @@ function connectToStreamElements() {
         return;
     }
 
+    // Import socket.io-client only when needed
+    const ioClient = require('socket.io-client');
     
     // Connect to StreamElements socket server
     seSocket = ioClient.connect('https://realtime.streamelements.com', {
@@ -576,7 +1206,7 @@ function connectToStreamElements() {
     });
 
     seSocket.on('authenticated', () => {
-        console.log(chalk.green('✅ [StreamElements] Connected and Authenticated. Listening for donations.'));
+        console.log(chalk.green('✅ [StreamElements] Connected and Authenticated. Listening for donations and channel point redemptions.'));
     });
 
     // Handle connection errors
@@ -703,39 +1333,34 @@ function connectToStreamElements() {
 // Function to gracefully shutdown and save state
 function shutdown(signal) {
   console.log(chalk.yellow(`Received ${signal}. Shutting down server...`));
-  if (state.nowPlaying) {
-    console.log(chalk.yellow('Moving now playing song to history before shutdown:'), state.nowPlaying.id);
-    // Avoid duplicates if shutdown signal comes right after updateNowPlaying(null)
-    if (!state.history.length || state.history[0].id !== state.nowPlaying.id) {
-       state.history.unshift(state.nowPlaying);
-    }
-    state.nowPlaying = null; // Clear now playing as it's moved/finished
-  }
-  try {
-      // Use synchronous write for shutdown handler
-      writeFileSync(historyFilePath, JSON.stringify(state.history, null, 2), 'utf-8');
-      console.log(chalk.green('[Server] State saved. Goodbye!'));
-      process.exit(0);
-  } catch(err) {
-      console.error(chalk.red('[History] Error saving during shutdown:'), err);
-      process.exit(1);
-  }
+  process.exit(0);
 }
 
 // Listen for termination signals
 process.on('SIGINT', () => shutdown('SIGINT')); // Ctrl+C
 process.on('SIGTERM', () => shutdown('SIGTERM')); // kill command
+process.on('exit', () => { // Ensure DB connection is closed on any exit
+    if (db && db.open) {
+        console.log(chalk.blue('[Database] Closing SQLite connection.'));
+        db.close();
+    }
+});
 
 // Start the server and load initial data
 async function startServer() {
-  await loadHistory(); // Load history before starting watcher/server
+  const loadedState = loadInitialState();
+  state.queue = loadedState.queue;
+  state.settings = { ...state.settings, ...loadedState.settings }; // Merge defaults with loaded
+  state.blacklist = loadedState.blacklist;
+  state.blockedUsers = loadedState.blockedUsers;
 
   // Connect to StreamElements Socket API for donation/redemption events
   connectToStreamElements();
-
+  
+  console.log(chalk.blue('[Server] Initializing HTTP listener...')); // Added detailed logging
   // Use the custom HTTP server for listening
   // Explicitly bind to 0.0.0.0 to allow access from all interfaces
-  customHttpServer.listen(SOCKET_PORT, '0.0.0.0', async () => {
+  httpServer.listen(SOCKET_PORT, '0.0.0.0', async () => {
       console.log(chalk.green(`🚀 Server running at http://0.0.0.0:${SOCKET_PORT}/`))
       console.log(chalk.blue("   Initializing subsystems..."));
   })
@@ -744,12 +1369,12 @@ async function startServer() {
 startServer();
 
 // Helper functions
-function extractVideoId(url) {
-    if (!url) {
+function extractVideoId(urlStr) {
+    if (!urlStr) {
         console.error(chalk.red('[Util] extractVideoId called with undefined/empty URL'))
         return null
     }
-    const match = url.match(/(?:youtube\.com\/watch\?v=|youtu.be\/)([^&\n?#]+)/)
+    const match = urlStr.match(/(?:youtube\.com\/watch\?v=|youtu.be\/)([^&\n?#]+)/)
     const result = match ? match[1] : null
     return result
 }
@@ -864,24 +1489,58 @@ function extractYouTubeUrlFromText(text) {
     return match ? match[0] : null; // Return the full matched URL
 }
 
-// HTTP Server Request Handler
-const customHttpServer = createServer((req, res) => {
-    const parsedUrl = url.parse(req.url, true);
-    const { pathname } = parsedUrl;
-    const method = req.method;
-
-    // Simple health check endpoint
-    if (pathname === '/health-check' && method === 'GET') {
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ status: 'ok', server: 'twitch-integration-server' }));
-        return;
+// Helper function to format duration from seconds
+function formatDurationFromSeconds(totalSeconds) {
+    if (totalSeconds === null || totalSeconds === undefined || totalSeconds < 0) {
+        return '0:00';
     }
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
 
-    // Default: Not Found or handle other routes if necessary
-    res.writeHead(404, { 'Content-Type': 'text/plain' });
-    res.end('Not Found - Use Socket.IO or /health-check');
-    
-});
+    const paddedSeconds = seconds.toString().padStart(2, '0');
 
-// Attach Socket.IO to the custom HTTP server
-io.attach(customHttpServer); 
+    if (hours > 0) {
+        const paddedMinutes = minutes.toString().padStart(2, '0');
+        return `${hours}:${paddedMinutes}:${paddedSeconds}`;
+    } else {
+        return `${minutes}:${paddedSeconds}`;
+    }
+}
+
+// Function to clear history
+function clearDbHistory() {
+    try {
+        const clearHistoryStmt = db.prepare('DELETE FROM song_history');
+        const result = clearHistoryStmt.run();
+        console.log(chalk.yellow(`[DB Write] Cleared song_history table. Deleted ${result.changes} records.`));
+        return true;
+    } catch (err) {
+        console.error(chalk.red('[Database] Failed to clear song_history:'), err);
+        return false;
+    }
+}
+
+// Function to delete a single history item
+function deleteHistoryItem(id) {
+    if (!id) {
+        console.warn(chalk.yellow('[DB Write] deleteHistoryItem called with null/undefined id'));
+        return false;
+    }
+    try {
+        const deleteStmt = db.prepare('DELETE FROM song_history WHERE id = ?');
+        const result = deleteStmt.run(id);
+        if (result.changes > 0) {
+            console.log(chalk.grey(`[DB Write] Deleted history item with ID: ${id}`));
+            return true;
+        } else {
+            console.warn(chalk.yellow(`[DB Write] No history item found with ID: ${id}`));
+            return false;
+        }
+    } catch (err) {
+        console.error(chalk.red(`[Database] Failed to delete history item with ID ${id}:`), err);
+        return false;
+    }
+}
+
+// END OF FILE 
