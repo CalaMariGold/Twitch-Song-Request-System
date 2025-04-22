@@ -38,3 +38,6 @@ out/
 
 queue/history.json
 queue/requests.json
+auth/auth_tokens.json
+desktop.ini
+tsconfig.tsbuildinfo
