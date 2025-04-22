@@ -816,19 +816,6 @@ async function startServer() {
   // Connect to StreamElements Socket API for donation events
   connectToStreamElements();
 
-  // Start file watcher only after loading history
-  watch(queueDir, async (eventType, filename) => {
-      if (filename === path.basename(requestsFile) && eventType === 'change') {
-          console.log(`File ${filename} changed, processing...`)
-          await processRequest(requestsFile)
-      } else if (filename === path.basename(historyFilePath)) {
-          // Optional: Could add logic to reload history if file is manually changed,
-          // but be careful of loops if saveHistory triggers the watcher.
-          // For now, we assume history is only changed by the server itself.
-          // console.log(`History file ${filename} changed.`); // Remove noisy log
-      }
-  })
-
   // Use the custom HTTP server for listening
   // Explicitly bind to 0.0.0.0 to allow access from all interfaces
   customHttpServer.listen(SOCKET_PORT, '0.0.0.0', () => {
