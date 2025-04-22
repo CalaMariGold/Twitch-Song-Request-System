@@ -15,26 +15,11 @@ import { constants, socketEvents } from "@/lib/config"
 import { Header } from "@/components/Header"
 import { Badge } from "@/components/ui/badge"
 import Link from 'next/link'
+import { formatTimestamp, formatDuration, SpotifyIcon, calculateTotalQueueDuration } from "@/lib/utils"
 
 /*
  * Main queue component that displays current queue, history, and active song
  */
-function formatTimestamp(isoString?: string): string {
-  if (!isoString) return 'N/A'
-  try {
-    // Use Eastern Time (UTC-4) for timestamp display
-    return new Date(isoString).toLocaleString('en-US', {
-      timeZone: 'America/New_York',
-      month: 'short',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true
-    })
-  } catch (e) {
-    return 'Invalid Date'
-  }
-}
 
 export default function SongRequestQueue() {
   const [state, setState] = useState<AppState>({
@@ -50,6 +35,9 @@ export default function SongRequestQueue() {
   const [searchTerm, setSearchTerm] = useState("")
   const [socket, setSocket] = useState<Socket | null>(null)
   const [isConnected, setIsConnected] = useState(false)
+
+  // Calculate total queue duration
+  const { formatted: totalQueueDurationFormatted } = calculateTotalQueueDuration(state.queue)
 
   // Socket connection management
   useEffect(() => {
@@ -173,7 +161,7 @@ export default function SongRequestQueue() {
           <TabsList className="grid w-full grid-cols-2 bg-gray-800">
             <TabsTrigger value="queue" className="data-[state=active]:bg-gray-700">
               <Music className="mr-2" size={18} />
-              Current Queue ({state.queue.length})
+              Current Queue ({state.queue.length}) - <Clock className="inline-block mx-1" size={14} /> {totalQueueDurationFormatted}
             </TabsTrigger>
             <TabsTrigger value="history" className="data-[state=active]:bg-gray-700">
               <History className="mr-2" size={18} />
@@ -265,18 +253,29 @@ function ActiveSong({ song, isLoading }: { song: SongRequest | null, isLoading: 
             </div>
           </div>
 
-          {/* Duration - ADDED */}
+          {/* Duration */}
           <div className="text-sm text-gray-400">
              <Clock className="inline-block mr-1 -mt-0.5" size={16} />
              {song.duration || '0:00'}
           </div>
 
-          {/* YouTube Link Button */}
-          <a href={song.youtubeUrl} target="_blank" rel="noopener noreferrer" aria-label="Watch on YouTube">
-            <Button variant="ghost" className="p-2">
-              <Youtube className="h-8 w-8 text-red-600" />
-            </Button>
-          </a>
+          <div className="flex space-x-1">
+            {/* YouTube Link Button */}
+            <a href={song.youtubeUrl} target="_blank" rel="noopener noreferrer" aria-label="Watch on YouTube">
+              <Button variant="ghost" className="p-2">
+                <Youtube className="h-8 w-8 text-red-600" />
+              </Button>
+            </a>
+            
+            {/* Spotify Link Button - Only show if Spotify data exists */}
+            {song.spotify && (
+              <a href={song.spotify.externalUrl} target="_blank" rel="noopener noreferrer" aria-label="Listen on Spotify">
+                <Button variant="ghost" className="p-2">
+                  <SpotifyIcon className="h-8 w-8 text-green-500" />
+                </Button>
+              </a>
+            )}
+          </div>
         </motion.div>
       ) : (
         <p className="text-gray-400">No active song.</p>
@@ -332,7 +331,8 @@ function SongList({ songs }: { songs: SongRequest[] }) {
                     {song.artist || 'Unknown Artist'}
                   </Badge>
                 )}
-                <span className="text-xs text-gray-400">
+                <span className="text-xs text-gray-400 flex items-center">
+                  <Clock className="inline-block mr-1" size={12} />
                   {song.duration || '?:'}
                 </span>
                 <div className="text-xs text-gray-400 flex items-center gap-1">
@@ -365,12 +365,21 @@ function SongList({ songs }: { songs: SongRequest[] }) {
               </div>
             </div>
             <div className="flex space-x-1 flex-shrink-0">
-              {/* Only keep YouTube link button for public view */}
+              {/* YouTube Link Button */}
               <a href={song.youtubeUrl} target="_blank" rel="noopener noreferrer" aria-label="Watch on YouTube">
                 <Button variant="ghost" className="p-1">
                   <Youtube className="h-5 w-5 text-red-600" />
                 </Button>
               </a>
+              
+              {/* Spotify Link Button - Only show if Spotify data exists */}
+              {song.spotify && (
+                <a href={song.spotify.externalUrl} target="_blank" rel="noopener noreferrer" aria-label="Listen on Spotify">
+                  <Button variant="ghost" className="p-1">
+                    <SpotifyIcon className="h-5 w-5 text-green-500" />
+                  </Button>
+                </a>
+              )}
             </div>
           </div>
         </motion.div>

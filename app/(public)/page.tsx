@@ -6,10 +6,11 @@ import SongRequestQueue from "@/components/SongRequestQueue"
 import AnimatedBackground from "@/components/AnimatedBackground"
 import { Button } from "@/components/ui/button"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
-import { BarChart2 } from "lucide-react"
+import { BarChart2, Clock } from "lucide-react"
 import { io, Socket } from "socket.io-client"
 import { SongRequest, QueueState, AllTimeStats } from "@/lib/types"
 import { StatisticsCard } from "@/components/StatisticsCard"
+import { formatDuration, calculateTotalQueueDuration } from "@/lib/utils"
 
 export default function PublicDashboard() {
   const [queueState, setQueueState] = useState<QueueState>({
@@ -23,6 +24,7 @@ export default function PublicDashboard() {
   const [isConnected, setIsConnected] = useState(false) // Optional: For showing connection status
   const [allTimeStats, setAllTimeStats] = useState<AllTimeStats | null>(null)
   const [isLoadingStats, setIsLoadingStats] = useState(true)
+  
 
   // Socket Connection & State Fetching
   useEffect(() => {
@@ -93,32 +95,8 @@ export default function PublicDashboard() {
     }
   }, [])
 
-  // --- Helper Function ---
-  const formatDuration = (totalSeconds: number): string => {
-    if (isNaN(totalSeconds) || totalSeconds < 0) {
-      return '?:??'; // Return placeholder if duration is invalid
-    }
-    const hours = Math.floor(totalSeconds / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    const seconds = Math.floor(totalSeconds % 60);
-  
-    const minutesStr = String(minutes).padStart(2, '0');
-    const secondsStr = String(seconds).padStart(2, '0');
-  
-    if (hours > 0) {
-      return `${hours}:${minutesStr}:${secondsStr}`;
-    } else {
-      return `${minutesStr}:${secondsStr}`;
-    }
-  };
-
   // Calculate total queue duration
-  const totalQueueSeconds = queueState.queue.reduce((sum: number, song: SongRequest) => {
-    // Use song.durationSeconds if available, otherwise default to 0 or a reasonable estimate
-    return sum + (song.durationSeconds || 0); 
-  }, 0);
-  const totalQueueDurationFormatted = formatDuration(totalQueueSeconds);
-  // --- End Helper ---
+  const { totalSeconds: totalQueueSeconds, formatted: totalQueueDurationFormatted } = calculateTotalQueueDuration(queueState.queue)
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 flex flex-col items-center p-8">
@@ -168,7 +146,10 @@ export default function PublicDashboard() {
                     </div>
                     <div className="bg-gray-700/70 p-4 rounded-lg text-center">
                       <p className="text-xs text-gray-400">Total Duration</p>
-                      <p className="text-2xl font-bold text-white">{totalQueueDurationFormatted}</p>
+                      <p className="text-2xl font-bold text-white flex items-center justify-center">
+                        <Clock className="inline-block mr-2" size={20} />
+                        {totalQueueDurationFormatted}
+                      </p>
                     </div>
                     <div className="bg-gray-700/70 p-4 rounded-lg text-center">
                       <p className="text-xs text-gray-400">Songs Played</p>

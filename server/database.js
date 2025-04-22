@@ -19,6 +19,9 @@ function initDatabase() {
         // Enable WAL mode for better concurrency
         db.pragma('journal_mode = WAL');
 
+        // Alter existing tables to add Spotify column if it doesn't exist
+        ensureSpotifyColumnsExist();
+
         // Schema Setup (Create tables if they don't exist)
         const createHistoryTableStmt = `
             CREATE TABLE IF NOT EXISTS song_history (
@@ -33,7 +36,8 @@ function initDatabase() {
                 requesterAvatar TEXT,
                 thumbnailUrl TEXT,
                 requestType TEXT NOT NULL, -- 'channelPoint' or 'donation'
-                completedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                completedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                spotifyData TEXT -- Spotify data as JSON string
             );
         `;
         db.exec(createHistoryTableStmt);
@@ -51,7 +55,8 @@ function initDatabase() {
                 requesterAvatar TEXT,
                 thumbnailUrl TEXT,
                 requestType TEXT NOT NULL, -- 'channelPoint' or 'donation'
-                startedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                startedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                spotifyData TEXT -- Spotify data as JSON string
             );
         `;
         db.exec(createActiveSongTableStmt);
@@ -70,7 +75,8 @@ function initDatabase() {
                 thumbnailUrl TEXT,
                 requestType TEXT NOT NULL, -- 'channelPoint' or 'donation'
                 priority INTEGER DEFAULT 0, -- e.g., 0=channelPoint, 1=donation
-                addedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                addedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                spotifyData TEXT -- Spotify data as JSON string
             );
         `;
         db.exec(createActiveQueueTableStmt);
@@ -129,25 +135,47 @@ function initDatabase() {
     }
 }
 
+// Function to ensure Spotify columns exist in existing tables
+function ensureSpotifyColumnsExist() {
+    try {
+        // Check if the spotifyData column exists in each table, if not add it
+        const tables = ['song_history', 'active_song', 'active_queue'];
+        
+        for (const table of tables) {
+            // Get current column info
+            const columns = db.prepare(`PRAGMA table_info(${table})`).all();
+            const hasSpotifyColumn = columns.some(col => col.name === 'spotifyData');
+            
+            // Add column if it doesn't exist
+            if (!hasSpotifyColumn) {
+                db.exec(`ALTER TABLE ${table} ADD COLUMN spotifyData TEXT`);
+                console.log(chalk.blue(`[Database] Added spotifyData column to ${table} table`));
+            }
+        }
+    } catch (err) {
+        console.error(chalk.red('[Database] Error ensuring Spotify columns exist:'), err);
+    }
+}
+
 function prepareStatements() {
     try {
         // History & Queue statements
         insertHistoryStmt = db.prepare(`
             INSERT INTO song_history (
                 youtubeUrl, title, artist, channelId, durationSeconds,
-                requester, requesterLogin, requesterAvatar, thumbnailUrl, requestType, completedAt
+                requester, requesterLogin, requesterAvatar, thumbnailUrl, requestType, completedAt, spotifyData
             ) VALUES (
                 @youtubeUrl, @title, @artist, @channelId, @durationSeconds,
-                @requester, @requesterLogin, @requesterAvatar, @thumbnailUrl, @requestType, CURRENT_TIMESTAMP
+                @requester, @requesterLogin, @requesterAvatar, @thumbnailUrl, @requestType, CURRENT_TIMESTAMP, @spotifyData
             )
         `);
         insertQueueStmt = db.prepare(`
             INSERT INTO active_queue (
                 youtubeUrl, title, artist, channelId, durationSeconds,
-                requester, requesterLogin, requesterAvatar, thumbnailUrl, requestType, priority
+                requester, requesterLogin, requesterAvatar, thumbnailUrl, requestType, priority, spotifyData
             ) VALUES (
                 @youtubeUrl, @title, @artist, @channelId, @durationSeconds,
-                @requester, @requesterLogin, @requesterAvatar, @thumbnailUrl, @requestType, @priority
+                @requester, @requesterLogin, @requesterAvatar, @thumbnailUrl, @requestType, @priority, @spotifyData
             )
         `);
         deleteQueueStmt = db.prepare('DELETE FROM active_queue WHERE youtubeUrl = ?');
@@ -157,10 +185,10 @@ function prepareStatements() {
         saveActiveSongStmt = db.prepare(`
             INSERT OR REPLACE INTO active_song (
                 youtubeUrl, title, artist, channelId, durationSeconds,
-                requester, requesterLogin, requesterAvatar, thumbnailUrl, requestType, startedAt
+                requester, requesterLogin, requesterAvatar, thumbnailUrl, requestType, startedAt, spotifyData
             ) VALUES (
                 @youtubeUrl, @title, @artist, @channelId, @durationSeconds,
-                @requester, @requesterLogin, @requesterAvatar, @thumbnailUrl, @requestType, CURRENT_TIMESTAMP
+                @requester, @requesterLogin, @requesterAvatar, @thumbnailUrl, @requestType, CURRENT_TIMESTAMP, @spotifyData
             )
         `);
         clearActiveSongStmt = db.prepare('DELETE FROM active_song');
@@ -247,6 +275,10 @@ function addSongToDbQueue(song) {
     try {
         // Determine priority (e.g., higher value for donations)
         const priority = song.requestType === 'donation' ? 1 : 0;
+        
+        // Serialize Spotify data if present
+        const spotifyData = song.spotify ? JSON.stringify(song.spotify) : null;
+        
         // Use the prepared statement defined earlier
         insertQueueStmt.run({
             youtubeUrl: song.youtubeUrl,
@@ -259,7 +291,8 @@ function addSongToDbQueue(song) {
             requesterAvatar: song.requesterAvatar || null,
             thumbnailUrl: song.thumbnailUrl || null,
             requestType: song.requestType,
-            priority: priority
+            priority: priority,
+            spotifyData: spotifyData
         });
         console.log(chalk.grey(`[DB Write] Added song to active_queue: ${song.title}`));
     } catch (err) {
@@ -282,6 +315,9 @@ function saveActiveSongToDB(song) {
         // Clear existing active song entry first
         clearActiveSongFromDB();
         
+        // Serialize Spotify data if present
+        const spotifyData = song.spotify ? JSON.stringify(song.spotify) : null;
+        
         // Add the new song
         saveActiveSongStmt.run({
             youtubeUrl: song.youtubeUrl,
@@ -293,7 +329,8 @@ function saveActiveSongToDB(song) {
             requesterLogin: song.requesterLogin || null,
             requesterAvatar: song.requesterAvatar || null,
             thumbnailUrl: song.thumbnailUrl || null,
-            requestType: song.requestType
+            requestType: song.requestType,
+            spotifyData: spotifyData
         });
         console.log(chalk.grey(`[DB Write] Saved current active song: ${song.title}`));
     } catch (err) {
@@ -312,40 +349,41 @@ function clearActiveSongFromDB() {
 
 function loadActiveSongFromDB() {
     try {
-        const loadActiveSongStmt = db.prepare(`
-            SELECT id, youtubeUrl, title, artist, channelId, durationSeconds,
-                   requester, requesterLogin, requesterAvatar, thumbnailUrl, requestType, startedAt
-            FROM active_song ORDER BY id DESC LIMIT 1
-        `);
-        const row = loadActiveSongStmt.get();
-        
-        if (!row) {
-            console.log(chalk.blue('[Database] No active song found in database.'));
-            return null;
+        const activeSong = db.prepare('SELECT * FROM active_song ORDER BY id DESC LIMIT 1').get();
+        if (!activeSong) {
+            return null; // No active song
         }
         
-        // Map DB row to state.activeSong format
-        const activeSong = {
-            id: row.id.toString(),
-            youtubeUrl: row.youtubeUrl,
-            title: row.title,
-            artist: row.artist,
-            channelId: row.channelId,
-            duration: row.durationSeconds ? formatDurationFromSeconds(row.durationSeconds) : '0:00',
-            durationSeconds: row.durationSeconds,
-            requester: row.requester,
-            requesterLogin: row.requesterLogin,
-            requesterAvatar: row.requesterAvatar,
-            thumbnailUrl: row.thumbnailUrl,
-            timestamp: row.startedAt,
-            requestType: row.requestType,
-            source: 'database'
-        };
+        // Parse Spotify data if present
+        if (activeSong.spotifyData) {
+            try {
+                activeSong.spotify = JSON.parse(activeSong.spotifyData);
+            } catch (e) {
+                console.error(chalk.red('[Database] Failed to parse Spotify data for active song:'), e);
+            }
+            delete activeSong.spotifyData; // Remove raw JSON string after parsing
+        }
         
-        console.log(chalk.blue(`[Database] Loaded active song: ${activeSong.title}`));
-        return activeSong;
+        // Convert database data to SongRequest format and add formatting
+        return {
+            id: activeSong.id.toString(),
+            youtubeUrl: activeSong.youtubeUrl,
+            title: activeSong.title,
+            artist: activeSong.artist,
+            channelId: activeSong.channelId,
+            requester: activeSong.requester,
+            requesterLogin: activeSong.requesterLogin,
+            requesterAvatar: activeSong.requesterAvatar,
+            timestamp: activeSong.startedAt,
+            duration: activeSong.durationSeconds ? formatDurationFromSeconds(activeSong.durationSeconds) : null,
+            durationSeconds: activeSong.durationSeconds,
+            thumbnailUrl: activeSong.thumbnailUrl,
+            requestType: activeSong.requestType,
+            source: 'database_active',
+            spotify: activeSong.spotify // Include the parsed Spotify data
+        };
     } catch (err) {
-        console.error(chalk.red('[Database] Error loading active song:'), err);
+        console.error(chalk.red('[Database] Failed to load active song:'), err);
         return null;
     }
 }
@@ -379,12 +417,15 @@ function clearDbQueue() {
 // --- Database History Functions ---
 
 function logCompletedSong(song) {
-    if (!song || !song.youtubeUrl) {
-        console.warn(chalk.yellow('[DB Write] logCompletedSong called with invalid song object'), song);
+    if (!song) {
+        console.warn(chalk.yellow('[Database] Cannot log null song as completed'));
         return false;
     }
+
     try {
-        // Use the prepared statement defined earlier
+        // Serialize Spotify data if present
+        const spotifyData = song.spotify ? JSON.stringify(song.spotify) : null;
+        
         insertHistoryStmt.run({
             youtubeUrl: song.youtubeUrl,
             title: song.title || null,
@@ -393,44 +434,18 @@ function logCompletedSong(song) {
             durationSeconds: song.durationSeconds || null,
             requester: song.requester,
             requesterLogin: song.requesterLogin || null,
-            requesterAvatar: song.requesterAvatar || null, // Store URL at time of play
+            requesterAvatar: song.requesterAvatar || null,
             thumbnailUrl: song.thumbnailUrl || null,
-            requestType: song.requestType
-            // completedAt is handled by DEFAULT CURRENT_TIMESTAMP in the table
+            requestType: song.requestType,
+            spotifyData: spotifyData
         });
-        console.log(chalk.grey(`[DB Write] Logged completed song to history: ${song.title}`));
+        console.log(chalk.grey(`[DB Write] Logged completed song in history: ${song.title}`));
         
-        // Fetch updated history after logging
-        try {
-            const getHistoryStmt = db.prepare('SELECT * FROM song_history ORDER BY id DESC LIMIT 50');
-            const recentHistory = getHistoryStmt.all().map(row => ({
-                id: row.id.toString(),
-                youtubeUrl: row.youtubeUrl,
-                title: row.title,
-                artist: row.artist,
-                channelId: row.channelId,
-                duration: row.durationSeconds ? formatDurationFromSeconds(row.durationSeconds) : '0:00',
-                durationSeconds: row.durationSeconds,
-                requester: row.requester,
-                requesterLogin: row.requesterLogin,
-                requesterAvatar: row.requesterAvatar,
-                thumbnailUrl: row.thumbnailUrl,
-                timestamp: row.completedAt,
-                requestType: row.requestType,
-                source: 'database_history'
-            }));
-            
-            // Return success and updated history (statistics will be added by the caller)
-            return {
-                success: true,
-                history: recentHistory
-            };
-        } catch (err) {
-            console.error(chalk.red('[Database] Error fetching history after logging song:'), err);
-            return true; // Still return true for backward compatibility
-        }
+        // Get the updated history to return
+        const recentHistory = getRecentHistory();
+        return { history: recentHistory };
     } catch (err) {
-        console.error(chalk.red(`[Database] Failed to log song to history (${song.youtubeUrl}):`), err);
+        console.error(chalk.red('[Database] Failed to log completed song:'), err);
         return false;
     }
 }
@@ -473,26 +488,39 @@ function deleteHistoryItem(id) {
 // Function to fetch recent history items
 function getRecentHistory(limit = 50) {
     try {
-        const getHistoryStmt = db.prepare(`SELECT * FROM song_history ORDER BY id DESC LIMIT ${limit}`);
-        const recentHistory = getHistoryStmt.all().map(row => ({
-            id: row.id.toString(),
-            youtubeUrl: row.youtubeUrl,
-            title: row.title,
-            artist: row.artist,
-            channelId: row.channelId,
-            duration: row.durationSeconds ? formatDurationFromSeconds(row.durationSeconds) : '0:00',
-            durationSeconds: row.durationSeconds,
-            requester: row.requester,
-            requesterLogin: row.requesterLogin,
-            requesterAvatar: row.requesterAvatar,
-            thumbnailUrl: row.thumbnailUrl,
-            timestamp: row.completedAt,
-            requestType: row.requestType,
-            source: 'database_history'
-        }));
-        return recentHistory;
+        const historyItems = db.prepare('SELECT * FROM song_history ORDER BY id DESC LIMIT ?').all(limit);
+        
+        return historyItems.map(item => {
+            // Parse Spotify data if present
+            if (item.spotifyData) {
+                try {
+                    item.spotify = JSON.parse(item.spotifyData);
+                } catch (e) {
+                    console.error(chalk.red('[Database] Failed to parse Spotify data for history item:'), e);
+                }
+                delete item.spotifyData; // Remove raw JSON string after parsing
+            }
+            
+            return {
+                id: item.id.toString(),
+                youtubeUrl: item.youtubeUrl,
+                title: item.title,
+                artist: item.artist,
+                channelId: item.channelId,
+                requester: item.requester,
+                requesterLogin: item.requesterLogin,
+                requesterAvatar: item.requesterAvatar,
+                timestamp: item.completedAt,
+                duration: item.durationSeconds ? formatDurationFromSeconds(item.durationSeconds) : null,
+                durationSeconds: item.durationSeconds,
+                thumbnailUrl: item.thumbnailUrl,
+                requestType: item.requestType,
+                source: 'database_history',
+                spotify: item.spotify // Include the parsed Spotify data
+            };
+        });
     } catch (err) {
-        console.error(chalk.red('[Database] Error fetching recent history:'), err);
+        console.error(chalk.red('[Database] Failed to retrieve song history:'), err);
         return [];
     }
 }
@@ -505,28 +533,40 @@ function loadInitialState() {
         // Load Active Queue
         const loadQueueStmt = db.prepare(`
             SELECT id, youtubeUrl, title, artist, channelId, durationSeconds,
-                   requester, requesterLogin, requesterAvatar, thumbnailUrl, requestType, addedAt
+                   requester, requesterLogin, requesterAvatar, thumbnailUrl, requestType, addedAt, spotifyData
             FROM active_queue ORDER BY priority DESC, addedAt ASC
         `);
         const queueRows = loadQueueStmt.all();
         // Map DB columns to state.queue song format (adjust if necessary)
-        loadedState.queue = queueRows.map(row => ({
-             id: row.id.toString(), // Ensure ID is string like original state
-             youtubeUrl: row.youtubeUrl,
-             title: row.title,
-             artist: row.artist,
-             channelId: row.channelId,
-             duration: row.durationSeconds ? formatDurationFromSeconds(row.durationSeconds) : '0:00', // Format duration string
-             durationSeconds: row.durationSeconds,
-             requester: row.requester,
-             requesterLogin: row.requesterLogin,
-             requesterAvatar: row.requesterAvatar,
-             thumbnailUrl: row.thumbnailUrl,
-             timestamp: row.addedAt, // Use addedAt as timestamp
-             requestType: row.requestType,
-             source: 'database',
-             // priority is DB-only concept for ordering, not needed in state item
-        }));
+        loadedState.queue = queueRows.map(row => {
+            // Parse Spotify data if present
+            let spotify = null;
+            if (row.spotifyData) {
+                try {
+                    spotify = JSON.parse(row.spotifyData);
+                } catch (e) {
+                    console.error(chalk.red('[Database] Failed to parse Spotify data for queue item:'), e);
+                }
+            }
+            
+            return {
+                id: row.id.toString(), // Ensure ID is string like original state
+                youtubeUrl: row.youtubeUrl,
+                title: row.title,
+                artist: row.artist,
+                channelId: row.channelId,
+                duration: row.durationSeconds ? formatDurationFromSeconds(row.durationSeconds) : '0:00', // Format duration string
+                durationSeconds: row.durationSeconds,
+                requester: row.requester,
+                requesterLogin: row.requesterLogin,
+                requesterAvatar: row.requesterAvatar,
+                thumbnailUrl: row.thumbnailUrl,
+                timestamp: row.addedAt, // Use addedAt as timestamp
+                requestType: row.requestType,
+                source: 'database',
+                spotify: spotify // Include the parsed Spotify data
+            };
+        });
         console.log(chalk.blue(`[Database] Loaded ${loadedState.queue.length} songs into the active queue.`));
 
         // Load Active song

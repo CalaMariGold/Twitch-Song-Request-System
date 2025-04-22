@@ -49,6 +49,30 @@ export interface SongRequest {
   status?: 'completed' | 'skipped'
   /** Origin of the data (database, socket event, etc.) */
   origin?: string;
+  /** Spotify track information if available */
+  spotify?: {
+    id: string;
+    name: string;
+    artists: {
+      id: string;
+      name: string;
+    }[];
+    album: {
+      id: string;
+      name: string;
+      releaseDate: string;
+      images: {
+        url: string;
+        height: number;
+        width: number;
+      }[];
+    };
+    durationMs: number;
+    previewUrl: string | null;
+    externalUrl: string;
+    uri: string;
+    matchScore?: number;
+  };
 }
 
 /**

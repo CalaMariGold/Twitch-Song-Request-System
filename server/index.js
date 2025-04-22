@@ -19,6 +19,7 @@ const {
   getTwitchUser 
 } = require('./twitch')
 const { connectToStreamElements, disconnectFromStreamElements } = require('./streamElements')
+const spotify = require('./spotify')
 require('dotenv').config()
 
 const SOCKET_PORT = 3002
@@ -602,7 +603,7 @@ async function validateAndAddSong(request) {
   // --- Always fetch Twitch Profile for Avatar AND Login Name ---
   let requesterAvatar = null; // Default placeholder
   let requesterLogin = request.requester.toLowerCase(); // Default to lowercase display name for URL
-  let twitchProfile = null; // Store profile to get login name later
+  let twitchProfile = null;
   try {
       twitchProfile = await getTwitchUser(request.requester);
       if (twitchProfile) {
@@ -707,7 +708,25 @@ async function validateAndAddSong(request) {
           requestType: request.requestType,
           donationInfo: request.requestType === 'donation' ? request.donationInfo : undefined
       };
-
+      
+      // Find Spotify equivalent for the song
+      try {
+        console.log(chalk.blue(`[Spotify] Searching for Spotify match for "${songRequest.title}"`));
+        const spotifyTrack = await spotify.getSpotifyEquivalent({
+          title: songRequest.title,
+          artist: songRequest.artist
+        });
+        
+        if (spotifyTrack) {
+          console.log(chalk.green(`[Spotify] Found match for "${songRequest.title}": "${spotifyTrack.name}" by ${spotifyTrack.artists.map(a => a.name).join(', ')}`));
+          songRequest.spotify = spotifyTrack;
+        } else {
+          console.log(chalk.yellow(`[Spotify] No match found for "${songRequest.title}"`));
+        }
+      } catch (spotifyError) {
+        console.error(chalk.red('[Spotify] Error finding match:'), spotifyError);
+        // Don't fail the entire song request if Spotify search fails
+      }
 
       // Determine queue insertion position based on request type
       let insertIndex = state.queue.length; // Default to end

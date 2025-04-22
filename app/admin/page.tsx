@@ -86,6 +86,7 @@ import {
 import { io, Socket } from "socket.io-client"
 import Link from 'next/link'
 import { StatisticsCard } from "@/components/StatisticsCard"
+import { formatTimestamp, formatDuration, extractYouTubeId, SpotifyIcon, calculateTotalQueueDuration } from "@/lib/utils"
 
 interface TwitchUser {
   id: string
@@ -426,51 +427,9 @@ export default function AdminDashboard() {
     toast({ title: "Logged Out" })
   }
 
-  // Helper Functions
-  const extractYouTubeId = (url: string): string | null => {
-    const match = url.match(/(?:youtube\.com\/watch\?v=|youtu.be\/)([\w-]+)/)
-    return match ? match[1] : null
-  }
+  // Calculate total queue duration
+  const { formatted: totalQueueDurationFormatted } = calculateTotalQueueDuration(appState.queue)
 
-  const formatTimestamp = (isoString?: string): string => {
-    if (!isoString) return 'N/A'
-    try {
-      // Use Eastern Time (UTC-4) for timestamp display
-      return new Date(isoString).toLocaleString('en-US', {
-        timeZone: 'America/New_York',
-        month: 'short',
-        day: 'numeric',
-        hour: 'numeric',
-        minute: '2-digit',
-        hour12: true
-      })
-    } catch (e) {
-      return 'Invalid Date'
-    }
-  }
-  
-  const formatDuration = (totalSeconds?: number): string => {
-    if (totalSeconds === null || totalSeconds === undefined || totalSeconds < 0) {
-        return '?:??'
-    }
-    const hours = Math.floor(totalSeconds / 3600)
-    const minutes = Math.floor((totalSeconds % 3600) / 60)
-    const seconds = totalSeconds % 60
-
-    const paddedSeconds = seconds.toString().padStart(2, '0')
-
-    if (hours > 0) {
-        const paddedMinutes = minutes.toString().padStart(2, '0')
-        return `${hours}:${paddedMinutes}:${paddedSeconds}`
-    } else {
-        return `${minutes}:${paddedSeconds}`
-    }
-  }
-  
-  const totalQueueSeconds = appState.queue.reduce((sum, song) => {
-    return sum + (song.durationSeconds || 0) 
-  }, 0)
-  const totalQueueDurationFormatted = formatDuration(totalQueueSeconds)
 
   // Render Logic
   if (appState.isLoading && !socket) {
@@ -488,7 +447,7 @@ export default function AdminDashboard() {
       <Toaster />
       <header className="flex justify-between items-center mb-8">
         <h1 className="text-3xl font-bold text-white flex items-center">
-           <Shield className="mr-3 h-8 w-8 text-purple-400" /> Song Request Admin
+           <Shield className="mr-3 h-8 w-8 text-purple-400" /> Song Request Admin Dashboard
         </h1>
         <div className="flex items-center space-x-4">
           <ConnectionStatus isConnected={isConnected} />
@@ -604,11 +563,20 @@ export default function AdminDashboard() {
                     <div className="text-sm text-gray-400 flex items-center">
                       <Clock className="inline-block mr-1 -mt-0.5" size={16} />
                       {formatDuration(appState.activeSong.durationSeconds)}
-                      <a href={appState.activeSong.youtubeUrl} target="_blank" rel="noopener noreferrer" aria-label="Watch on YouTube" className="ml-2">
-                        <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
-                          <Youtube className="h-5 w-5 text-red-600 hover:text-red-500 transition-colors" />
-                        </Button>
-                      </a>
+                      <div className="flex ml-2">
+                        <a href={appState.activeSong.youtubeUrl} target="_blank" rel="noopener noreferrer" aria-label="Watch on YouTube" className="mr-1">
+                          <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+                            <Youtube className="h-5 w-5 text-red-600 hover:text-red-500 transition-colors" />
+                          </Button>
+                        </a>
+                        {appState.activeSong.spotify && (
+                          <a href={appState.activeSong.spotify.externalUrl} target="_blank" rel="noopener noreferrer" aria-label="Listen on Spotify">
+                            <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+                              <SpotifyIcon className="h-5 w-5 text-green-500 hover:text-green-400 transition-colors" />
+                            </Button>
+                          </a>
+                        )}
+                      </div>
                     </div>
                      {/* Song Controls */}
                     <div className="flex justify-end space-x-1">
@@ -627,7 +595,7 @@ export default function AdminDashboard() {
           <Tabs defaultValue="queue" className="w-full">
             <TabsList className="grid w-full grid-cols-2 bg-gray-800">
               <TabsTrigger value="queue" className="data-[state=active]:bg-gray-700 data-[state=active]:text-white">
-                  <List className="mr-2 h-4 w-4" /> Current Queue ({appState.queue.length}) - {totalQueueDurationFormatted}
+                  <List className="mr-2 h-4 w-4" /> Current Queue ({appState.queue.length}) - <Clock className="inline-block mx-1" size={14} /> {totalQueueDurationFormatted}
               </TabsTrigger>
               <TabsTrigger value="history" className="data-[state=active]:bg-gray-700 data-[state=active]:text-white">
                   <History className="mr-2 h-4 w-4" /> History ({appState.history.length})
@@ -640,7 +608,7 @@ export default function AdminDashboard() {
                     <Trash2 className="mr-1 h-3 w-3" /> Clear Queue
                   </Button>
                 </div>
-                <ScrollArea className="h-[150vh] w-full rounded-md border border-gray-700 p-4 bg-gray-800">
+                <ScrollArea className="h-[80vh] w-full rounded-md border border-gray-700 p-4 bg-gray-800">
                     {appState.isLoading ? (
                        <div className="flex items-center justify-center h-full"><Loader2 className="w-8 h-8 animate-spin text-gray-400" /></div>
                     ) : appState.queue.length > 0 ? (
@@ -677,8 +645,9 @@ export default function AdminDashboard() {
                                       {song.artist || 'Unknown Artist'}
                                     </Badge>
                                   )}
-                                <span className="text-xs text-gray-400">
-                                  ({formatDuration(song.durationSeconds) || '?:??'})
+                                <span className="text-xs text-gray-400 flex items-center">
+                                  <Clock className="inline-block mr-1" size={12} />
+                                  {formatDuration(song.durationSeconds) || '?:??'}
                                 </span>
                                  <div className="text-xs text-gray-400 flex items-center gap-1">
                                       by{' '}
@@ -703,24 +672,31 @@ export default function AdminDashboard() {
                                     )}
                                </div>
                             </div>
-                            <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                               <Button variant="ghost" size="sm" className="h-7 w-7 p-1 text-gray-400 hover:text-white" onClick={() => handleMoveUp(song.id)} disabled={index === 0}>
-                                    <ChevronUp className="h-4 w-4" />
+                            <div className="flex-shrink-0 space-x-1 flex">
+                               <Button variant="ghost" size="sm" className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => handleMoveUp(song.id)}>
+                                    <ChevronUp className="h-4 w-4 text-gray-400 hover:text-white" />
                                </Button>
-                                <Button variant="ghost" size="sm" className="h-7 w-7 p-1 text-gray-400 hover:text-white" onClick={() => handleMoveDown(song.id)} disabled={index === appState.queue.length - 1}>
-                                    <ChevronDown className="h-4 w-4" />
+                                <Button variant="ghost" size="sm" className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => handleMoveDown(song.id)}>
+                                    <ChevronDown className="h-4 w-4 text-gray-400 hover:text-white" />
                                 </Button>
-                                <Button variant="ghost" size="sm" className="h-7 w-7 p-1 text-green-400 hover:text-green-300" onClick={() => handlePlaySong(song)}>
-                                    <Play className="h-4 w-4" />
+                                <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handlePlaySong(song)}>
+                                    <Play className="h-4 w-4 text-green-500 hover:text-green-400" />
+                                </Button>
+                                <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handleRemoveSong(song.id)}>
+                                  <Trash2 className="h-4 w-4 text-red-500 hover:text-red-400" />
                                 </Button>
                                 <a href={song.youtubeUrl} target="_blank" rel="noopener noreferrer" aria-label="Watch on YouTube">
-                                     <Button variant="ghost" size="sm" className="h-7 w-7 p-1 text-red-600 hover:text-red-500">
-                                       <Youtube className="h-4 w-4" />
+                                     <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                                       <Youtube className="h-4 w-4 text-red-600 hover:text-red-500" />
                                      </Button>
                                 </a>
-                               <Button variant="ghost" size="sm" className="h-7 w-7 p-1 text-red-500 hover:text-red-400" onClick={() => handleRemoveSong(song.id)}>
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
+                                {song.spotify && (
+                                  <a href={song.spotify.externalUrl} target="_blank" rel="noopener noreferrer" aria-label="Listen on Spotify">
+                                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                                      <SpotifyIcon className="h-4 w-4 text-green-500 hover:text-green-400" />
+                                    </Button>
+                                  </a>
+                                )}
                             </div>
                           </li>
                         ))}
@@ -743,7 +719,7 @@ export default function AdminDashboard() {
                     <Trash2 className="mr-1 h-3 w-3" /> Clear History
                   </Button>
                </div>
-               <ScrollArea className="h-[150vh] w-full rounded-md border border-gray-700 p-4 bg-gray-800">
+               <ScrollArea className="h-[80vh] w-full rounded-md border border-gray-700 p-4 bg-gray-800">
                     {appState.isLoading ? (
                        <div className="flex items-center justify-center h-full"><Loader2 className="w-8 h-8 animate-spin text-gray-400" /></div>
                     ) : appState.history.length > 0 ? (
@@ -777,8 +753,9 @@ export default function AdminDashboard() {
                                       {song.artist || 'Unknown Artist'}
                                     </Badge>
                                   )}
-                                  <span className="text-xs text-gray-400">
-                                    ({formatDuration(song.durationSeconds) || '?:??'})
+                                  <span className="text-xs text-gray-400 flex items-center">
+                                    <Clock className="inline-block mr-1" size={12} />
+                                    {formatDuration(song.durationSeconds) || '?:??'}
                                   </span>
                                   <div className="text-xs text-gray-400 flex items-center gap-1">
                                     by{' '}
@@ -803,36 +780,22 @@ export default function AdminDashboard() {
                                     )}
                                </div>
                             </div>
-                            <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <div className="flex-shrink-0 space-x-1 flex">
+                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handleReturnToQueue(song)}>
+                                <Play className="h-4 w-4 text-green-500 hover:text-green-400" />
+                              </Button>
                               <a href={song.youtubeUrl} target="_blank" rel="noopener noreferrer" aria-label="Watch on YouTube">
-                                <Button variant="ghost" size="sm" className="h-7 w-7 p-1 text-red-600 hover:text-red-500">
-                                  <Youtube className="h-4 w-4" />
+                                <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                                  <Youtube className="h-4 w-4 text-red-600 hover:text-red-500" />
                                 </Button>
                               </a>
-                              <Button 
-                                variant="ghost" 
-                                size="sm" 
-                                className="h-7 w-7 p-1 text-green-500 hover:text-green-400"
-                                onClick={() => handleReturnToQueue(song)}
-                                title="Return to top of queue"
-                              >
-                                <SkipForward className="h-4 w-4 rotate-180" />
-                              </Button>
-                              <Button 
-                                variant="ghost" 
-                                size="sm" 
-                                className="h-7 w-7 p-1 text-red-500 hover:text-red-400"
-                                onClick={() => {
-                                  if (!socket) return;
-                                  socket.emit('deleteHistoryItem', song.id);
-                                  toast({ 
-                                    title: "History Item Deleted", 
-                                    description: `Removed "${song.title}" from history.` 
-                                  });
-                                }}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
+                              {song.spotify && (
+                                <a href={song.spotify.externalUrl} target="_blank" rel="noopener noreferrer" aria-label="Listen on Spotify">
+                                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                                    <SpotifyIcon className="h-4 w-4 text-green-500 hover:text-green-400" />
+                                  </Button>
+                                </a>
+                              )}
                             </div>
                           </li>
                         ))}
@@ -843,6 +806,16 @@ export default function AdminDashboard() {
                   </ScrollArea>
             </TabsContent>
           </Tabs>
+
+          {/* All-Time Stats Card - Moved under the queue/history tabs */}
+          <StatisticsCard 
+            isLoading={isLoadingStats}
+            stats={allTimeStats}
+            includeRequesters={true}
+            title="All-Time Statistics"
+            description="Overall system usage stats."
+            className="mt-6"
+          />
         </div>
 
         {/* Right Column: Controls & Settings */}
@@ -898,15 +871,6 @@ export default function AdminDashboard() {
               </form>
             </CardContent>
           </Card>
-
-          {/* All-Time Stats Card */}
-          <StatisticsCard 
-            isLoading={isLoadingStats}
-            stats={allTimeStats}
-            includeRequesters={true}
-            title="All-Time Statistics"
-            description="Overall system usage stats."
-          />
 
           {/* Blocked Users Card */}
           <Card className="bg-gray-800 border-gray-700">
