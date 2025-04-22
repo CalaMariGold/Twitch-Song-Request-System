@@ -223,8 +223,6 @@ const io = new Server(httpServer, {
     }
 })
 
-const queueDir = path.join(process.cwd(), 'queue') // Define queueDir here
-
 // Function to load history from file
 async function loadHistory() {
   try {
@@ -722,22 +720,6 @@ function shutdown(signal) {
 // Listen for termination signals
 process.on('SIGINT', () => shutdown('SIGINT')); // Ctrl+C
 process.on('SIGTERM', () => shutdown('SIGTERM')); // kill command
-// Optional: Handle unexpected exit events, though less reliable for async saves
-// process.on('exit', async (code) => {
-//     console.log(`Process exit event with code: ${code}`);
-//     // Might be too late for async operations like saveHistory here
-// });
-
-// Start watching the queue directory
-watch(queueDir, { persistent: true }, async (eventType, filename) => {
-    if (filename === 'requests.json') {
-        await processRequest(requestsFile)
-    } else if (filename === path.basename(historyFilePath)) {
-        // Optional: Could add logic to reload history if file is manually changed,
-        // but be careful of loops if saveHistory triggers the watcher.
-        // For now, we assume history is only changed by the server itself.
-    }
-})
 
 // Function to check Tailscale connectivity with retries
 async function checkTailscaleConnectivity(retries = 3, delay = 2000) {
@@ -992,7 +974,7 @@ function verifyStreamElementsSignature(req, reqBodyBuffer) {
     return true;
 }
 
-// --- REVERTED: EventSub Subscription Function - Uses App Token ---
+// --- EventSub Subscription Function - Uses App Token ---
 async function createEventSubSubscription(broadcasterId, rewardId) {
     if (!broadcasterId || !rewardId) {
         console.error(chalk.red("[Twitch EventSub] Cannot create subscription: Missing broadcaster or reward ID."));
