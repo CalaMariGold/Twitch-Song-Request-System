@@ -9,10 +9,10 @@ import { Input } from "@/components/ui/input"
 import { Search, Music, Clock, History, Loader2, Youtube } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { motion, AnimatePresence } from "framer-motion"
-import { ErrorBoundary } from "@/components/error-boundary"
+import { ErrorBoundary } from "@/components/ErrorBoundary"
 import { SongRequest, AppState } from "@/lib/types"
 import { constants, socketEvents } from "@/lib/config"
-import { Header } from "./header"
+import { Header } from "@/components/Header"
 import { Badge } from "@/components/ui/badge"
 import Link from 'next/link'
 

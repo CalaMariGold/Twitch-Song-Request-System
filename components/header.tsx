@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { LogIn, AlertCircle, Shield, LogOut, Settings, Music2, Home, ChevronDown } from "lucide-react"
 import { getTwitchAuthUrl } from "@/lib/auth"
-import { ConnectionStatus } from "./connection-status"
+import { ConnectionStatus } from "@/components/ConnectionStatus"
 import { useEffect, useState } from "react"
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'

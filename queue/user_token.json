@@ -1,9 +1,0 @@
-{
-  "access_token": "f5ivmeu5g0jbl23mbfmavt6f8sd7ul",
-  "refresh_token": "5ybaq3ds35snyssfu4xb8oqzo6rex7kmtw75t2kef2zllc1nmh",
-  "expires_at": 1744947272905,
-  "scope": [
-    "channel:read:redemptions",
-    "user:read:email"
-  ]
-}

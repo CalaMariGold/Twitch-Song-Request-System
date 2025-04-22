@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/components/ui/use-toast"
 import { Toaster } from "@/components/ui/toaster"
-import { ConnectionStatus } from "@/components/connection-status"
+import { ConnectionStatus } from "@/components/ConnectionStatus"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -94,7 +94,7 @@ interface TwitchUser {
   isAdmin: boolean
 }
 
-export default function AdminPage() {
+export default function AdminDashboard() {
   // State
   const [videoUrl, setVideoUrl] = useState("")
   const [requesterUsername, setRequesterUsername] = useState("")

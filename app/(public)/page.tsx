@@ -2,15 +2,15 @@
 
 import { useState, useEffect } from "react"
 import Link from "next/link"
-import SongRequestQueue from "@/components/song-request-queue"
-import AnimatedBackground from "@/components/animated-background"
+import SongRequestQueue from "@/components/SongRequestQueue"
+import AnimatedBackground from "@/components/AnimatedBackground"
 import { Button } from "@/components/ui/button"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { BarChart2 } from "lucide-react"
 import { io, Socket } from "socket.io-client"
 import { SongRequest, QueueState } from "@/lib/types"
 
-export default function Home() {
+export default function PublicDashboard() {
   const [queueState, setQueueState] = useState<QueueState>({
     queue: [],
     history: [],
