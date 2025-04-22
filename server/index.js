@@ -1,22 +1,30 @@
 const { createServer } = require('http')
 const { Server } = require('socket.io')
 const fetch = require('node-fetch')
-const tmi = require('tmi.js')
 const chalk = require('chalk')
 const path = require('path')
 const { fetchAllTimeStats } = require('./statistics')
 const db = require('./database')
+const { 
+  formatDurationFromSeconds,
+  parseIsoDuration,
+  formatDuration,
+  extractVideoId,
+  extractYouTubeUrlFromText 
+} = require('./helpers')
+const { fetchYouTubeDetails } = require('./youtube')
+const { 
+  initTwitchChat, 
+  sendChatMessage, 
+  getTwitchUser 
+} = require('./twitch')
+const { connectToStreamElements, disconnectFromStreamElements } = require('./streamElements')
 require('dotenv').config()
 
 const SOCKET_PORT = 3002
 const httpServer = createServer()
 const dbPath = path.join(__dirname, '..', 'data', 'songRequestSystem.db');
 
-// Twitch API configuration
-const TWITCH_CLIENT_ID = process.env.NEXT_PUBLIC_TWITCH_CLIENT_ID;
-const TWITCH_CLIENT_SECRET = process.env.TWITCH_CLIENT_SECRET;
-let twitchAppAccessToken = null;
-let twitchTokenExpiry = null;
 
 // Twitch Chat Bot Configuration
 const TWITCH_BOT_USERNAME = process.env.TWITCH_BOT_USERNAME;
@@ -38,133 +46,12 @@ if (!TWITCH_BOT_USERNAME || !TWITCH_BOT_OAUTH_TOKEN || !TWITCH_CHANNEL_NAME) {
   console.error(chalk.red('Twitch bot credentials (username, token, channel) are missing in .env file. Chat features disabled.'));
 }
 
-const tmiOpts = {
-  identity: {
-    username: TWITCH_BOT_USERNAME,
-    password: TWITCH_BOT_OAUTH_TOKEN,
-  },
-  channels: [TWITCH_CHANNEL_NAME],
-};
-
-let tmiClient = null;
-if (TWITCH_BOT_USERNAME && TWITCH_BOT_OAUTH_TOKEN && TWITCH_CHANNEL_NAME) {
-  tmiClient = new tmi.client(tmiOpts);
-
-  tmiClient.on('message', (channel, tags, message, self) => {
-    // Handle incoming messages if needed in the future
-    if (self) return; // Ignore messages from the bot itself
-  });
-
-  tmiClient.on('connected', (addr, port) => {
-    console.log(chalk.green(`✅ [Twitch Chat] Connected (${addr}:${port}) in channel #${TWITCH_CHANNEL_NAME}`));
-    // Send startup message for the streamer
-    sendChatMessage(`✅ Song Request Bot connected to channel ${TWITCH_CHANNEL_NAME}.`);
-  });
-
-  tmiClient.on('disconnected', (reason) => {
-    console.log(chalk.yellow(`* [Twitch Chat] Disconnected: ${reason}`));
-  });
-
-  tmiClient.connect().catch(err => console.error(chalk.red('[Twitch Chat] Connection error:'), err));
-}
-
-// Function to send a message to Twitch chat
-function sendChatMessage(message) {
-  if (tmiClient && tmiClient.readyState() === 'OPEN') {
-    tmiClient.say(TWITCH_CHANNEL_NAME, message)
-      .then(() => {
-      })
-      .catch((err) => {
-        console.error(chalk.red(`[Twitch Chat] Error sending message: ${err}`));
-      });
-  } else {
-    console.warn(chalk.yellow('[Twitch Chat] Could not send message, client not connected or configured.'));
-  }
-}
-
-// Function to get Twitch App Access Token
-async function getTwitchAppAccessToken() {
-  if (twitchAppAccessToken && twitchTokenExpiry && twitchTokenExpiry > Date.now()) {
-    return twitchAppAccessToken;
-  }
-
-  const tokenUrl = `https://id.twitch.tv/oauth2/token?client_id=${TWITCH_CLIENT_ID}&client_secret=${TWITCH_CLIENT_SECRET}&grant_type=client_credentials`;
-
-  try {
-    const response = await fetch(tokenUrl, { method: 'POST' });
-    if (!response.ok) {
-      throw new Error(`Twitch token request failed with status ${response.status}: ${await response.text()}`);
-    }
-    const data = await response.json();
-    twitchAppAccessToken = data.access_token;
-    // Set expiry a bit earlier than actual expiry for safety
-    twitchTokenExpiry = Date.now() + (data.expires_in - 300) * 1000;
-    console.log(chalk.green('✅ [Auth] Successfully fetched new Twitch App Access Token.'));
-    return twitchAppAccessToken;
-  } catch (error) {
-    console.error(chalk.red('[Auth] Error fetching Twitch App Access Token:'), error);
-    twitchAppAccessToken = null; // Reset token on error
-    twitchTokenExpiry = null;
-    throw error; // Re-throw error to indicate failure
-  }
-}
-
-// Function to get Twitch User Profile
-async function getTwitchUser(username) {
-  if (!username) {
-    console.warn(chalk.yellow('[Twitch API] getTwitchUser called with no username.'));
-    return null; // Return null if no username provided
-  }
-  if (!TWITCH_CLIENT_ID || !TWITCH_CLIENT_SECRET) {
-    console.error(chalk.red('[Twitch API] Client ID or Secret not configured in .env'));
-    return null;
-  }
-
-  try {
-    const accessToken = await getTwitchAppAccessToken();
-    if (!accessToken) {
-      throw new Error('Failed to get Twitch App Access Token.');
-    }
-
-    const userUrl = `https://api.twitch.tv/helix/users?login=${encodeURIComponent(username)}`;
-    const response = await fetch(userUrl, {
-      headers: {
-        'Client-ID': TWITCH_CLIENT_ID,
-        'Authorization': `Bearer ${accessToken}`
-      }
-    });
-
-    if (!response.ok) {
-        if (response.status === 401) { // Token might have expired prematurely
-            console.warn(chalk.yellow('[Twitch API] Returned 401, attempting to refresh app token...'));
-            twitchAppAccessToken = null; // Force token refresh
-            const newAccessToken = await getTwitchAppAccessToken();
-            if (!newAccessToken) throw new Error('Failed to refresh Twitch token.');
-            // Retry the request with the new token
-             const retryResponse = await fetch(userUrl, {
-                headers: {
-                    'Client-ID': TWITCH_CLIENT_ID,
-                    'Authorization': `Bearer ${newAccessToken}`
-                }
-            });
-             if (!retryResponse.ok) {
-                throw new Error(`Twitch user request failed after retry with status ${retryResponse.status}: ${await retryResponse.text()}`);
-             }
-             const retryData = await retryResponse.json();
-             return retryData.data && retryData.data.length > 0 ? retryData.data[0] : null;
-        } else {
-             throw new Error(`Twitch user request failed with status ${response.status}: ${await response.text()}`);
-        }
-    }
-
-    const data = await response.json();
-    // Return the first user found, or null if no user matches
-    return data.data && data.data.length > 0 ? data.data[0] : null;
-  } catch (error) {
-    console.error(chalk.red(`[Twitch API] Error fetching user profile for ${username}:`), error);
-    return null; // Return null on error
-  }
-}
+// Initialize Twitch chat client
+initTwitchChat({
+  TWITCH_BOT_USERNAME,
+  TWITCH_BOT_OAUTH_TOKEN,
+  TWITCH_CHANNEL_NAME
+});
 
 // Initialize database first, before we setup any routes or connections
 db.initDatabase();
@@ -284,7 +171,6 @@ io.on('connection', (socket) => {
         try {
             const stats = fetchAllTimeStats(db.getDb());
             socket.emit('allTimeStatsUpdate', stats);
-            console.log(chalk.magenta('[Admin] All-time statistics sent via socket.'));
         } catch (error) {
             console.error(chalk.red('[Statistics] Failed to get all-time statistics:'), error);
             socket.emit('allTimeStatsError', { message: 'Failed to fetch statistics data' });
@@ -326,8 +212,8 @@ io.on('connection', (socket) => {
                      } else {
                          // Fallback to fetching history (should not happen with updated code)
                          const recentHistory = db.getRecentHistory();
-                         io.emit('historyUpdate', recentHistory);
-                         console.log(chalk.blue(`[Database] Emitted historyUpdate with ${recentHistory.length} items after song completion (fallback).`));
+                             io.emit('historyUpdate', recentHistory);
+                             console.log(chalk.blue(`[Database] Emitted historyUpdate with ${recentHistory.length} items after song completion (fallback).`));
                      }
                  }
             }
@@ -367,8 +253,8 @@ io.on('connection', (socket) => {
                      } else {
                          // Fallback to fetching history (should not happen with updated code)
                          const recentHistory = db.getRecentHistory();
-                         io.emit('historyUpdate', recentHistory);
-                         console.log(chalk.blue(`[Database] Emitted historyUpdate with ${recentHistory.length} items after song completion (fallback).`));
+                             io.emit('historyUpdate', recentHistory);
+                             console.log(chalk.blue(`[Database] Emitted historyUpdate with ${recentHistory.length} items after song completion (fallback).`));
                      }
                  }
             }
@@ -450,7 +336,7 @@ io.on('connection', (socket) => {
             } else {
                 // Fallback to fetching history
                 const recentHistory = db.getRecentHistory();
-                io.emit('historyUpdate', recentHistory);
+                    io.emit('historyUpdate', recentHistory);
             }
             
             // Also update statistics
@@ -518,16 +404,16 @@ io.on('connection', (socket) => {
         if (success) {
             // Fetch and send updated history to all clients
             const recentHistory = db.getRecentHistory();
-            io.emit('historyUpdate', recentHistory);
-            console.log(chalk.magenta(`[Admin] History item ${id} deleted via socket.`));
-            
-            // After deleting history item, refresh and broadcast all-time stats
-            try {
+                io.emit('historyUpdate', recentHistory);
+                console.log(chalk.magenta(`[Admin] History item ${id} deleted via socket.`));
+                
+                // After deleting history item, refresh and broadcast all-time stats
+                try {
                 const updatedStats = fetchAllTimeStats(db.getDb());
-                io.emit('allTimeStatsUpdate', updatedStats);
-                console.log(chalk.blue('[Statistics] Refreshed all-time stats after history item deletion'));
-            } catch (error) {
-                console.error(chalk.red('[Statistics] Error refreshing stats after history deletion:'), error);
+                    io.emit('allTimeStatsUpdate', updatedStats);
+                    console.log(chalk.blue('[Statistics] Refreshed all-time stats after history item deletion'));
+                } catch (error) {
+                    console.error(chalk.red('[Statistics] Error refreshing stats after history deletion:'), error);
             }
         }
     });
@@ -536,173 +422,6 @@ io.on('connection', (socket) => {
         
     })
 })
-
-// StreamElements Socket.io connection
-let seSocket = null;
-
-// Function to connect to StreamElements Socket API
-function connectToStreamElements() {
-    if (!SE_JWT_TOKEN) {
-        console.warn(chalk.yellow('[StreamElements] JWT token missing, connection skipped.'));
-        return;
-    }
-
-    // Import socket.io-client only when needed
-    const ioClient = require('socket.io-client');
-    
-    // Connect to StreamElements socket server
-    seSocket = ioClient.connect('https://realtime.streamelements.com', {
-        transports: ['websocket']
-    });
-
-    // Connection event handlers
-    seSocket.on('connect', () => {
-        // Authenticate with JWT
-        seSocket.emit('authenticate', {
-            method: 'jwt',
-            token: SE_JWT_TOKEN
-        });
-    });
-
-    seSocket.on('authenticated', () => {
-        console.log(chalk.green('✅ [StreamElements] Connected and Authenticated. Listening for donations and channel point redemptions.'));
-    });
-
-    // Handle connection errors
-    seSocket.on('unauthorized', (reason) => {
-        console.error(chalk.red('[StreamElements] Authentication failed:'), reason);
-        if(seSocket) seSocket.disconnect();
-    });
-
-    seSocket.on('disconnect', () => {
-        console.warn(chalk.yellow('[StreamElements] Disconnected. Will attempt reconnect...'));
-        // Attempt to reconnect after a delay
-        setTimeout(connectToStreamElements, 5000);
-    });
-
-    seSocket.on('connect_error', (error) => {
-        console.error(chalk.red('[StreamElements] Connection error:'), error);
-    });
-
-    // Listen for events (tips/donations)
-    seSocket.on('event', async (event) => {
-
-        // Handle Channel Point Redemption events from StreamElements
-        // Check if it's a channel point redemption event AND matches the target title
-        if (event.type === 'channelPointsRedemption') { 
-
-            const receivedTitle = event.data?.redemption;
-
-            // Check if the received title matches the one configured in .env
-            if (!receivedTitle || !TARGET_REWARD_TITLE || receivedTitle !== TARGET_REWARD_TITLE) {
-                console.log(chalk.grey(`[StreamElements] Ignored redemption: Title "${receivedTitle || 'N/A'}" does not match TARGET_REWARD_TITLE "${TARGET_REWARD_TITLE || 'Not Set'}".`));
-                return; // Ignore this redemption
-            }
-            
-            try {
-                const userName = event.data.username || 'Anonymous';
-                const userInput = event.data.message || ''; // Get user input (URL) from message field
-
-                console.log(chalk.magenta(`[StreamElements] Received channel point redemption: ${userName} - Reward: "${receivedTitle}" - Input: "${userInput}"`));
-
-                const youtubeUrl = extractYouTubeUrlFromText(userInput);
-
-                if (!youtubeUrl) {
-                    console.warn(chalk.yellow(`[StreamElements] No YouTube URL found in redemption from ${userName}: "${userInput}"`));
-                    sendChatMessage(`@${userName}, I couldn't find a YouTube link in your '${receivedTitle}' redemption message!`);
-                    return; // Don't process further
-                }
-
-                 // Create song request object
-                 const songRequest = {
-                    id: event.data._id || event._id || Date.now().toString(),
-                    youtubeUrl: youtubeUrl,
-                    requester: userName,
-                    timestamp: event.createdAt || new Date().toISOString(),
-                    requestType: 'channelPoint',
-                    channelPointReward: { 
-                        title: receivedTitle
-                    },
-                    source: 'streamelements_redemption'
-                };
-
-                await validateAndAddSong(songRequest);
-
-             } catch (error) {
-                 console.error(chalk.red('[StreamElements] Error processing channel point redemption:'), error);
-                 sendChatMessage(`@${userName}, sorry, there was an error processing your song request.`);
-             }
-             return; // Stop processing this event here
-        }
-        // --- END Channel Point Handling ---
-
-        // Check if it's a tip/donation event
-        if (event.type === 'tip') {
-            try {
-                // Extract donation information
-                const userName = event.data.username || 'Anonymous';
-                const amount = event.data.amount || 0;
-                const currency = event.data.currency || 'USD';
-                const message = event.data.message || '';
-
-                console.log(chalk.magenta(`[StreamElements] Received donation: ${userName} - ${amount} ${currency} - Msg: "${message}"`));
-                
-                // Extract YouTube URL from donation message
-                const youtubeUrl = extractYouTubeUrlFromText(message);
-
-                // If no YouTube URL, thank them for the donation but don't process as song request
-                if (!youtubeUrl) {
-                    console.warn(chalk.yellow(`[StreamElements] No YouTube URL found in donation from ${userName}: "${message}"`));
-                    sendChatMessage(`Thanks @${userName} for the ${amount} ${currency}! If you want to request a song with your dono next time, put the YouTube link in the dono message.`);
-                    return;
-                }
-                
-                // Now that we found a YouTube link, check minimum donation amount ($3)
-                const MIN_DONATION_AMOUNT = 3;
-                if (amount < MIN_DONATION_AMOUNT) {
-                    console.log(chalk.yellow(`[StreamElements] Donation from ${userName} (${amount} ${currency}) below minimum (${MIN_DONATION_AMOUNT} ${currency}). Skipping request.`));
-                    sendChatMessage(`Thanks @${userName} for the ${amount} ${currency} donation! Song requests require a minimum donation of ${MIN_DONATION_AMOUNT} ${currency}.`);
-                    return;
-                }
-
-                // Create song request from donation
-                const songRequest = {
-                    id: event.data._id || Date.now().toString(),
-                    youtubeUrl: youtubeUrl,
-                    requester: userName,
-                    timestamp: new Date().toISOString(),
-                    requestType: 'donation',
-                    donationInfo: {
-                        amount: amount,
-                        currency: currency
-                    },
-                    source: 'streamelements'
-                };
-
-                await validateAndAddSong(songRequest);
-                
-            } catch (error) {
-                console.error(chalk.red('[StreamElements] Error processing donation:'), error);
-                sendChatMessage(`@${userName}, sorry, there was an error processing your song request.`);
-            }
-        }
-    });
-}
-
-// Function to gracefully shutdown and save state
-function shutdown(signal) {
-  console.log(chalk.yellow(`Received ${signal}. Shutting down server...`));
-  db.closeDatabase();
-  process.exit(0);
-}
-
-// Listen for termination signals
-process.on('SIGINT', () => shutdown('SIGINT')); // Ctrl+C
-process.on('SIGTERM', () => shutdown('SIGTERM')); // kill command
-process.on('exit', () => { 
-    // Ensure DB connection is closed on any exit
-    db.closeDatabase();
-});
 
 // Start the server and load initial data
 async function startServer() {
@@ -717,7 +436,102 @@ async function startServer() {
   console.log(chalk.blue(`[Server] Loaded activeSong: ${state.activeSong ? state.activeSong.title : 'null'}`));
 
   // Connect to StreamElements Socket API for donation/redemption events
-  connectToStreamElements();
+  // Create a config object with the StreamElements settings
+  const streamElementsConfig = {
+    SE_JWT_TOKEN,
+    SE_ACCOUNT_ID,
+    TARGET_REWARD_TITLE
+  };
+
+  // Define our callback functions
+  const onTipCallback = async (tipData) => {
+    try {
+      // Extract donation information
+      const userName = tipData.username || 'Anonymous';
+      const amount = tipData.amount || 0;
+      const currency = tipData.currency || 'USD';
+      const message = tipData.message || '';
+
+      console.log(chalk.magenta(`[StreamElements] Processing donation: ${userName} - ${amount} ${currency} - Msg: "${message}"`));
+      
+      // Extract YouTube URL from donation message
+      const youtubeUrl = extractYouTubeUrlFromText(message);
+
+      // If no YouTube URL, thank them for the donation but don't process as song request
+      if (!youtubeUrl) {
+          console.warn(chalk.yellow(`[StreamElements] No YouTube URL found in donation from ${userName}: "${message}"`));
+          sendChatMessage(`Thanks @${userName} for the ${amount} ${currency}! If you want to request a song with your dono next time, put the YouTube link in the dono message.`);
+          return;
+      }
+      
+      // Now that we found a YouTube link, check minimum donation amount ($3)
+      const MIN_DONATION_AMOUNT = 3;
+      if (amount < MIN_DONATION_AMOUNT) {
+          console.log(chalk.yellow(`[StreamElements] Donation from ${userName} (${amount} ${currency}) below minimum (${MIN_DONATION_AMOUNT} ${currency}). Skipping request.`));
+          sendChatMessage(`Thanks @${userName} for the ${amount} ${currency} donation! Song requests require a minimum donation of ${MIN_DONATION_AMOUNT} ${currency}.`);
+          return;
+      }
+
+      // Create song request from donation
+      const songRequest = {
+          id: tipData.id || Date.now().toString(),
+          youtubeUrl: youtubeUrl,
+          requester: userName,
+          timestamp: tipData.timestamp || new Date().toISOString(),
+          requestType: 'donation',
+          donationInfo: {
+              amount: amount,
+              currency: currency
+          },
+          source: 'streamelements'
+      };
+
+      await validateAndAddSong(songRequest);
+      
+    } catch (error) {
+        console.error(chalk.red('[StreamElements] Error processing donation:'), error);
+        sendChatMessage(`@${tipData.username}, sorry, there was an error processing your song request.`);
+    }
+  };
+
+  const onRedemptionCallback = async (redemptionData) => {
+    try {
+      const userName = redemptionData.username || 'Anonymous';
+      const userInput = redemptionData.message || ''; // Get user input (URL) from message field
+
+      console.log(chalk.magenta(`[StreamElements] Processing channel point redemption: ${userName} - Reward: "${redemptionData.rewardTitle}" - Input: "${userInput}"`));
+
+      const youtubeUrl = extractYouTubeUrlFromText(userInput);
+
+      if (!youtubeUrl) {
+          console.warn(chalk.yellow(`[StreamElements] No YouTube URL found in redemption from ${userName}: "${userInput}"`));
+          sendChatMessage(`@${userName}, I couldn't find a YouTube link in your '${redemptionData.rewardTitle}' redemption message!`);
+          return; // Don't process further
+      }
+
+      // Create song request object
+      const songRequest = {
+          id: redemptionData.id || Date.now().toString(),
+          youtubeUrl: youtubeUrl,
+          requester: userName,
+          timestamp: redemptionData.timestamp || new Date().toISOString(),
+          requestType: 'channelPoint',
+          channelPointReward: { 
+              title: redemptionData.rewardTitle
+          },
+          source: 'streamelements_redemption'
+      };
+
+      await validateAndAddSong(songRequest);
+
+    } catch (error) {
+        console.error(chalk.red('[StreamElements] Error processing channel point redemption:'), error);
+        sendChatMessage(`@${redemptionData.username}, sorry, there was an error processing your song request.`);
+    }
+  };
+
+  // Connect to StreamElements using the modular approach
+  connectToStreamElements(streamElementsConfig, onTipCallback, onRedemptionCallback);
   
   console.log(chalk.blue('[Server] Initializing HTTP listener...')); // Added detailed logging
   // Use the custom HTTP server for listening
@@ -728,182 +542,25 @@ async function startServer() {
   })
 }
 
+// Function to gracefully shutdown and save state
+function shutdown(signal) {
+  console.log(chalk.yellow(`Received ${signal}. Shutting down server...`));
+  // Disconnect from StreamElements
+  disconnectFromStreamElements();
+  // Close database connection
+  db.closeDatabase();
+  process.exit(0);
+}
+
+// Listen for termination signals
+process.on('SIGINT', () => shutdown('SIGINT')); // Ctrl+C
+process.on('SIGTERM', () => shutdown('SIGTERM')); // kill command
+process.on('exit', () => { 
+  // Ensure DB connection is closed on any exit
+  db.closeDatabase();
+});
+
 startServer();
-
-// Helper functions
-function extractVideoId(urlStr) {
-    if (!urlStr) {
-        console.error(chalk.red('[Util] extractVideoId called with undefined/empty URL'))
-        return null
-    }
-    const match = urlStr.match(/(?:youtube\.com\/watch\?v=|youtu.be\/)([^&\n?#]+)/)
-    const result = match ? match[1] : null
-    return result
-}
-
-async function fetchYouTubeDetails(videoId) {
-    try {
-        if (!process.env.YOUTUBE_API_KEY) {
-            console.error(chalk.red('[YouTube] API key not configured in environment variables'))
-            throw new Error('YouTube API key not configured')
-        }
-
-
-        const apiUrl = `https://www.googleapis.com/youtube/v3/videos?id=${videoId}&part=snippet,contentDetails&key=${process.env.YOUTUBE_API_KEY}`
-        
-        const response = await fetch(
-            apiUrl,
-            { headers: { 'Accept': 'application/json' } }
-        )
-        
-        
-        if (!response.ok) {
-            console.error(chalk.red(`[YouTube] API error status: ${response.status} ${response.statusText}`))
-            throw new Error(`YouTube API error: ${response.statusText}`)
-        }
-
-        const data = await response.json()
-        
-        if (!data.items?.[0]) {
-            console.error(chalk.red('[YouTube] Video not found in API response for ID:'), videoId)
-            throw new Error('Video not found')
-        }
-        
-        const item = data.items[0]
-        const duration = item.contentDetails.duration
-        const durationSeconds = parseIsoDuration(duration)
-        
-        // Get the best available thumbnail
-        const thumbnails = item.snippet.thumbnails
-        const thumbnailUrl = thumbnails.maxres?.url || 
-                            thumbnails.high?.url || 
-                            thumbnails.medium?.url || 
-                            thumbnails.default?.url || 
-                            `https://img.youtube.com/vi/${videoId}/0.jpg` // Fallback direct URL
-        
-        return {
-            title: item.snippet.title,
-            channelTitle: item.snippet.channelTitle,
-            channelId: item.snippet.channelId,
-            duration: formatDuration(duration),
-            durationSeconds,
-            thumbnailUrl
-        }
-    } catch (error) {
-        throw error
-    }
-}
-
-function formatDuration(isoDuration) {
-    try {
-        let durationStr = isoDuration.replace("PT", "")
-        let hours = 0, minutes = 0, seconds = 0
-
-        const hIndex = durationStr.indexOf("H")
-        const mIndex = durationStr.indexOf("M")
-        const sIndex = durationStr.indexOf("S")
-
-        if (hIndex > 0) {
-            hours = parseInt(durationStr.substring(0, hIndex))
-            durationStr = durationStr.substring(hIndex + 1)
-        }
-
-        if (mIndex > 0) {
-            minutes = parseInt(durationStr.substring(0, mIndex))
-            durationStr = durationStr.substring(mIndex + 1)
-        }
-
-        if (sIndex > 0) {
-            seconds = parseInt(durationStr.substring(0, sIndex))
-        }
-
-        // Pad minutes only if hours are present
-        const paddedMinutes = hours > 0 ? minutes.toString().padStart(2, '0') : minutes.toString();
-        const paddedSeconds = seconds.toString().padStart(2, '0');
-
-        return hours > 0 ?
-            `${hours}:${paddedMinutes}:${paddedSeconds}` :
-            `${minutes}:${paddedSeconds}`;
-    } catch (error) {
-        console.error('Error formatting duration:', error)
-        return '0:00'
-    }
-}
-
-// Function to parse ISO 8601 duration to seconds
-function parseIsoDuration(isoDuration) {
-    const match = isoDuration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/)
-    if (!match) return 0
-    
-    const hours = match[1] ? parseInt(match[1]) : 0
-    const minutes = match[2] ? parseInt(match[2]) : 0
-    const seconds = match[3] ? parseInt(match[3]) : 0
-    
-    return hours * 3600 + minutes * 60 + seconds
-}
-
-// Regex to find YouTube URL in text
-function extractYouTubeUrlFromText(text) {
-    if (!text) return null;
-    // Basic regex to find YouTube watch URLs or short URLs
-    const regex = /(https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w-]+))/i;
-    const match = text.match(regex);
-    return match ? match[0] : null; // Return the full matched URL
-}
-
-// Helper function to format duration from seconds
-function formatDurationFromSeconds(totalSeconds) {
-    if (totalSeconds === null || totalSeconds === undefined || totalSeconds < 0) {
-        return '0:00';
-    }
-    const hours = Math.floor(totalSeconds / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    const seconds = totalSeconds % 60;
-
-    const paddedSeconds = seconds.toString().padStart(2, '0');
-
-    if (hours > 0) {
-        const paddedMinutes = minutes.toString().padStart(2, '0');
-        return `${hours}:${paddedMinutes}:${paddedSeconds}`;
-    } else {
-        return `${minutes}:${paddedSeconds}`;
-    }
-}
-
-// Function to clear history
-function clearDbHistory() {
-    try {
-        const clearHistoryStmt = db.prepare('DELETE FROM song_history');
-        const result = clearHistoryStmt.run();
-        console.log(chalk.yellow(`[DB Write] Cleared song_history table. Deleted ${result.changes} records.`));
-        return true;
-    } catch (err) {
-        console.error(chalk.red('[Database] Failed to clear song_history:'), err);
-        return false;
-    }
-}
-
-// Function to delete a single history item
-function deleteHistoryItem(id) {
-    if (!id) {
-        console.warn(chalk.yellow('[DB Write] deleteHistoryItem called with null/undefined id'));
-        return false;
-    }
-    try {
-        const deleteStmt = db.prepare('DELETE FROM song_history WHERE id = ?');
-        const result = deleteStmt.run(id);
-        if (result.changes > 0) {
-            console.log(chalk.grey(`[DB Write] Deleted history item with ID: ${id}`));
-            return true;
-        } else {
-            console.warn(chalk.yellow(`[DB Write] No history item found with ID: ${id}`));
-            return false;
-        }
-    } catch (err) {
-        console.error(chalk.red(`[Database] Failed to delete history item with ID ${id}:`), err);
-        return false;
-    }
-}
 
 // --- Function to validate and add a song request ---
 async function validateAndAddSong(request) {
@@ -951,7 +608,7 @@ async function validateAndAddSong(request) {
       if (twitchProfile) {
           if (twitchProfile.profile_image_url) {
               requesterAvatar = twitchProfile.profile_image_url;
-          } else {
+        } else {
               console.warn(chalk.yellow(`[Twitch API] Could not find Twitch avatar for ${request.requester}. Using placeholder.`));
           }
           if (twitchProfile.login) {
@@ -1094,5 +751,5 @@ async function validateAndAddSong(request) {
   } catch (fetchError) {
       console.error(chalk.red('[YouTube] Error fetching video details:'), fetchError);
       sendChatMessage(`@${request.requester}, sorry, I couldn't fetch the details for that YouTube link.`);
-  }
+    }
 }

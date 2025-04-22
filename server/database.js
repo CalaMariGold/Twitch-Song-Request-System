@@ -1,30 +1,12 @@
 const chalk = require('chalk');
 const path = require('path');
 const Database = require('better-sqlite3');
+const { formatDurationFromSeconds } = require('./helpers');
 
 let db;
 let insertHistoryStmt, insertQueueStmt, deleteQueueStmt, clearQueueStmt;
 let saveSettingStmt, addBlacklistStmt, removeBlacklistStmt, addBlockedUserStmt, removeBlockedUserStmt;
 let saveActiveSongStmt, clearActiveSongStmt;
-
-// Function to format duration from seconds (used in DB operations)
-function formatDurationFromSeconds(totalSeconds) {
-    if (totalSeconds === null || totalSeconds === undefined || totalSeconds < 0) {
-        return '0:00';
-    }
-    const hours = Math.floor(totalSeconds / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    const seconds = totalSeconds % 60;
-
-    const paddedSeconds = seconds.toString().padStart(2, '0');
-
-    if (hours > 0) {
-        const paddedMinutes = minutes.toString().padStart(2, '0');
-        return `${hours}:${paddedMinutes}:${paddedSeconds}`;
-    } else {
-        return `${minutes}:${paddedSeconds}`;
-    }
-}
 
 // Initialize the database connection and create tables if they don't exist
 function initDatabase() {

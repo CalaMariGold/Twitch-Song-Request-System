@@ -7,7 +7,6 @@ const chalk = require('chalk');
  */
 function fetchAllTimeStats(db) {
     try {
-        console.log(chalk.blue('[Statistics] Fetching all-time statistics from database...'));
         
         // Define the queries for each statistic
         const topRequestersQuery = `
