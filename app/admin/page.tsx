@@ -117,6 +117,7 @@ export default function AdminDashboard() {
   const [newBlacklistTerm, setNewBlacklistTerm] = useState("")
   const [newBlacklistType, setNewBlacklistType] = useState<BlacklistItem['type']>('keyword')
   const [requestType, setRequestType] = useState<'channelPoint' | 'donation'>('channelPoint')
+  const [bypassRestrictions, setBypassRestrictions] = useState(false)
   const { toast } = useToast()
 
   // Socket Connection and Event Listeners
@@ -328,7 +329,8 @@ export default function AdminDashboard() {
         requester: finalRequesterUsername,
         requestType: requestType,
         donationInfo: requestType === 'donation' ? { amount: 5, currency: 'USD' } : undefined,
-        source: 'manual_admin'
+        source: 'admin',
+        bypassRestrictions: bypassRestrictions
     }
 
     console.log("Admin: Manually adding song:", songRequestData)
@@ -590,15 +592,10 @@ export default function AdminDashboard() {
                             Points
                           </Badge>
                         )}
-                         {appState.activeSong.requestType !== 'donation' && appState.activeSong.requestType !== 'channelPoint' && appState.activeSong.requestType !== 'manual_admin' && (
+                         {appState.activeSong.requestType !== 'donation' && appState.activeSong.requestType !== 'channelPoint' && (
                             <Badge variant="secondary" className="px-1.5 py-0.5 text-xs">
                                 {appState.activeSong.requestType}
                             </Badge>
-                         )}
-                         {appState.activeSong.requestType === 'manual_admin' && (
-                              <Badge variant="outline" className="px-1.5 py-0.5 text-xs bg-blue-800 text-blue-200 border-blue-700">
-                                Manual
-                              </Badge>
                          )}
                     </div>
                   </div>
@@ -703,11 +700,6 @@ export default function AdminDashboard() {
                                         Points
                                       </Badge>
                                     )}
-                                     {song.requestType === 'manual_admin' && (
-                                         <Badge variant="outline" className="px-1.5 py-0.5 text-xs bg-blue-800 text-blue-200 border-blue-700">
-                                           Manual
-                                         </Badge>
-                                     )}
                                </div>
                             </div>
                             <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -808,14 +800,6 @@ export default function AdminDashboard() {
                                         Points
                                       </Badge>
                                     )}
-                                     {song.requestType === 'manual_admin' && (
-                                         <Badge variant="outline" className="px-1.5 py-0.5 text-xs bg-blue-800 text-blue-200 border-blue-700">
-                                           Manual
-                                         </Badge>
-                                     )}
-                                  <span className="text-xs text-gray-500 ml-auto pl-2 whitespace-nowrap">
-                                     {formatTimestamp(song.timestamp)}
-                                  </span>
                                </div>
                             </div>
                             <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -897,6 +881,17 @@ export default function AdminDashboard() {
                         <SelectItem value="donation" className="focus:bg-gray-700">Donation (Priority)</SelectItem>
                     </SelectContent>
                 </Select>
+                
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="bypass-restrictions"
+                    checked={bypassRestrictions}
+                    onCheckedChange={setBypassRestrictions}
+                  />
+                  <Label htmlFor="bypass-restrictions" className="text-sm cursor-pointer">
+                    Bypass restrictions (blocked users, blacklist, duration limits, etc)
+                  </Label>
+                </div>
                  {/* Consistent Button style */}
                 <Button type="submit" className="w-full bg-purple-600 hover:bg-purple-700 text-white">Add Song</Button>
               </form>

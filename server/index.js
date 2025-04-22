@@ -385,7 +385,7 @@ function loadInitialState() {
              thumbnailUrl: row.thumbnailUrl,
              timestamp: row.addedAt, // Use addedAt as timestamp
              requestType: row.requestType,
-             source: 'database', // Indicate source
+             source: 'database',
              // priority is DB-only concept for ordering, not needed in state item
         }));
         console.log(chalk.blue(`[Database] Loaded ${loadedState.queue.length} songs into the active queue.`));
@@ -701,17 +701,26 @@ async function validateAndAddSong(request) {
       return;
   }
 
+  // Flag to bypass restrictions for admin-added songs
+  const bypassRestrictions = request.bypassRestrictions === true;
+  
+  if (bypassRestrictions) {
+    console.log(chalk.blue(`[Queue] Admin bypassing restrictions for ${request.requester}'s request`));
+  }
+
   // Check if requester is blocked
-  const blockedUsers = state.blockedUsers || [];
-  const isBlocked = blockedUsers.some(user => user.username.toLowerCase() === request.requester.toLowerCase());
-  if (isBlocked) {
-      console.log(chalk.yellow(`[Queue] Request from blocked user ${request.requester} - rejecting`));
-      sendChatMessage(`@${request.requester}, you are currently blocked from making song requests.`);
-      return; // Stop processing
+  if (!bypassRestrictions) {
+    const blockedUsers = state.blockedUsers || [];
+    const isBlocked = blockedUsers.some(user => user.username.toLowerCase() === request.requester.toLowerCase());
+    if (isBlocked) {
+        console.log(chalk.yellow(`[Queue] Request from blocked user ${request.requester} - rejecting`));
+        sendChatMessage(`@${request.requester}, you are currently blocked from making song requests.`);
+        return; // Stop processing
+    }
   }
 
   // --- Check User Queue Limit for Channel Point Requests ---
-  if (request.requestType === 'channelPoint') {
+  if (!bypassRestrictions && request.requestType === 'channelPoint') {
     const existingRequest = state.queue.find(song => song.requester.toLowerCase() === request.requester.toLowerCase());
     if (existingRequest) {
       console.log(chalk.yellow(`[Queue] User ${request.requester} already has a song in the queue - rejecting channel point request`));
@@ -762,12 +771,12 @@ async function validateAndAddSong(request) {
       const MAX_CHANNEL_POINT_DURATION_SECONDS = 300; // 5 minutes
       const MAX_DONATION_DURATION_SECONDS = 600; // 10 minutes
 
-      if (request.requestType === 'channelPoint' && videoDetails.durationSeconds > MAX_CHANNEL_POINT_DURATION_SECONDS) {
+      if (!bypassRestrictions && request.requestType === 'channelPoint' && videoDetails.durationSeconds > MAX_CHANNEL_POINT_DURATION_SECONDS) {
           console.log(chalk.yellow(`[Queue] Channel Point request duration (${videoDetails.durationSeconds}s) exceeds limit (${MAX_CHANNEL_POINT_DURATION_SECONDS}s) - rejecting "${videoDetails.title}"`));
           sendChatMessage(`@${request.requester} Sorry, channel point songs cannot be longer than 5 minutes. Donate for priority and up to 10 minute songs.`);
           return; // Stop processing this request
       }
-      if (request.requestType === 'donation' && videoDetails.durationSeconds > MAX_DONATION_DURATION_SECONDS) {
+      if (!bypassRestrictions && request.requestType === 'donation' && videoDetails.durationSeconds > MAX_DONATION_DURATION_SECONDS) {
           console.log(chalk.yellow(`[Queue] Donation request duration (${videoDetails.durationSeconds}s) exceeds limit (${MAX_DONATION_DURATION_SECONDS}s) - rejecting "${videoDetails.title}"`));
           sendChatMessage(`@${request.requester} Sorry, donation songs cannot be longer than 10 minutes.`);
           return; // Stop processing this request
@@ -775,36 +784,38 @@ async function validateAndAddSong(request) {
       // --- END Duration Checks ---
 
       // Check for blacklisted content
-      const blacklist = state.blacklist || [];
-      const songTitle = videoDetails.title.toLowerCase();
-      const artistName = videoDetails.channelTitle.toLowerCase();
+      if (!bypassRestrictions) {
+        const blacklist = state.blacklist || [];
+        const songTitle = videoDetails.title.toLowerCase();
+        const artistName = videoDetails.channelTitle.toLowerCase();
 
-      const blacklistedSong = blacklist.find(item =>
-          item.type === 'song' && songTitle.includes(item.term.toLowerCase())
-      );
-      if (blacklistedSong) {
-          console.log(chalk.yellow(`[Blacklist] Song "${videoDetails.title}" contains term "${blacklistedSong.term}" - rejecting`));
-          sendChatMessage(`@${request.requester}, sorry, the song "${videoDetails.title}" is currently blacklisted.`);
-          return;
-      }
+        const blacklistedSong = blacklist.find(item =>
+            item.type === 'song' && songTitle.includes(item.term.toLowerCase())
+        );
+        if (blacklistedSong) {
+            console.log(chalk.yellow(`[Blacklist] Song "${videoDetails.title}" contains term "${blacklistedSong.term}" - rejecting`));
+            sendChatMessage(`@${request.requester}, sorry, the song "${videoDetails.title}" is currently blacklisted.`);
+            return;
+        }
 
-      const blacklistedArtist = blacklist.find(item =>
-          item.type === 'artist' && artistName.includes(item.term.toLowerCase())
-      );
-      if (blacklistedArtist) {
-          console.log(chalk.yellow(`[Blacklist] Artist "${videoDetails.channelTitle}" contains term "${blacklistedArtist.term}" - rejecting`));
-           sendChatMessage(`@${request.requester}, sorry, songs by "${videoDetails.channelTitle}" are currently blacklisted.`);
-          return;
-      }
+        const blacklistedArtist = blacklist.find(item =>
+            item.type === 'artist' && artistName.includes(item.term.toLowerCase())
+        );
+        if (blacklistedArtist) {
+            console.log(chalk.yellow(`[Blacklist] Artist "${videoDetails.channelTitle}" contains term "${blacklistedArtist.term}" - rejecting`));
+             sendChatMessage(`@${request.requester}, sorry, songs by "${videoDetails.channelTitle}" are currently blacklisted.`);
+            return;
+        }
 
-      const blacklistedKeyword = blacklist.find(item =>
-          item.type === 'keyword' &&
-          (songTitle.includes(item.term.toLowerCase()) || artistName.includes(item.term.toLowerCase()))
-      );
-      if (blacklistedKeyword) {
-          console.log(chalk.yellow(`[Blacklist] Song contains keyword "${blacklistedKeyword.term}" - rejecting "${videoDetails.title}"`));
-           sendChatMessage(`@${request.requester}, sorry, your request for "${videoDetails.title}" could not be added due to a blacklisted keyword.`);
-          return;
+        const blacklistedKeyword = blacklist.find(item =>
+            item.type === 'keyword' &&
+            (songTitle.includes(item.term.toLowerCase()) || artistName.includes(item.term.toLowerCase()))
+        );
+        if (blacklistedKeyword) {
+            console.log(chalk.yellow(`[Blacklist] Song contains keyword "${blacklistedKeyword.term}" - rejecting "${videoDetails.title}"`));
+             sendChatMessage(`@${request.requester}, sorry, your request for "${videoDetails.title}" could not be added due to a blacklisted keyword.`);
+            return;
+        }
       }
 
       // Create song request object
@@ -1237,7 +1248,7 @@ io.on('connection', (socket) => {
             ...song,
             id: Date.now().toString(), // Generate a new ID
             timestamp: new Date().toISOString(), // Update timestamp to now
-            requestType: song.requestType || 'manual_admin', // Keep original request type or default
+            requestType: song.requestType,
             source: 'history_requeue'
         };
 

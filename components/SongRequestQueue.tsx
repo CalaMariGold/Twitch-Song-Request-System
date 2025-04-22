@@ -362,11 +362,6 @@ function SongList({ songs }: { songs: SongRequest[] }) {
                     Points
                   </Badge>
                 )}
-                {song.requestType === 'manual_admin' && (
-                  <Badge variant="outline" className="px-1.5 py-0.5 text-xs bg-blue-800 text-blue-200 border-blue-700">
-                    Manual
-                  </Badge>
-                )}
               </div>
             </div>
             <div className="flex space-x-1 flex-shrink-0">
