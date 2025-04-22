@@ -102,12 +102,6 @@ export default function PublicDashboard() {
     <main className="min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 flex flex-col items-center p-8">
       <AnimatedBackground />
       <div className="w-full max-w-6xl mx-auto relative z-10">
-        <div className="flex justify-end mb-4">
-          <Link href="/admin">
-            <Button variant="outline">Admin Panel</Button>
-          </Link>
-        </div>
-        
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
           {/* Main Content Area (3/4 width) */}
           <div className="md:col-span-3 space-y-6">

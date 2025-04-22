@@ -14,18 +14,39 @@ export function cn(...inputs: ClassValue[]) {
 /**
  * Format timestamp to a human-readable date/time
  * Uses Eastern Time (UTC-4) for display
+ * Shows "Today" instead of the date if the timestamp is from today
  */
 export function formatTimestamp(isoString?: string): string {
   if (!isoString) return 'N/A'
   try {
-    return new Date(isoString).toLocaleString('en-US', {
+    const date = new Date(isoString)
+    const now = new Date()
+    
+    // Format options for the time portion (hour:minute)
+    const timeOptions: Intl.DateTimeFormatOptions = {
       timeZone: 'America/New_York',
-      month: 'short',
-      day: 'numeric',
       hour: 'numeric',
       minute: '2-digit',
       hour12: true
-    })
+    }
+    
+    // Check if the date is today
+    const isToday = 
+      date.getFullYear() === now.getFullYear() && 
+      date.getMonth() === now.getMonth() && 
+      date.getDate() === now.getDate()
+    
+    if (isToday) {
+      // For today's date, just show "Today, HH:MM AM/PM"
+      return `Today, ${date.toLocaleString('en-US', timeOptions)}`
+    } else {
+      // For other dates, show the full date and time
+      return date.toLocaleString('en-US', {
+        ...timeOptions,
+        month: 'short',
+        day: 'numeric'
+      })
+    }
   } catch (e) {
     return 'Invalid Date'
   }

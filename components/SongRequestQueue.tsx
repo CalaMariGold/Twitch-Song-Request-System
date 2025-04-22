@@ -257,6 +257,11 @@ function ActiveSong({ song, isLoading }: { song: SongRequest | null, isLoading: 
           <div className="text-sm text-gray-400">
              <Clock className="inline-block mr-1 -mt-0.5" size={16} />
              {song.duration || '0:00'}
+             {song.timestamp && (
+               <div className="text-xs text-gray-500 mt-1">
+                 Started: {formatTimestamp(song.timestamp)}
+               </div>
+             )}
           </div>
 
           <div className="flex space-x-1">
@@ -349,6 +354,12 @@ function SongList({ songs }: { songs: SongRequest[] }) {
                 {song.source === 'database_history' && (
                   <span className="text-xs text-gray-500 ml-auto pl-2 whitespace-nowrap">
                     {formatTimestamp(song.timestamp)}
+                  </span>
+                )}
+                {/* Queue item timestamp display */}
+                {(song.source === 'database' || !song.source) && song.timestamp && (
+                  <span className="text-xs text-gray-500 ml-auto pl-2 whitespace-nowrap">
+                    Added: {formatTimestamp(song.timestamp)}
                   </span>
                 )}
                 {/* Request type badges */}

@@ -427,6 +427,16 @@ export default function AdminDashboard() {
     toast({ title: "Logged Out" })
   }
 
+  const handleRemoveFromHistory = (id: string) => {
+    if (!socket) return
+    const songToRemove = appState.history.find(song => song.id === id)
+    console.log(`Admin: Removing song ${id} from history`)
+    socket.emit('deleteHistoryItem', id)
+    if (songToRemove) {
+        toast({ title: "Song Removed from History", description: `Removed: ${songToRemove.title}` })
+    }
+  }
+
   // Calculate total queue duration
   const { formatted: totalQueueDurationFormatted } = calculateTotalQueueDuration(appState.queue)
 
@@ -578,6 +588,11 @@ export default function AdminDashboard() {
                         )}
                       </div>
                     </div>
+                    {appState.activeSong.timestamp && (
+                      <div className="text-xs text-gray-500">
+                        Started: {formatTimestamp(appState.activeSong.timestamp)}
+                      </div>
+                    )}
                      {/* Song Controls */}
                     <div className="flex justify-end space-x-1">
                         {/* Queue management controls */}
@@ -649,53 +664,60 @@ export default function AdminDashboard() {
                                   <Clock className="inline-block mr-1" size={12} />
                                   {formatDuration(song.durationSeconds) || '?:??'}
                                 </span>
-                                 <div className="text-xs text-gray-400 flex items-center gap-1">
-                                      by{' '}
-                                      <Avatar className="w-3 h-3 rounded-full inline-block">
-                                        <AvatarImage src={song.requesterAvatar} alt={song.requester} />
-                                        <AvatarFallback className="text-[8px]">{song.requester.slice(0,1)}</AvatarFallback>
-                                      </Avatar>
-                                      <Link href={`https://www.twitch.tv/${song.requesterLogin || song.requester.toLowerCase()}`} target="_blank" rel="noopener noreferrer" className="hover:text-gray-300 underline transition-colors">
-                                        {song.requester}
-                                      </Link>
-                                    </div>
-                                    {/* Consistent Badge Styles */}
-                                    {song.requestType === 'donation' && (
-                                      <Badge variant="secondary" className="px-1.5 py-0.5 text-xs bg-green-800 text-green-200 border-green-700">
-                                        Dono
-                                      </Badge>
-                                    )}
-                                    {song.requestType === 'channelPoint' && (
-                                      <Badge variant="outline" className="px-1.5 py-0.5 text-xs bg-purple-800 text-purple-200 border-purple-700">
-                                        Points
-                                      </Badge>
-                                    )}
+                                <div className="text-xs text-gray-400 flex items-center gap-1">
+                                  by{' '}
+                                  <Avatar className="w-3 h-3 rounded-full inline-block">
+                                    <AvatarImage src={song.requesterAvatar} alt={song.requester} />
+                                    <AvatarFallback className="text-[8px]">{song.requester.slice(0,1)}</AvatarFallback>
+                                  </Avatar>
+                                  <Link href={`https://www.twitch.tv/${song.requesterLogin || song.requester.toLowerCase()}`} target="_blank" rel="noopener noreferrer" className="hover:text-gray-300 underline transition-colors">
+                                    {song.requester}
+                                  </Link>
+                                </div>
+                                {/* Request type badges */}
+                                {song.requestType === 'donation' && (
+                                  <Badge variant="secondary" className="px-1.5 py-0.5 text-xs bg-green-800 text-green-200 border-green-700">
+                                    Dono
+                                  </Badge>
+                                )}
+                                {song.requestType === 'channelPoint' && (
+                                  <Badge variant="outline" className="px-1.5 py-0.5 text-xs bg-purple-800 text-purple-200 border-purple-700">
+                                    Points
+                                  </Badge>
+                                )}
                                </div>
                             </div>
-                            <div className="flex-shrink-0 space-x-1 flex">
-                               <Button variant="ghost" size="sm" className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => handleMoveUp(song.id)}>
-                                    <ChevronUp className="h-4 w-4 text-gray-400 hover:text-white" />
-                               </Button>
-                                <Button variant="ghost" size="sm" className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => handleMoveDown(song.id)}>
-                                    <ChevronDown className="h-4 w-4 text-gray-400 hover:text-white" />
-                                </Button>
-                                <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handlePlaySong(song)}>
-                                    <Play className="h-4 w-4 text-green-500 hover:text-green-400" />
-                                </Button>
-                                <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handleRemoveSong(song.id)}>
-                                  <Trash2 className="h-4 w-4 text-red-500 hover:text-red-400" />
-                                </Button>
-                                <a href={song.youtubeUrl} target="_blank" rel="noopener noreferrer" aria-label="Watch on YouTube">
-                                     <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                                       <Youtube className="h-4 w-4 text-red-600 hover:text-red-500" />
-                                     </Button>
-                                </a>
-                                {song.spotify && (
-                                  <a href={song.spotify.externalUrl} target="_blank" rel="noopener noreferrer" aria-label="Listen on Spotify">
-                                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                                      <SpotifyIcon className="h-4 w-4 text-green-500 hover:text-green-400" />
-                                    </Button>
+                            <div className="flex-shrink-0 flex flex-col items-end">
+                               <div className="flex space-x-1">
+                                 <Button variant="ghost" size="sm" className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => handleMoveUp(song.id)}>
+                                      <ChevronUp className="h-4 w-4 text-gray-400 hover:text-white" />
+                                 </Button>
+                                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => handleMoveDown(song.id)}>
+                                      <ChevronDown className="h-4 w-4 text-gray-400 hover:text-white" />
+                                  </Button>
+                                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handlePlaySong(song)}>
+                                      <Play className="h-4 w-4 text-green-500 hover:text-green-400" />
+                                  </Button>
+                                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handleRemoveSong(song.id)}>
+                                    <Trash2 className="h-4 w-4 text-red-500 hover:text-red-400" />
+                                  </Button>
+                                  <a href={song.youtubeUrl} target="_blank" rel="noopener noreferrer" aria-label="Watch on YouTube">
+                                       <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                                         <Youtube className="h-4 w-4 text-red-600 hover:text-red-500" />
+                                       </Button>
                                   </a>
+                                  {song.spotify && (
+                                    <a href={song.spotify.externalUrl} target="_blank" rel="noopener noreferrer" aria-label="Listen on Spotify">
+                                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                                        <SpotifyIcon className="h-4 w-4 text-green-500 hover:text-green-400" />
+                                      </Button>
+                                    </a>
+                                  )}
+                                </div>
+                                {song.timestamp && (
+                                  <span className="text-xs text-gray-500 mt-1">
+                                    Added: {formatTimestamp(song.timestamp)}
+                                  </span>
                                 )}
                             </div>
                           </li>
@@ -724,8 +746,11 @@ export default function AdminDashboard() {
                        <div className="flex items-center justify-center h-full"><Loader2 className="w-8 h-8 animate-spin text-gray-400" /></div>
                     ) : appState.history.length > 0 ? (
                       <ul className="space-y-2">
-                        {appState.history.map((song) => (
+                        {appState.history.map((song, index) => (
                            <li key={song.id} className="flex items-center space-x-3 p-3 rounded-md bg-gray-800 hover:bg-gray-700/80 transition mb-2 group">
+                             <div className="flex-shrink-0 font-semibold text-gray-400 w-6 text-center">
+                               {index + 1}.
+                             </div>
                              <div className="relative w-16 h-9 rounded-md overflow-hidden flex-shrink-0">
                               {song.thumbnailUrl ? (
                                 <img 
@@ -767,34 +792,44 @@ export default function AdminDashboard() {
                                       {song.requester}
                                     </Link>
                                   </div>
-                                   {/* Consistent Badge Styles */}
-                                    {song.requestType === 'donation' && (
-                                      <Badge variant="secondary" className="px-1.5 py-0.5 text-xs bg-green-800 text-green-200 border-green-700">
-                                        Dono
-                                      </Badge>
-                                    )}
-                                    {song.requestType === 'channelPoint' && (
-                                      <Badge variant="outline" className="px-1.5 py-0.5 text-xs bg-purple-800 text-purple-200 border-purple-700">
-                                        Points
-                                      </Badge>
-                                    )}
-                               </div>
+                                   {/* Request type badges */}
+                                   {song.requestType === 'donation' && (
+                                     <Badge variant="secondary" className="px-1.5 py-0.5 text-xs bg-green-800 text-green-200 border-green-700">
+                                       Dono
+                                     </Badge>
+                                   )}
+                                   {song.requestType === 'channelPoint' && (
+                                     <Badge variant="outline" className="px-1.5 py-0.5 text-xs bg-purple-800 text-purple-200 border-purple-700">
+                                       Points
+                                     </Badge>
+                                   )}
+                                </div>
                             </div>
-                            <div className="flex-shrink-0 space-x-1 flex">
-                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handleReturnToQueue(song)}>
-                                <Play className="h-4 w-4 text-green-500 hover:text-green-400" />
-                              </Button>
-                              <a href={song.youtubeUrl} target="_blank" rel="noopener noreferrer" aria-label="Watch on YouTube">
-                                <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                                  <Youtube className="h-4 w-4 text-red-600 hover:text-red-500" />
+                            <div className="flex-shrink-0 flex flex-col items-end">
+                              <div className="flex space-x-1">
+                                <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handleReturnToQueue(song)}>
+                                  <Play className="h-4 w-4 text-green-500 hover:text-green-400" />
                                 </Button>
-                              </a>
-                              {song.spotify && (
-                                <a href={song.spotify.externalUrl} target="_blank" rel="noopener noreferrer" aria-label="Listen on Spotify">
+                                <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handleRemoveFromHistory(song.id)}>
+                                  <Trash2 className="h-4 w-4 text-red-500 hover:text-red-400" />
+                                </Button>
+                                <a href={song.youtubeUrl} target="_blank" rel="noopener noreferrer" aria-label="Watch on YouTube">
                                   <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                                    <SpotifyIcon className="h-4 w-4 text-green-500 hover:text-green-400" />
+                                    <Youtube className="h-4 w-4 text-red-600 hover:text-red-500" />
                                   </Button>
                                 </a>
+                                {song.spotify && (
+                                  <a href={song.spotify.externalUrl} target="_blank" rel="noopener noreferrer" aria-label="Listen on Spotify">
+                                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                                      <SpotifyIcon className="h-4 w-4 text-green-500 hover:text-green-400" />
+                                    </Button>
+                                  </a>
+                                )}
+                              </div>
+                              {song.timestamp && (
+                                <span className="text-xs text-gray-500 mt-1">
+                                  Completed: {formatTimestamp(song.timestamp)}
+                                </span>
                               )}
                             </div>
                           </li>

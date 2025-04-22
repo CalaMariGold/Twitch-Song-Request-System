@@ -1,7 +1,9 @@
 import { config } from './config'
 
 // List of Twitch usernames that have admin access
-export const ADMIN_USERNAMES = ['CalaMariGold', 'calamarigold'] // Include both capitalization variants
+export const ADMIN_USERNAMES = process.env.ADMIN_USERNAMES 
+  ? process.env.ADMIN_USERNAMES.split(',').map(name => name.trim()) 
+  : []
 
 export interface TwitchUser {
   id: string

@@ -11,11 +11,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { LogIn, AlertCircle, Shield, LogOut, Settings, Music2, Home, ChevronDown } from "lucide-react"
+import { LogIn, AlertCircle, Shield, LogOut, Settings, Music2, Home, ChevronDown, User } from "lucide-react"
 import { getTwitchAuthUrl } from "@/lib/auth"
 import { ConnectionStatus } from "@/components/ConnectionStatus"
 import { useEffect, useState } from "react"
-import { useSearchParams } from 'next/navigation'
+import { useSearchParams, usePathname } from 'next/navigation'
 import Link from 'next/link'
 
 interface HeaderProps {
@@ -24,7 +24,9 @@ interface HeaderProps {
 
 const ERROR_MESSAGES = {
   missing_code: "Authentication failed: Missing authorization code",
-  auth_failed: "Authentication failed: Please try again"
+  auth_failed: "Authentication failed: Please try again",
+  auth_required: "Authentication required: Please log in",
+  not_admin: "Access denied: You don't have admin privileges"
 }
 
 interface TwitchUser {
@@ -39,6 +41,8 @@ export function Header({ isConnected }: HeaderProps) {
   const [user, setUser] = useState<TwitchUser | null>(null)
   const [error, setError] = useState<string | null>(null)
   const searchParams = useSearchParams()
+  const pathname = usePathname()
+  const isAdminPage = pathname?.includes('/admin')
 
   const readUserFromCookie = () => {
     const cookies = document.cookie.split(';').reduce((acc, cookie) => {
@@ -104,10 +108,10 @@ export function Header({ isConnected }: HeaderProps) {
             <div className="flex items-center gap-3">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" className="flex items-center gap-2 hover:bg-gray-800/50 transition-colors">
+                  <Button variant="ghost" className="flex items-center gap-2 hover:bg-gray-700/50 transition-colors rounded-full pr-2 pl-3">
                     <div className="flex items-center gap-3">
-                      <span className="text-sm text-gray-300">{user.display_name}</span>
-                      <Avatar className="h-10 w-10 ring-2 ring-purple-500/20">
+                      <span className="text-sm text-gray-200 font-medium">{user.display_name}</span>
+                      <Avatar className="h-8 w-8 ring-2 ring-purple-500/20">
                         <AvatarImage src={user.profile_image_url} alt={user.display_name} />
                         <AvatarFallback>{user.display_name.slice(0, 2).toUpperCase()}</AvatarFallback>
                       </Avatar>
@@ -115,34 +119,49 @@ export function Header({ isConnected }: HeaderProps) {
                     </div>
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent className="w-56" align="end">
-                  <DropdownMenuLabel>
+                <DropdownMenuContent className="w-60 bg-gray-800 border-gray-700 text-white" align="end">
+                  <div className="flex items-start gap-3 p-3">
+                    <Avatar className="h-10 w-10 ring-2 ring-purple-500/20">
+                      <AvatarImage src={user.profile_image_url} alt={user.display_name} />
+                      <AvatarFallback>{user.display_name.slice(0, 2).toUpperCase()}</AvatarFallback>
+                    </Avatar>
                     <div className="flex flex-col">
-                      <span>{user.display_name}</span>
+                      <span className="font-medium">{user.display_name}</span>
+                      <span className="text-xs text-gray-400">@{user.login}</span>
                       {user.isAdmin && (
-                        <span className="text-xs text-purple-400 flex items-center gap-1">
+                        <span className="text-xs text-purple-400 flex items-center gap-1 mt-1">
                           <Shield size={12} />
                           Admin
                         </span>
                       )}
                     </div>
-                  </DropdownMenuLabel>
-                  <DropdownMenuSeparator />
+                  </div>
+                  <DropdownMenuSeparator className="bg-gray-700" />
                   <Link href="/">
-                    <DropdownMenuItem className="cursor-pointer">
+                    <DropdownMenuItem className="cursor-pointer hover:bg-gray-700 focus:bg-gray-700">
                       <Home className="mr-2 h-4 w-4" />
                       <span>Home</span>
                     </DropdownMenuItem>
                   </Link>
+                  <Link href={`https://twitch.tv/${user.login}`} target="_blank">
+                    <DropdownMenuItem className="cursor-pointer hover:bg-gray-700 focus:bg-gray-700">
+                      <User className="mr-2 h-4 w-4" />
+                      <span>View Twitch Profile</span>
+                    </DropdownMenuItem>
+                  </Link>
                   {user.isAdmin && (
                     <Link href="/admin">
-                      <DropdownMenuItem className="cursor-pointer">
-                        <Settings className="mr-2 h-4 w-4" />
-                        <span>Admin Panel</span>
+                      <DropdownMenuItem className="cursor-pointer hover:bg-gray-700 focus:bg-gray-700">
+                        <Shield className="mr-2 h-4 w-4" />
+                        <span>Admin Dashboard</span>
                       </DropdownMenuItem>
                     </Link>
                   )}
-                  <DropdownMenuItem className="cursor-pointer text-red-500" onClick={handleLogout}>
+                  <DropdownMenuSeparator className="bg-gray-700" />
+                  <DropdownMenuItem 
+                    className="cursor-pointer text-red-400 hover:bg-red-900/50 focus:bg-red-900/50 focus:text-red-300 hover:text-red-300" 
+                    onClick={handleLogout}
+                  >
                     <LogOut className="mr-2 h-4 w-4" />
                     <span>Log Out</span>
                   </DropdownMenuItem>
