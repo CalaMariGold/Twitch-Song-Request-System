@@ -8,6 +8,7 @@ const tmi = require('tmi.js')
 const crypto = require('crypto')
 const url = require('url')
 const ioClient = require('socket.io-client')
+const chalk = require('chalk')
 require('dotenv').config()
 
 const SOCKET_PORT = 3002
@@ -40,14 +41,14 @@ const SE_ACCOUNT_ID = process.env.STREAMELEMENTS_ACCOUNT_ID;
 const SE_WEBHOOK_SECRET = process.env.STREAMELEMENTS_WEBHOOK_SECRET;
 
 if (!SE_JWT_TOKEN || !SE_ACCOUNT_ID) {
-  console.warn('StreamElements configuration (JWT token, account ID) are missing in .env file. StreamElements donations disabled.');
+  console.warn(chalk.yellow('StreamElements configuration (JWT token, account ID) are missing in .env file. StreamElements donations disabled.'));
 }
 
 if (!TWITCH_BOT_USERNAME || !TWITCH_BOT_OAUTH_TOKEN || !TWITCH_CHANNEL_NAME) {
-  console.error('Twitch bot credentials (username, token, channel) are missing in .env file. Chat features disabled.');
+  console.error(chalk.red('Twitch bot credentials (username, token, channel) are missing in .env file. Chat features disabled.'));
 }
 if (!EVENTSUB_SECRET || !CALLBACK_URL) {
-    console.error('EVENTSUB_SECRET or CALLBACK_URL not configured in .env. EventSub disabled.');
+    console.error(chalk.red('EVENTSUB_SECRET or CALLBACK_URL not configured in .env. EventSub disabled.'));
 }
 
 const tmiOpts = {
@@ -69,15 +70,17 @@ if (TWITCH_BOT_USERNAME && TWITCH_BOT_OAUTH_TOKEN && TWITCH_CHANNEL_NAME) {
   });
 
   tmiClient.on('connected', (addr, port) => {
-    console.log(`* Connected to Twitch chat (${addr}:${port}) in channel #${TWITCH_CHANNEL_NAME}`);
+    console.log(chalk.green(`✅ [Twitch Chat] Connected (${addr}:${port}) in channel #${TWITCH_CHANNEL_NAME}`));
+    // Send startup message for the streamer
+    sendChatMessage(`✅ Song Request Bot connected to channel ${TWITCH_CHANNEL_NAME}.`);
   });
 
   tmiClient.on('disconnected', (reason) => {
-    console.log(`* Disconnected from Twitch chat: ${reason}`);
+    console.log(chalk.yellow(`* [Twitch Chat] Disconnected: ${reason}`));
     // Optionally attempt to reconnect
   });
 
-  tmiClient.connect().catch(console.error);
+  tmiClient.connect().catch(err => console.error(chalk.red('[Twitch Chat] Connection error:'), err));
 }
 
 // Function to send a message to Twitch chat
@@ -85,13 +88,12 @@ function sendChatMessage(message) {
   if (tmiClient && tmiClient.readyState() === 'OPEN') {
     tmiClient.say(TWITCH_CHANNEL_NAME, message)
       .then(() => {
-        console.log(`[Twitch Chat] Sent: "${message}"`);
       })
       .catch((err) => {
-        console.error(`[Twitch Chat] Error sending message: ${err}`);
+        console.error(chalk.red(`[Twitch Chat] Error sending message: ${err}`));
       });
   } else {
-    console.warn('[Twitch Chat] Could not send message, client not connected or configured.');
+    console.warn(chalk.yellow('[Twitch Chat] Could not send message, client not connected or configured.'));
   }
 }
 
@@ -101,7 +103,6 @@ async function getTwitchAppAccessToken() {
     return twitchAppAccessToken;
   }
 
-  console.log('Fetching new Twitch App Access Token...');
   const tokenUrl = `https://id.twitch.tv/oauth2/token?client_id=${TWITCH_CLIENT_ID}&client_secret=${TWITCH_CLIENT_SECRET}&grant_type=client_credentials`;
 
   try {
@@ -113,10 +114,10 @@ async function getTwitchAppAccessToken() {
     twitchAppAccessToken = data.access_token;
     // Set expiry a bit earlier than actual expiry for safety
     twitchTokenExpiry = Date.now() + (data.expires_in - 300) * 1000;
-    console.log('Successfully fetched new Twitch App Access Token.');
+    console.log(chalk.green('✅ [Auth] Successfully fetched new Twitch App Access Token.'));
     return twitchAppAccessToken;
   } catch (error) {
-    console.error('Error fetching Twitch App Access Token:', error);
+    console.error(chalk.red('[Auth] Error fetching Twitch App Access Token:'), error);
     twitchAppAccessToken = null; // Reset token on error
     twitchTokenExpiry = null;
     throw error; // Re-throw error to indicate failure
@@ -126,11 +127,11 @@ async function getTwitchAppAccessToken() {
 // Function to get Twitch User Profile
 async function getTwitchUser(username) {
   if (!username) {
-    console.warn('getTwitchUser called with no username.');
+    console.warn(chalk.yellow('[Twitch API] getTwitchUser called with no username.'));
     return null; // Return null if no username provided
   }
   if (!TWITCH_CLIENT_ID || !TWITCH_CLIENT_SECRET) {
-    console.error('Twitch Client ID or Secret not configured in .env');
+    console.error(chalk.red('[Twitch API] Client ID or Secret not configured in .env'));
     return null;
   }
 
@@ -150,7 +151,7 @@ async function getTwitchUser(username) {
 
     if (!response.ok) {
         if (response.status === 401) { // Token might have expired prematurely
-            console.warn('Twitch API returned 401, attempting to refresh token...');
+            console.warn(chalk.yellow('[Twitch API] Returned 401, attempting to refresh app token...'));
             twitchAppAccessToken = null; // Force token refresh
             const newAccessToken = await getTwitchAppAccessToken();
             if (!newAccessToken) throw new Error('Failed to refresh Twitch token.');
@@ -175,7 +176,7 @@ async function getTwitchUser(username) {
     // Return the first user found, or null if no user matches
     return data.data && data.data.length > 0 ? data.data[0] : null;
   } catch (error) {
-    console.error(`Error fetching Twitch user profile for ${username}:`, error);
+    console.error(chalk.red(`[Twitch API] Error fetching user profile for ${username}:`), error);
     return null; // Return null on error
   }
 }
@@ -186,22 +187,20 @@ async function getBroadcasterId() {
         return twitchBroadcasterId;
     }
     if (!TWITCH_CHANNEL_NAME) {
-        console.error("Cannot get Broadcaster ID: TWITCH_CHANNEL_NAME not set in .env");
+        console.error(chalk.red("[Twitch API] Cannot get Broadcaster ID: TWITCH_CHANNEL_NAME not set in .env"));
         return null;
     }
-    console.log(`Fetching Broadcaster ID for channel: ${TWITCH_CHANNEL_NAME}...`);
     try {
         const user = await getTwitchUser(TWITCH_CHANNEL_NAME);
         if (user && user.id) {
             twitchBroadcasterId = user.id;
-            console.log(`Found Broadcaster ID: ${twitchBroadcasterId}`);
             return twitchBroadcasterId;
         } else {
-            console.error(`Could not find Twitch user for channel: ${TWITCH_CHANNEL_NAME}`);
+            console.error(chalk.red(`[Twitch API] Could not find Twitch user for channel: ${TWITCH_CHANNEL_NAME}`));
             return null;
         }
     } catch (error) {
-        console.error("Error fetching broadcaster ID:", error);
+        console.error(chalk.red("[Twitch API] Error fetching broadcaster ID:"), error);
         return null;
     }
 }
@@ -231,13 +230,13 @@ async function loadHistory() {
   try {
     const data = await readFile(historyFilePath, 'utf-8');
     state.history = JSON.parse(data);
-    console.log(`Loaded ${state.history.length} items from history file.`);
+    console.log(chalk.blue(`[History] Loaded ${state.history.length} items from ${path.basename(historyFilePath)}`));
   } catch (error) {
     if (error.code === 'ENOENT') {
-      console.log('History file not found, starting with empty history.');
+      console.log(chalk.yellow(`[History] File not found (${path.basename(historyFilePath)}), starting empty.`));
       state.history = [];
     } else {
-      console.error('Error loading history file:', error);
+      console.error(chalk.red('[History] Error loading file:'), error);
       state.history = []; // Start with empty history on error
     }
   }
@@ -245,22 +244,19 @@ async function loadHistory() {
 
 // Function to save history to file
 async function saveHistory() {
-  console.log(`[Server] Entering saveHistory function. History length: ${state.history.length}`); // Log entry
   try {
     await writeFile(historyFilePath, JSON.stringify(state.history, null, 2), 'utf-8');
-    console.log(`Saved ${state.history.length} items to history file.`);
   } catch (error) {
-    console.error('Error saving history file:', error);
+    console.error(chalk.red('[History] Error saving file:'), error);
   }
 }
 
 // --- NEW Function: Validate and Add Song ---
 async function validateAndAddSong(request) {
-  console.log('Validating and adding song request:', request);
 
   // Validate essential request data
   if (!request || !request.youtubeUrl || !request.requester || !request.requestType) {
-      console.error('Invalid request object received (missing url, requester, or requestType):', request);
+      console.error(chalk.red('[Queue] Invalid request object received (missing url, requester, or requestType):'), request);
       // Optionally send a generic error message if possible, though requester might be unknown
       return;
   }
@@ -269,7 +265,7 @@ async function validateAndAddSong(request) {
   const blockedUsers = state.blockedUsers || [];
   const isBlocked = blockedUsers.some(user => user.username.toLowerCase() === request.requester.toLowerCase());
   if (isBlocked) {
-      console.log(`Request from blocked user ${request.requester} - rejecting`);
+      console.log(chalk.yellow(`[Queue] Request from blocked user ${request.requester} - rejecting`));
       sendChatMessage(`@${request.requester}, you are currently blocked from making song requests.`);
       return; // Stop processing
   }
@@ -278,7 +274,7 @@ async function validateAndAddSong(request) {
   if (request.requestType === 'channelPoint') {
     const existingRequest = state.queue.find(song => song.requester.toLowerCase() === request.requester.toLowerCase());
     if (existingRequest) {
-      console.log(`User ${request.requester} already has a song in the queue - rejecting channel point request`);
+      console.log(chalk.yellow(`[Queue] User ${request.requester} already has a song in the queue - rejecting channel point request`));
       sendChatMessage(`@${request.requester}, you already have a song in the queue. Please wait for it to play.`);
       return; // Stop processing
     }
@@ -294,21 +290,19 @@ async function validateAndAddSong(request) {
       if (twitchProfile) {
           if (twitchProfile.profile_image_url) {
               requesterAvatar = twitchProfile.profile_image_url;
-              console.log(`Fetched Twitch avatar for ${request.requester}: ${requesterAvatar}`);
           } else {
-              console.warn(`Could not find Twitch avatar for ${request.requester}. Using placeholder.`);
+              console.warn(chalk.yellow(`[Twitch API] Could not find Twitch avatar for ${request.requester}. Using placeholder.`));
           }
           if (twitchProfile.login) {
               requesterLogin = twitchProfile.login;
-              console.log(`Fetched Twitch login for ${request.requester}: ${requesterLogin}`);
           } else {
-              console.warn(`Could not find Twitch login name for ${request.requester}. Using default.`);
+              console.warn(chalk.yellow(`[Twitch API] Could not find Twitch login name for ${request.requester}. Using default.`));
           }
       } else {
-          console.warn(`Could not find Twitch profile for ${request.requester}. Using placeholders.`);
+          console.warn(chalk.yellow(`[Twitch API] Could not find Twitch profile for ${request.requester}. Using placeholders.`));
       }
   } catch (twitchError) {
-      console.error(`Error fetching Twitch profile for ${request.requester}:`, twitchError);
+      console.error(chalk.red(`[Twitch API] Error fetching Twitch profile for ${request.requester}:`), twitchError);
       // Keep default placeholders on error
   }
   // --- END TWITCH FETCH ---
@@ -316,13 +310,12 @@ async function validateAndAddSong(request) {
   // Extract video ID
   const videoId = extractVideoId(request.youtubeUrl);
   if (!videoId) {
-      console.error('Invalid or missing YouTube URL:', request.youtubeUrl);
+      console.error(chalk.red('[Queue] Invalid or missing YouTube URL:'), request.youtubeUrl);
       if (request.source !== 'eventsub') {
            sendChatMessage(`@${request.requester}, the YouTube link you provided seems invalid or wasn't found in your message.`);
       }
       return;
   }
-  console.log('Extracted video ID:', videoId);
 
   // Fetch video details
   try {
@@ -334,12 +327,12 @@ async function validateAndAddSong(request) {
       const MAX_DONATION_DURATION_SECONDS = 600; // 10 minutes
 
       if (request.requestType === 'channelPoint' && videoDetails.durationSeconds > MAX_CHANNEL_POINT_DURATION_SECONDS) {
-          console.log(`Channel Point request duration (${videoDetails.durationSeconds}s) exceeds limit (${MAX_CHANNEL_POINT_DURATION_SECONDS}s) - rejecting`);
+          console.log(chalk.yellow(`[Queue] Channel Point request duration (${videoDetails.durationSeconds}s) exceeds limit (${MAX_CHANNEL_POINT_DURATION_SECONDS}s) - rejecting "${videoDetails.title}"`));
           sendChatMessage(`@${request.requester} Sorry, channel point songs cannot be longer than 5 minutes. Donate for priority and up to 10 minute songs.`);
           return; // Stop processing this request
       }
       if (request.requestType === 'donation' && videoDetails.durationSeconds > MAX_DONATION_DURATION_SECONDS) {
-          console.log(`Donation request duration (${videoDetails.durationSeconds}s) exceeds limit (${MAX_DONATION_DURATION_SECONDS}s) - rejecting`);
+          console.log(chalk.yellow(`[Queue] Donation request duration (${videoDetails.durationSeconds}s) exceeds limit (${MAX_DONATION_DURATION_SECONDS}s) - rejecting "${videoDetails.title}"`));
           sendChatMessage(`@${request.requester} Sorry, donation songs cannot be longer than 10 minutes.`);
           return; // Stop processing this request
       }
@@ -354,7 +347,7 @@ async function validateAndAddSong(request) {
           item.type === 'song' && songTitle.includes(item.term.toLowerCase())
       );
       if (blacklistedSong) {
-          console.log(`Song "${videoDetails.title}" contains blacklisted term "${blacklistedSong.term}" - rejecting`);
+          console.log(chalk.yellow(`[Blacklist] Song "${videoDetails.title}" contains term "${blacklistedSong.term}" - rejecting`));
           sendChatMessage(`@${request.requester}, sorry, the song "${videoDetails.title}" is currently blacklisted.`);
           return;
       }
@@ -363,7 +356,7 @@ async function validateAndAddSong(request) {
           item.type === 'artist' && artistName.includes(item.term.toLowerCase())
       );
       if (blacklistedArtist) {
-          console.log(`Artist "${videoDetails.channelTitle}" contains blacklisted term "${blacklistedArtist.term}" - rejecting`);
+          console.log(chalk.yellow(`[Blacklist] Artist "${videoDetails.channelTitle}" contains term "${blacklistedArtist.term}" - rejecting`));
            sendChatMessage(`@${request.requester}, sorry, songs by "${videoDetails.channelTitle}" are currently blacklisted.`);
           return;
       }
@@ -373,7 +366,7 @@ async function validateAndAddSong(request) {
           (songTitle.includes(item.term.toLowerCase()) || artistName.includes(item.term.toLowerCase()))
       );
       if (blacklistedKeyword) {
-          console.log(`Song contains blacklisted keyword "${blacklistedKeyword.term}" - rejecting`);
+          console.log(chalk.yellow(`[Blacklist] Song contains keyword "${blacklistedKeyword.term}" - rejecting "${videoDetails.title}"`));
            sendChatMessage(`@${request.requester}, sorry, your request for "${videoDetails.title}" could not be added due to a blacklisted keyword.`);
           return;
       }
@@ -398,11 +391,11 @@ async function validateAndAddSong(request) {
           donationInfo: request.requestType === 'donation' ? request.donationInfo : undefined
       };
 
-      console.log('Created song request object:', songRequest);
 
       // --- NEW: Queue Insertion Logic based on Request Type ---
       let insertIndex = state.queue.length; // Default to end
       let queuePosition = 0;
+      let messageType = songRequest.requestType === 'donation' ? 'Priority donation' : 'Channel point'; // Added for logging clarity
 
       if (songRequest.requestType === 'donation') {
           // Find the index of the first non-donation (channelPoint) request
@@ -412,10 +405,8 @@ async function validateAndAddSong(request) {
           } else {
               insertIndex = state.queue.length; // If no channel point requests, insert at the end (among donations)
           }
-          console.log(`Adding donation song ${songRequest.id} at index ${insertIndex}`);
       } else { // channelPoint
           insertIndex = state.queue.length; // Always add channel point requests to the end
-          console.log(`Adding channelPoint song ${songRequest.id} at index ${insertIndex}`);
       }
       
       // Insert the song
@@ -428,13 +419,18 @@ async function validateAndAddSong(request) {
       // Emit updates to all clients
       io.emit('newSongRequest', songRequest); // Keep this for potential UI feedback
       io.emit('queueUpdate', state.queue);
+      console.log(chalk.green(`[Queue] Added "${songRequest.title}". Type: ${messageType}. Requester: ${songRequest.requester}. Position: #${queuePosition}`)); // Added clearer log
 
-      console.log('Queue updated. Current queue length:', state.queue.length);
       // Optionally send a success message to chat
-      sendChatMessage(`@${request.requester} requested "${songRequest.title}". You're #${queuePosition} in the queue!`);
+      if (songRequest.requestType === 'donation' && songRequest.donationInfo) {
+          const { amount, currency } = songRequest.donationInfo;
+          sendChatMessage(`@${songRequest.requester} Thanks for the ${amount} ${currency} donation! Your priority request for "${songRequest.title}" is #${queuePosition} in the queue.`);
+      } else { // For channel points or other types
+          sendChatMessage(`@${songRequest.requester} requested "${songRequest.title}". You're #${queuePosition} in the queue!`);
+      }
 
   } catch (fetchError) {
-      console.error('Error fetching video details:', fetchError);
+      console.error(chalk.red('[YouTube] Error fetching video details:'), fetchError);
       sendChatMessage(`@${request.requester}, sorry, I couldn't fetch the details for that YouTube link.`);
   }
 }
@@ -442,7 +438,7 @@ async function validateAndAddSong(request) {
 
 // Socket.IO connection handling
 io.on('connection', (socket) => {
-    console.log('Client connected:', socket.id)
+    console.log(chalk.blue(`[Socket.IO] Client connected: ${socket.id}`))
     
     // Send initial state to newly connected client
     socket.emit('initialState', state)
@@ -456,17 +452,18 @@ io.on('connection', (socket) => {
 
     // Handle queue updates (mostly for admin drag/drop?)
     socket.on('updateQueue', (updatedQueue) => {
-        console.log('[Server] Received \'updateQueue\' (likely admin action)');
+        console.log(chalk.grey(`[Socket.IO] Received ${updatedQueue} event`));
         state.queue = updatedQueue
         socket.broadcast.emit('queueUpdate', state.queue) // Inform other clients
+        console.log(chalk.magenta('[Admin] Queue updated via socket.'));
     })
 
     // --- MODIFIED addSong Handler ---
     socket.on('addSong', async (songRequestData) => {
-        console.log('[Server] Received \'addSong\' event via socket:', songRequestData);
+        console.log(chalk.grey(`[Socket.IO] Received ${songRequestData} event`));
         // Ensure the incoming data has necessary fields before validating
         if (!songRequestData || !songRequestData.youtubeUrl || !songRequestData.requester) {
-             console.error('Received invalid song request data via socket:', songRequestData);
+             console.error(chalk.red('[Socket.IO] Received invalid song request data via socket:'), songRequestData);
              // Cannot easily notify user as this might be an admin action without a clear target
              return;
         }
@@ -479,23 +476,27 @@ io.on('connection', (socket) => {
     socket.on('removeSong', (songId) => {
         state.queue = state.queue.filter(song => song.id !== songId)
         io.emit('queueUpdate', state.queue)
+        console.log(chalk.magenta(`[Admin] Song removed via socket: ${songId}`));
     })
 
     // Handle clear queue
     socket.on('clearQueue', () => {
         state.queue = []
         io.emit('queueUpdate', state.queue)
+        console.log(chalk.magenta('[Admin] Queue cleared via socket.'));
     })
 
     // Handle playback controls
     socket.on('pausePlaying', () => {
         // Emit pause event to clients
         io.emit('playerControl', { action: 'pause' })
+        console.log(chalk.magenta('[Admin] Playback paused via socket.'));
     })
 
     socket.on('resumePlaying', () => {
         // Emit resume event to clients
         io.emit('playerControl', { action: 'resume' })
+        console.log(chalk.magenta('[Admin] Playback resumed via socket.'));
     })
 
     socket.on('resetSystem', async () => {
@@ -510,6 +511,7 @@ io.on('connection', (socket) => {
         io.emit('queueUpdate', state.queue)
         io.emit('nowPlaying', state.nowPlaying)
         io.emit('historyUpdate', state.history)
+        console.log(chalk.magenta('[Admin] System reset via socket.'));
     })
 
     // Handle settings
@@ -517,20 +519,19 @@ io.on('connection', (socket) => {
         state.settings = state.settings || {}
         state.settings.autoplay = enabled
         io.emit('settingsUpdate', state.settings)
+        console.log(chalk.magenta(`[Admin] Autoplay set to ${enabled} via socket.`));
     })
 
     socket.on('setMaxDuration', (minutes) => {
         state.settings = state.settings || {}
         state.settings.maxDuration = minutes
         io.emit('settingsUpdate', state.settings)
+        console.log(chalk.magenta(`[Admin] Max Duration set to ${minutes} mins via socket.`));
     })
 
     // Handle now playing updates
     socket.on('updateNowPlaying', async (song) => {
-        console.log(`[Server] Received 'updateNowPlaying' event. Incoming song:`, song ? song.id : 'null');
-        console.log(`[Server] State BEFORE update: nowPlaying=${state.nowPlaying?.id}, history[0]=${state.history[0]?.id}`);
-        
-        let historyUpdated = false; 
+        let historyUpdated = false;
         const previousSong = state.nowPlaying; // Store previous song
 
         if (song) {
@@ -538,34 +539,30 @@ io.on('connection', (socket) => {
             if (previousSong && (!state.history.length || state.history[0].id !== previousSong.id)) {
                  // *** Check for duplicates before adding ***
                  if (!state.history.some(historySong => historySong.id === previousSong.id)) {
-                     console.log(`[Server] Adding previous song ${previousSong.id} to history.`);
                      state.history.unshift(previousSong);
                      historyUpdated = true;
-                 } else {
-                    console.log(`[Server] Skipped adding previous song ${previousSong.id} to history (duplicate ID found).`);
                  }
             }
             state.nowPlaying = song
             state.queue = state.queue.filter(s => s.id !== song.id)
+            console.log(chalk.yellow(`[Player] Now Playing: "${song.title}" (ID: ${song.id})`)); // Clearer Now Playing Log
         } else {
             // Song finished or stopped
             if (previousSong && (!state.history.length || state.history[0].id !== previousSong.id)) {
                 // *** Check for duplicates before adding ***
                 if (!state.history.some(historySong => historySong.id === previousSong.id)) {
-                    console.log(`[Server] Adding finished song ${previousSong.id} to history.`);
                     state.history.unshift(previousSong);
                     historyUpdated = true;
-                } else {
-                    console.log(`[Server] Skipped adding finished song ${previousSong.id} to history (duplicate ID found).`);
                 }
+            }
+            if (previousSong) { // Only log if there *was* a song playing
+                console.log(chalk.yellow(`[Player] Playback stopped/finished for: "${previousSong.title}"`));
             }
             state.nowPlaying = null
         }
         
         // Save history if it was updated in this event
         if (historyUpdated) {
-          console.log(`[Server] historyUpdated is true. History length BEFORE save call: ${state.history.length}`);
-          console.log(`[Server] Calling saveHistory...`); 
           await saveHistory(); // Save whenever history changed
         }
 
@@ -573,8 +570,7 @@ io.on('connection', (socket) => {
         io.emit('nowPlaying', state.nowPlaying)
         io.emit('queueUpdate', state.queue)
         // Emit history update if it actually changed
-        if (historyUpdated) { 
-          console.log(`[Server] Emitting historyUpdate.`); 
+        if (historyUpdated) {
           io.emit('historyUpdate', state.history)
         }
     })
@@ -583,16 +579,18 @@ io.on('connection', (socket) => {
     socket.on('updateBlacklist', (blacklist) => {
         state.blacklist = blacklist
         io.emit('blacklistUpdate', state.blacklist)
+        console.log(chalk.magenta(`[Admin] Blacklist updated via socket (${blacklist.length} items).`));
     })
 
     // Handle blocked users
     socket.on('updateBlockedUsers', (blockedUsers) => {
         state.blockedUsers = blockedUsers
         io.emit('blockedUsersUpdate', state.blockedUsers)
+        console.log(chalk.magenta(`[Admin] Blocked users updated via socket (${blockedUsers.length} users).`));
     })
 
     socket.on('disconnect', () => {
-        console.log('Client disconnected:', socket.id)
+        console.log(chalk.blue(`[Socket.IO] Client disconnected: ${socket.id}`))
     })
 })
 
@@ -602,11 +600,10 @@ let seSocket = null;
 // Function to connect to StreamElements Socket API
 function connectToStreamElements() {
     if (!SE_JWT_TOKEN) {
-        console.warn('No StreamElements JWT token provided, skipping StreamElements connection');
+        console.warn(chalk.yellow('[StreamElements] JWT token missing, connection skipped.'));
         return;
     }
 
-    console.log('Connecting to StreamElements Socket API...');
     
     // Connect to StreamElements socket server
     seSocket = ioClient.connect('https://realtime.streamelements.com', {
@@ -615,8 +612,6 @@ function connectToStreamElements() {
 
     // Connection event handlers
     seSocket.on('connect', () => {
-        console.log('Successfully connected to StreamElements Socket API');
-        
         // Authenticate with JWT
         seSocket.emit('authenticate', {
             method: 'jwt',
@@ -625,27 +620,29 @@ function connectToStreamElements() {
     });
 
     seSocket.on('authenticated', () => {
-        console.log('Successfully authenticated with StreamElements');
+        console.log(chalk.green('✅ [StreamElements] Connected and Authenticated. Listening for donations.'));
     });
 
     // Handle connection errors
     seSocket.on('unauthorized', (reason) => {
-        console.error('StreamElements authentication failed:', reason);
+        console.error(chalk.red('[StreamElements] Authentication failed:'), reason);
+        // Optionally disconnect or handle differently
+        if(seSocket) seSocket.disconnect();
     });
 
     seSocket.on('disconnect', () => {
-        console.warn('Disconnected from StreamElements Socket API');
+        console.warn(chalk.yellow('[StreamElements] Disconnected. Will attempt reconnect...'));
         // Attempt to reconnect after a delay
         setTimeout(connectToStreamElements, 5000);
     });
 
     seSocket.on('connect_error', (error) => {
-        console.error('StreamElements connection error:', error);
+        console.error(chalk.red('[StreamElements] Connection error:'), error);
+        // Note: Reconnection attempts might happen automatically depending on socket.io-client config
     });
 
     // Listen for events (tips/donations)
     seSocket.on('event', async (event) => {
-        console.log('Received StreamElements event:', JSON.stringify(event, null, 2));
 
         // Check if it's a tip/donation event
         if (event.type === 'tip') {
@@ -656,14 +653,14 @@ function connectToStreamElements() {
                 const currency = event.data.currency || 'USD';
                 const message = event.data.message || '';
 
-                console.log(`Received donation from ${userName}: ${amount} ${currency} - Message: ${message}`);
+                console.log(chalk.magenta(`[StreamElements] Received donation: ${userName} - ${amount} ${currency} - Msg: "${message}"`));
                 
                 // Extract YouTube URL from donation message
                 const youtubeUrl = extractYouTubeUrlFromText(message);
 
                 // If no YouTube URL, thank them for the donation but don't process as song request
                 if (!youtubeUrl) {
-                    console.warn(`No YouTube URL found in donation message from ${userName}: "${message}"`);
+                    console.warn(chalk.yellow(`[StreamElements] No YouTube URL found in donation from ${userName}: "${message}"`));
                     sendChatMessage(`Thanks @${userName} for the ${amount} ${currency} donation!`);
                     return;
                 }
@@ -671,7 +668,7 @@ function connectToStreamElements() {
                 // Now that we found a YouTube link, check minimum donation amount ($3)
                 const MIN_DONATION_AMOUNT = 3;
                 if (amount < MIN_DONATION_AMOUNT) {
-                    console.log(`Donation with YouTube link from ${userName}, but amount (${amount} ${currency}) is below minimum required (${MIN_DONATION_AMOUNT} ${currency})`);
+                    console.log(chalk.yellow(`[StreamElements] Donation from ${userName} (${amount} ${currency}) below minimum (${MIN_DONATION_AMOUNT} ${currency}). Skipping request.`));
                     sendChatMessage(`Thanks @${userName} for the ${amount} ${currency} donation! Song requests require a minimum donation of ${MIN_DONATION_AMOUNT} ${currency}.`);
                     return;
                 }
@@ -690,11 +687,11 @@ function connectToStreamElements() {
                     source: 'streamelements'
                 };
 
-                console.log(`Processing StreamElements donation request from ${userName} for URL: ${youtubeUrl}`);
+                console.log(chalk.magenta(`[StreamElements] Processing donation request: ${userName} - ${youtubeUrl}`));
                 await validateAndAddSong(songRequest);
                 
             } catch (error) {
-                console.error('Error processing StreamElements donation:', error);
+                console.error(chalk.red('[StreamElements] Error processing donation:'), error);
             }
         }
     });
@@ -702,9 +699,9 @@ function connectToStreamElements() {
 
 // Function to gracefully shutdown and save state
 function shutdown(signal) {
-  console.log(`Received ${signal}. Shutting down server...`);
+  console.log(chalk.yellow(`Received ${signal}. Shutting down server...`));
   if (state.nowPlaying) {
-    console.log('Moving now playing song to history before shutdown:', state.nowPlaying.id);
+    console.log(chalk.yellow('Moving now playing song to history before shutdown:'), state.nowPlaying.id);
     // Avoid duplicates if shutdown signal comes right after updateNowPlaying(null)
     if (!state.history.length || state.history[0].id !== state.nowPlaying.id) {
        state.history.unshift(state.nowPlaying);
@@ -714,10 +711,10 @@ function shutdown(signal) {
   try {
       // Use synchronous write for shutdown handler
       writeFileSync(historyFilePath, JSON.stringify(state.history, null, 2), 'utf-8');
-      console.log('Final state saved successfully.');
+      console.log(chalk.green('[Server] State saved. Goodbye!'));
       process.exit(0);
   } catch(err) {
-      console.error('Error saving history during shutdown:', err);
+      console.error(chalk.red('[History] Error saving during shutdown:'), err);
       process.exit(1);
   }
 }
@@ -739,56 +736,60 @@ watch(queueDir, { persistent: true }, async (eventType, filename) => {
         // Optional: Could add logic to reload history if file is manually changed,
         // but be careful of loops if saveHistory triggers the watcher.
         // For now, we assume history is only changed by the server itself.
-        // console.log(`History file ${filename} changed.`); // Remove noisy log
     }
 })
 
-// Function to check Tailscale connectivity
-async function checkTailscaleConnectivity() {
-  try {
-    console.log(`Checking if Tailscale URL (${CALLBACK_URL}) is accessible...`);
-    // Check if the callback URL can be reached from the server
-    const response = await fetch(`${CALLBACK_URL}/health-check`, { 
-      method: 'GET',
-      timeout: 5000 // 5 second timeout
-    }).catch(err => {
-      console.error(`Fetch error: ${err.message}`);
-      return null;
-    });
-    
-    if (!response) {
-      console.warn(`❌ Tailscale connectivity check failed - no response from ${CALLBACK_URL}/health-check`);
-      console.warn(`  Make sure Tailscale is running and your machine is connected to the Tailscale network.`);
-      return false;
+// Function to check Tailscale connectivity with retries
+async function checkTailscaleConnectivity(retries = 3, delay = 2000) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      // Check if the callback URL can be reached from the server
+      const response = await fetch(`${CALLBACK_URL}/health-check`, {
+        method: 'GET',
+        timeout: 5000 // 5 second timeout
+      }).catch(err => {
+        console.error(`Fetch error (Attempt ${i + 1}/${retries}): ${err.message}`);
+        return null; // Treat fetch errors like connection failures for retry logic
+      });
+
+      if (response?.ok) {
+        console.log(chalk.green(`✅ [Tailscale] Connectivity check passed: ${CALLBACK_URL} is accessible.`));
+        return true; // Success, exit the loop and function
+      }
+
+      // Log failure reason for this attempt
+      if (!response) {
+        console.warn(chalk.red(`❌ [Tailscale] Connectivity check failed (Attempt ${i + 1}/${retries}) - no response from ${CALLBACK_URL}/health-check`));
+      } else {
+        console.warn(chalk.red(`❌ [Tailscale] Connectivity check failed (Attempt ${i + 1}/${retries}) - status: ${response.status} from ${CALLBACK_URL}/health-check`));
+      }
+
+      // If not the last attempt, wait before retrying
+      if (i < retries - 1) {
+        console.log(`Retrying in ${delay / 1000} seconds...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+
+    } catch (error) {
+      // Catch any other errors during the check attempt
+      console.error(`❌ [Tailscale] Connectivity check error (Attempt ${i + 1}/${retries}):`, error);
+      // If not the last attempt, wait before potentially retrying
+      if (i < retries - 1) {
+        console.log(`Retrying in ${delay / 1000} seconds...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
     }
-    
-    if (!response.ok) {
-      console.warn(`❌ Tailscale connectivity check failed - status: ${response.status}`);
-      return false;
-    }
-    
-    console.log(`✅ Tailscale connectivity check passed: ${CALLBACK_URL} is accessible!`);
-    return true;
-  } catch (error) {
-    console.error(`❌ Tailscale connectivity check error:`, error);
-    console.warn(`  Make sure Tailscale is running and your machine is connected to the Tailscale network.`);
-    return false;
   }
+
+  // If all retries failed
+  console.error(`❌ [Tailscale] Connectivity check failed after ${retries} attempts.`);
+  console.warn(`   Ensure Tailscale is running and ${CALLBACK_URL} is reachable.`);
+  return false;
 }
 
 // Start the server and load initial data
 async function startServer() {
   await loadHistory(); // Load history before starting watcher/server
-
-  // Check Tailscale connectivity
-  if (CALLBACK_URL && CALLBACK_URL.includes('.ts.net')) {
-    const tailscaleConnected = await checkTailscaleConnectivity();
-    if (!tailscaleConnected) {
-      console.warn(`⚠️ Tailscale connectivity issues detected. Twitch EventSub notifications may not work.`);
-      console.warn(`⚠️ Check that Tailscale is running and your machine is connected to the Tailscale network.`);
-      // Continue anyway to allow local development and testing
-    }
-  }
 
   // Try to load the broadcaster's user token
   await loadBroadcasterUserToken();
@@ -806,7 +807,6 @@ async function startServer() {
           console.error("CALLBACK_URL or EVENTSUB_SECRET missing in .env. Cannot create EventSub subscription.");
       } else {
         // Create subscription with App Token
-        console.log("Proceeding to create subscription with App Token...");
         await createEventSubSubscription(broadcasterId, targetRewardId);
       }
   } else {
@@ -818,10 +818,21 @@ async function startServer() {
 
   // Use the custom HTTP server for listening
   // Explicitly bind to 0.0.0.0 to allow access from all interfaces
-  customHttpServer.listen(SOCKET_PORT, '0.0.0.0', () => {
-      console.log(`HTTP/Socket.IO server running at http://0.0.0.0:${SOCKET_PORT}/`)
-      console.log(`EventSub expecting requests at ${CALLBACK_URL}/twitch/eventsub`);
-      console.log(`Watching directory: ${queueDir}`)
+  customHttpServer.listen(SOCKET_PORT, '0.0.0.0', async () => {
+      console.log(chalk.green(`🚀 Server running at http://0.0.0.0:${SOCKET_PORT}/`))
+      console.log(chalk.cyan(`   EventSub expecting requests at ${CALLBACK_URL}/twitch/eventsub`));
+      console.log(chalk.cyan(`   StreamElements expecting requests at ${CALLBACK_URL}/streamelements/webhook`)); // Added this line
+      console.log(chalk.blue("   Initializing subsystems..."));
+
+      // Check Tailscale connectivity AFTER server is listening
+      if (CALLBACK_URL && CALLBACK_URL.includes('.ts.net')) {
+        const tailscaleConnected = await checkTailscaleConnectivity(); // Retry logic is already built-in
+        if (!tailscaleConnected) {
+          // Log the warning if it fails after retries
+          console.warn(`⚠️ [Tailscale] Connectivity check FAILED after server start. Webhooks might not work.`);
+        }
+        // No need for explicit success message here, it's logged within the function
+      }
   })
 }
 
@@ -830,46 +841,39 @@ startServer();
 // Helper functions
 function extractVideoId(url) {
     if (!url) {
-        console.error('YouTube URL is undefined or empty')
+        console.error(chalk.red('[Util] extractVideoId called with undefined/empty URL'))
         return null
     }
-    console.log('Extracting video ID from:', url)
     const match = url.match(/(?:youtube\.com\/watch\?v=|youtu.be\/)([^&\n?#]+)/)
     const result = match ? match[1] : null
-    console.log('Extracted video ID:', result)
     return result
 }
 
 async function fetchYouTubeDetails(videoId) {
     try {
         if (!process.env.YOUTUBE_API_KEY) {
-            console.error('YouTube API key not configured in environment variables')
+            console.error(chalk.red('[YouTube] API key not configured in environment variables'))
             throw new Error('YouTube API key not configured')
         }
 
-        console.log('Fetching details for video ID:', videoId)
-        console.log('Using YouTube API key:', process.env.YOUTUBE_API_KEY ? 'Key is present' : 'Key is missing')
 
         const apiUrl = `https://www.googleapis.com/youtube/v3/videos?id=${videoId}&part=snippet,contentDetails&key=${process.env.YOUTUBE_API_KEY}`
-        console.log('YouTube API URL:', apiUrl)
         
         const response = await fetch(
             apiUrl,
             { headers: { 'Accept': 'application/json' } }
         )
         
-        console.log('YouTube API response status:', response.status)
         
         if (!response.ok) {
-            console.error('YouTube API error status:', response.status, response.statusText)
+            console.error(chalk.red(`[YouTube] API error status: ${response.status} ${response.statusText}`))
             throw new Error(`YouTube API error: ${response.statusText}`)
         }
 
         const data = await response.json()
-        console.log('YouTube API response data:', JSON.stringify(data, null, 2))
         
         if (!data.items?.[0]) {
-            console.error('Video not found in YouTube API response')
+            console.error(chalk.red('[YouTube] Video not found in API response for ID:'), videoId)
             throw new Error('Video not found')
         }
         
@@ -894,7 +898,6 @@ async function fetchYouTubeDetails(videoId) {
             thumbnailUrl
         }
     } catch (error) {
-        console.error('Error fetching YouTube details:', error)
         throw error
     }
 }
@@ -922,9 +925,13 @@ function formatDuration(isoDuration) {
             seconds = parseInt(durationStr.substring(0, sIndex))
         }
 
-        return hours > 0 ? 
-            `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}` : 
-            `${minutes}:${seconds.toString().padStart(2, '0')}`
+        // Pad minutes only if hours are present
+        const paddedMinutes = hours > 0 ? minutes.toString().padStart(2, '0') : minutes.toString();
+        const paddedSeconds = seconds.toString().padStart(2, '0');
+
+        return hours > 0 ?
+            `${hours}:${paddedMinutes}:${paddedSeconds}` :
+            `${minutes}:${paddedSeconds}`;
     } catch (error) {
         console.error('Error formatting duration:', error)
         return '0:00'
@@ -962,7 +969,6 @@ function verifyTwitchSignature(req, reqBodyBuffer) {
         console.warn('Twitch signature validation failed!');
         return false;
     }
-    console.log('Twitch signature verified.');
     return true;
 }
 
@@ -971,7 +977,7 @@ function verifyStreamElementsSignature(req, reqBodyBuffer) {
     const signature = req.headers['x-signature'];
     
     if (!signature || !SE_WEBHOOK_SECRET) {
-        console.warn('Missing StreamElements signature header or webhook secret');
+        console.warn(chalk.yellow('[StreamElements Webhook] Missing signature header or webhook secret'));
         return false;
     }
 
@@ -983,31 +989,24 @@ function verifyStreamElementsSignature(req, reqBodyBuffer) {
         console.warn('StreamElements signature validation failed!');
         return false;
     }
-    console.log('StreamElements signature verified.');
     return true;
 }
 
 // --- REVERTED: EventSub Subscription Function - Uses App Token ---
-async function createEventSubSubscription(broadcasterId, rewardId) { // <-- Removed userAccessToken parameter
+async function createEventSubSubscription(broadcasterId, rewardId) {
     if (!broadcasterId || !rewardId) {
-        console.error("Cannot create subscription: Missing broadcaster or reward ID.");
+        console.error(chalk.red("[Twitch EventSub] Cannot create subscription: Missing broadcaster or reward ID."));
         return;
     }
     if (!EVENTSUB_SECRET || !CALLBACK_URL) {
-         console.error("Cannot create subscription: Missing EVENTSUB_SECRET or CALLBACK_URL.");
+         console.error(chalk.red("[Twitch EventSub] Cannot create subscription: Missing EVENTSUB_SECRET or CALLBACK_URL."));
         return;
     }
-    // REMOVED Check for userAccessToken
-    // if (!userAccessToken) {
-    //     console.error("Cannot create subscription: Missing Broadcaster User Access Token. Please log in via the website.");
-    //     return; 
-    // }
 
-    console.log(`Attempting to create EventSub subscription for reward ${rewardId} using App Token...`);
     // Get the App Access Token for this call
     const appAccessToken = await getTwitchAppAccessToken();
     if (!appAccessToken) {
-        console.error("Cannot create subscription: Failed to get App Access Token.");
+        console.error(chalk.red("[Twitch EventSub] Cannot create subscription: Failed to get App Access Token."));
         return;
     }
 
@@ -1040,7 +1039,7 @@ async function createEventSubSubscription(broadcasterId, rewardId) { // <-- Remo
             const errorText = await response.text();
              // Check for 409 Conflict (Subscription already exists) - often safe to ignore
              if (response.status === 409) {
-                console.warn(`EventSub subscription likely already exists (Status 409). ${errorText}`);
+                console.warn(chalk.yellow(`[Twitch EventSub] Subscription likely already exists (Status 409). Assuming active.`));
                 // Optional: Query existing subscriptions and delete/recreate if needed,
                 // or just assume it's okay if it exists. For simplicity, we'll proceed.
             } else {
@@ -1048,12 +1047,12 @@ async function createEventSubSubscription(broadcasterId, rewardId) { // <-- Remo
             }
         } else {
              const data = await response.json();
-             console.log("Successfully created/verified EventSub subscription:", data);
+             console.log(chalk.green("✅ [Twitch EventSub] Subscription created/verified successfully."));
              // You might want to store data.data[0].id (the subscription ID) if you plan to manage/delete it later
         }
 
     } catch (error) {
-        console.error("Error creating EventSub subscription:", error);
+        console.error(chalk.red("[Twitch EventSub] Error creating/verifying subscription:"), error);
     }
 }
 
@@ -1068,7 +1067,7 @@ function extractYouTubeUrlFromText(text) {
 
 // --- NEW: Function to load Broadcaster User Token from file ---
 async function loadBroadcasterUserToken() {
-    console.log(`Attempting to load broadcaster user token from ${userTokenFilePath}...`);
+    console.log(chalk.blue(`[Auth] Loading broadcaster user token from ${path.basename(userTokenFilePath)}...`));
     try {
         const data = await readFile(userTokenFilePath, 'utf-8');
         const tokenData = JSON.parse(data);
@@ -1076,24 +1075,24 @@ async function loadBroadcasterUserToken() {
         if (tokenData && tokenData.access_token) {
             // Optional: Check expiry (add a buffer, e.g., 5 minutes)
             if (tokenData.expires_at && tokenData.expires_at < (Date.now() + 5 * 60 * 1000)) {
-                console.warn(`Broadcaster user token found in ${userTokenFilePath} has expired or will expire soon.`);
+                console.warn(chalk.yellow(`[Auth] Broadcaster user token found in ${path.basename(userTokenFilePath)} has expired or will expire soon.`));
                  // TODO: Implement refresh token logic here if needed later
                  broadcasterUserAccessToken = null; // Don't use expired token
                  return false;
             }
-            console.log("Successfully loaded broadcaster user token.");
+            console.log(chalk.green("✅ [Auth] Broadcaster user token loaded successfully."));
             broadcasterUserAccessToken = tokenData.access_token;
             return true;
         } else {
-            console.warn(`Invalid token data structure found in ${userTokenFilePath}.`);
+            console.warn(chalk.yellow(`[Auth] Invalid token data structure found in ${path.basename(userTokenFilePath)}.`));
             broadcasterUserAccessToken = null;
             return false;
         }
     } catch (error) {
         if (error.code === 'ENOENT') {
-            console.warn(`Broadcaster user token file not found: ${userTokenFilePath}. Broadcaster needs to log in via website.`);
+            console.warn(chalk.yellow(`[Auth] Broadcaster token file not found (${path.basename(userTokenFilePath)}). Login via website needed for certain actions.`));
         } else {
-            console.error(`Error loading broadcaster user token from ${userTokenFilePath}:`, error);
+            console.error(chalk.red(`[Auth] Error loading broadcaster user token:`), error);
         }
         broadcasterUserAccessToken = null;
         return false;
@@ -1108,7 +1107,6 @@ const customHttpServer = createServer((req, res) => {
 
     // Simple health check endpoint for Tailscale connectivity testing
     if (pathname === '/health-check' && method === 'GET') {
-        console.log(`[${new Date().toISOString()}] Received health check request`);
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ status: 'ok', server: 'twitch-integration-server' }));
         return;
@@ -1116,22 +1114,19 @@ const customHttpServer = createServer((req, res) => {
 
     // Route for Twitch EventSub Webhook
     if (pathname === '/twitch/eventsub' && method === 'POST') {
-        console.log(`[${new Date().toISOString()}] Received POST request on /twitch/eventsub`);
-        console.log(`Headers: ${JSON.stringify(req.headers, null, 2)}`);
         
         let rawBody = [];
         req.on('data', (chunk) => {
             rawBody.push(chunk);
         }).on('end', async () => {
             const bodyBuffer = Buffer.concat(rawBody);
-            console.log(`Request body: ${bodyBuffer.toString('utf-8')}`);
 
             // 1. Verify Signature
             if (!verifyTwitchSignature(req, bodyBuffer)) {
-                console.error('❌ Signature validation failed - this could mean:');
-                console.error('   1. The request is not from Twitch');
-                console.error('   2. The EVENTSUB_SECRET in .env does not match the one used when creating the subscription');
-                console.error('   3. The request payload was tampered with during transmission');
+                console.error(chalk.red('❌ [Twitch EventSub] Signature validation failed - potential causes:'));
+                console.error(chalk.red('   1. Request is not genuinely from Twitch.'));
+                console.error(chalk.red('   2. EVENTSUB_SECRET in .env mismatches the one used for subscription.'));
+                console.error(chalk.red('   3. Payload tampering during transit.'));
                 res.writeHead(403);
                 res.end("Signature validation failed.");
                 return;
@@ -1143,16 +1138,15 @@ const customHttpServer = createServer((req, res) => {
 
             // 2. Handle Challenge Request
             if (messageType === 'webhook_callback_verification') {
-                console.log('Received Twitch webhook verification challenge.');
+                console.log(chalk.blue('[Twitch EventSub] Received webhook verification challenge. Responding...'));
                 res.writeHead(200, { 'Content-Type': 'text/plain' });
                 res.end(notification.challenge); // Send challenge back
-                console.log('Responded to challenge.');
+                console.log(chalk.green('[Twitch EventSub] Challenge response sent.'));
                 return;
             }
 
             // 3. Handle Notification Request
             if (messageType === 'notification') {
-                console.log('Received Twitch notification:', JSON.stringify(notification.event, null, 2));
                 const { event, subscription } = notification;
 
                 // Check if it's the correct event type and reward ID
@@ -1166,7 +1160,7 @@ const customHttpServer = createServer((req, res) => {
                     const requesterLogin = event.user_login; // Login Name
 
                     if (!youtubeUrl) {
-                        console.warn(`No YouTube URL found in redemption input from ${requester}: "${event.user_input}"`);
+                        console.warn(chalk.yellow(`[Twitch EventSub] No YouTube URL found in redemption from ${requester}: "${event.user_input}"`));
                          // Send a failure message to Twitch chat
                          sendChatMessage(`@${requester}, I couldn't find a YouTube link in your channel point redemption message!`);
                         // Respond 200 OK to Twitch anyway, as we acknowledged the event
@@ -1191,12 +1185,12 @@ const customHttpServer = createServer((req, res) => {
                         source: 'eventsub' // Indicate the source
                     };
 
-                    console.log(`Processing EventSub request from ${requester} for URL: ${youtubeUrl}`);
+                    console.log(chalk.magenta(`[Twitch EventSub] Processing channel point request: ${requester} - ${youtubeUrl}`));
                     // Call the existing validation function
                     await validateAndAddSong(songRequest);
 
                 } else {
-                     console.log(`Received notification for ignored type (${subscription.type}) or reward ID (${event.reward?.id}).`);
+                     console.log(chalk.grey(`[Twitch EventSub] Received notification for ignored type/reward: Type=${subscription.type}, RewardID=${event.reward?.id}`));
                 }
 
                 // Respond 200 OK to Twitch to acknowledge receipt
@@ -1206,7 +1200,7 @@ const customHttpServer = createServer((req, res) => {
             }
 
             // Handle other message types if needed (e.g., 'revocation')
-             console.log(`Received unhandled message type: ${messageType}`);
+             console.log(chalk.yellow(`[Twitch EventSub] Received unhandled message type: ${messageType}`));
              res.writeHead(200); // Acknowledge receipt even if not fully handled
              res.end("OK");
 
@@ -1221,18 +1215,17 @@ const customHttpServer = createServer((req, res) => {
             rawBody.push(chunk);
         }).on('end', async () => {
             const bodyBuffer = Buffer.concat(rawBody);
-            console.log(`StreamElements request body: ${bodyBuffer.toString('utf-8')}`);
 
             // 1. Verify signature if secret is configured
             if (SE_WEBHOOK_SECRET) {
                 if (!verifyStreamElementsSignature(req, bodyBuffer)) {
-                    console.error('❌ StreamElements signature validation failed');
+                    console.error('❌ [StreamElements Webhook] Signature validation failed');
                     res.writeHead(403);
                     res.end("Signature validation failed");
                     return;
                 }
             } else {
-                console.warn('⚠️ StreamElements webhook secret not configured, skipping signature verification');
+                console.warn('⚠️ [StreamElements Webhook] Secret not configured, skipping signature verification');
             }
 
             try {
@@ -1241,7 +1234,7 @@ const customHttpServer = createServer((req, res) => {
                 
                 // 2. Verify it's a donation event
                 if (event.type !== 'tip' && event.type !== 'donation') {
-                    console.log(`Ignoring non-donation StreamElements event: ${event.type}`);
+                    console.log(chalk.grey(`[StreamElements Webhook] Ignoring non-donation event: ${event.type}`));
                     res.writeHead(200);
                     res.end("OK");
                     return;
@@ -1290,7 +1283,6 @@ const customHttpServer = createServer((req, res) => {
                     source: 'streamelements'
                 };
                 
-                console.log(`Processing StreamElements donation request from ${userName} for URL: ${youtubeUrl}`);
                 await validateAndAddSong(songRequest);
                 
                 // 7. Respond to StreamElements
