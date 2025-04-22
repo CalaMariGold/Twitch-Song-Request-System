@@ -14,31 +14,25 @@ require('dotenv').config()
 const SOCKET_PORT = 3002
 const httpServer = createServer()
 const historyFilePath = path.join(__dirname, 'queue', 'history.json');
-const userTokenFilePath = path.join(__dirname, 'queue', 'user_token.json');
+
 
 // Twitch API configuration
 const TWITCH_CLIENT_ID = process.env.NEXT_PUBLIC_TWITCH_CLIENT_ID;
 const TWITCH_CLIENT_SECRET = process.env.TWITCH_CLIENT_SECRET;
 let twitchAppAccessToken = null;
 let twitchTokenExpiry = null;
-let twitchBroadcasterId = null;
-let targetRewardId = null;
-let broadcasterUserAccessToken = null;
 
 // Twitch Chat Bot Configuration
 const TWITCH_BOT_USERNAME = process.env.TWITCH_BOT_USERNAME;
 const TWITCH_BOT_OAUTH_TOKEN = process.env.TWITCH_BOT_OAUTH_TOKEN;
 const TWITCH_CHANNEL_NAME = process.env.TWITCH_CHANNEL_NAME;
 
-// EventSub Configuration
-const EVENTSUB_SECRET = process.env.EVENTSUB_SECRET;
-const CALLBACK_URL = process.env.CALLBACK_URL;
-const TARGET_REWARD_ID = process.env.TARGET_REWARD_ID;
+// Configuration for StreamElements Channel Point Filtering
+const TARGET_REWARD_TITLE = process.env.TARGET_REWARD_TITLE; // Use title for filtering
 
 // StreamElements Configuration
 const SE_JWT_TOKEN = process.env.STREAMELEMENTS_JWT_TOKEN;
 const SE_ACCOUNT_ID = process.env.STREAMELEMENTS_ACCOUNT_ID;
-const SE_WEBHOOK_SECRET = process.env.STREAMELEMENTS_WEBHOOK_SECRET;
 
 if (!SE_JWT_TOKEN || !SE_ACCOUNT_ID) {
   console.warn(chalk.yellow('StreamElements configuration (JWT token, account ID) are missing in .env file. StreamElements donations disabled.'));
@@ -46,9 +40,6 @@ if (!SE_JWT_TOKEN || !SE_ACCOUNT_ID) {
 
 if (!TWITCH_BOT_USERNAME || !TWITCH_BOT_OAUTH_TOKEN || !TWITCH_CHANNEL_NAME) {
   console.error(chalk.red('Twitch bot credentials (username, token, channel) are missing in .env file. Chat features disabled.'));
-}
-if (!EVENTSUB_SECRET || !CALLBACK_URL) {
-    console.error(chalk.red('EVENTSUB_SECRET or CALLBACK_URL not configured in .env. EventSub disabled.'));
 }
 
 const tmiOpts = {
@@ -66,7 +57,6 @@ if (TWITCH_BOT_USERNAME && TWITCH_BOT_OAUTH_TOKEN && TWITCH_CHANNEL_NAME) {
   tmiClient.on('message', (channel, tags, message, self) => {
     // Handle incoming messages if needed in the future
     if (self) return; // Ignore messages from the bot itself
-    // Example: console.log(`${tags['display-name']}: ${message}`);
   });
 
   tmiClient.on('connected', (addr, port) => {
@@ -77,7 +67,6 @@ if (TWITCH_BOT_USERNAME && TWITCH_BOT_OAUTH_TOKEN && TWITCH_CHANNEL_NAME) {
 
   tmiClient.on('disconnected', (reason) => {
     console.log(chalk.yellow(`* [Twitch Chat] Disconnected: ${reason}`));
-    // Optionally attempt to reconnect
   });
 
   tmiClient.connect().catch(err => console.error(chalk.red('[Twitch Chat] Connection error:'), err));
@@ -181,30 +170,6 @@ async function getTwitchUser(username) {
   }
 }
 
-// --- NEW: Function to get Broadcaster ID ---
-async function getBroadcasterId() {
-    if (twitchBroadcasterId) {
-        return twitchBroadcasterId;
-    }
-    if (!TWITCH_CHANNEL_NAME) {
-        console.error(chalk.red("[Twitch API] Cannot get Broadcaster ID: TWITCH_CHANNEL_NAME not set in .env"));
-        return null;
-    }
-    try {
-        const user = await getTwitchUser(TWITCH_CHANNEL_NAME);
-        if (user && user.id) {
-            twitchBroadcasterId = user.id;
-            return twitchBroadcasterId;
-        } else {
-            console.error(chalk.red(`[Twitch API] Could not find Twitch user for channel: ${TWITCH_CHANNEL_NAME}`));
-            return null;
-        }
-    } catch (error) {
-        console.error(chalk.red("[Twitch API] Error fetching broadcaster ID:"), error);
-        return null;
-    }
-}
-
 // Server state
 const state = {
   queue: [],
@@ -249,13 +214,12 @@ async function saveHistory() {
   }
 }
 
-// --- NEW Function: Validate and Add Song ---
+// --- Function to validate and add a song request ---
 async function validateAndAddSong(request) {
 
   // Validate essential request data
   if (!request || !request.youtubeUrl || !request.requester || !request.requestType) {
       console.error(chalk.red('[Queue] Invalid request object received (missing url, requester, or requestType):'), request);
-      // Optionally send a generic error message if possible, though requester might be unknown
       return;
   }
 
@@ -277,7 +241,6 @@ async function validateAndAddSong(request) {
       return; // Stop processing
     }
   }
-  // --- END User Limit Check ---
 
   // --- Always fetch Twitch Profile for Avatar AND Login Name ---
   let requesterAvatar = '/placeholder.svg?height=32&width=32'; // Default placeholder
@@ -301,7 +264,6 @@ async function validateAndAddSong(request) {
       }
   } catch (twitchError) {
       console.error(chalk.red(`[Twitch API] Error fetching Twitch profile for ${request.requester}:`), twitchError);
-      // Keep default placeholders on error
   }
   // --- END TWITCH FETCH ---
 
@@ -309,9 +271,7 @@ async function validateAndAddSong(request) {
   const videoId = extractVideoId(request.youtubeUrl);
   if (!videoId) {
       console.error(chalk.red('[Queue] Invalid or missing YouTube URL:'), request.youtubeUrl);
-      if (request.source !== 'eventsub') {
-           sendChatMessage(`@${request.requester}, the YouTube link you provided seems invalid or wasn't found in your message.`);
-      }
+      sendChatMessage(`@${request.requester}, the YouTube link you provided seems invalid or wasn't found in your message.`);
       return;
   }
 
@@ -320,7 +280,7 @@ async function validateAndAddSong(request) {
       const videoDetails = await fetchYouTubeDetails(videoId);
       console.log('Successfully fetched video details:', videoDetails);
 
-      // --- NEW: Duration Checks based on Request Type ---
+      // Check song duration based on request type
       const MAX_CHANNEL_POINT_DURATION_SECONDS = 300; // 5 minutes
       const MAX_DONATION_DURATION_SECONDS = 600; // 10 minutes
 
@@ -390,10 +350,10 @@ async function validateAndAddSong(request) {
       };
 
 
-      // --- NEW: Queue Insertion Logic based on Request Type ---
+      // Determine queue insertion position based on request type
       let insertIndex = state.queue.length; // Default to end
       let queuePosition = 0;
-      let messageType = songRequest.requestType === 'donation' ? 'Priority donation' : 'Channel point'; // Added for logging clarity
+      let messageType = songRequest.requestType === 'donation' ? 'Priority donation' : 'Channel point';
 
       if (songRequest.requestType === 'donation') {
           // Find the index of the first non-donation (channelPoint) request
@@ -417,7 +377,7 @@ async function validateAndAddSong(request) {
       // Emit updates to all clients
       io.emit('newSongRequest', songRequest); // Keep this for potential UI feedback
       io.emit('queueUpdate', state.queue);
-      console.log(chalk.green(`[Queue] Added "${songRequest.title}". Type: ${messageType}. Requester: ${songRequest.requester}. Position: #${queuePosition}`)); // Added clearer log
+      console.log(chalk.green(`[Queue] Added "${songRequest.title}". Type: ${messageType}. Requester: ${songRequest.requester}. Position: #${queuePosition}`));
 
       // Optionally send a success message to chat
       if (songRequest.requestType === 'donation' && songRequest.donationInfo) {
@@ -448,7 +408,7 @@ io.on('connection', (socket) => {
         socket.emit('historyUpdate', state.history)
     })
 
-    // Handle queue updates (mostly for admin drag/drop?)
+    // Handle queue updates
     socket.on('updateQueue', (updatedQueue) => {
         console.log(chalk.grey(`[Socket.IO] Received ${updatedQueue} event`));
         state.queue = updatedQueue
@@ -456,19 +416,17 @@ io.on('connection', (socket) => {
         console.log(chalk.magenta('[Admin] Queue updated via socket.'));
     })
 
-    // --- MODIFIED addSong Handler ---
+    // Handle addSong event
     socket.on('addSong', async (songRequestData) => {
         console.log(chalk.grey(`[Socket.IO] Received ${songRequestData} event`));
         // Ensure the incoming data has necessary fields before validating
         if (!songRequestData || !songRequestData.youtubeUrl || !songRequestData.requester) {
              console.error(chalk.red('[Socket.IO] Received invalid song request data via socket:'), songRequestData);
-             // Cannot easily notify user as this might be an admin action without a clear target
              return;
         }
         // Call the centralized validation and adding function
         await validateAndAddSong({ ...songRequestData, source: 'socket' });
     })
-    // --- END MODIFIED addSong Handler ---
 
     // Handle remove song
     socket.on('removeSong', (songId) => {
@@ -535,7 +493,7 @@ io.on('connection', (socket) => {
         if (song) {
             // Move current song to history if it exists and is not already the most recent history item
             if (previousSong && (!state.history.length || state.history[0].id !== previousSong.id)) {
-                 // *** Check for duplicates before adding ***
+                 // Check for duplicates before adding to history
                  if (!state.history.some(historySong => historySong.id === previousSong.id)) {
                      state.history.unshift(previousSong);
                      historyUpdated = true;
@@ -543,11 +501,11 @@ io.on('connection', (socket) => {
             }
             state.nowPlaying = song
             state.queue = state.queue.filter(s => s.id !== song.id)
-            console.log(chalk.yellow(`[Player] Now Playing: "${song.title}" (ID: ${song.id})`)); // Clearer Now Playing Log
+            console.log(chalk.yellow(`[Player] Now Playing: "${song.title}" (ID: ${song.id})`));
         } else {
             // Song finished or stopped
             if (previousSong && (!state.history.length || state.history[0].id !== previousSong.id)) {
-                // *** Check for duplicates before adding ***
+                // Check for duplicates before adding to history
                 if (!state.history.some(historySong => historySong.id === previousSong.id)) {
                     state.history.unshift(previousSong);
                     historyUpdated = true;
@@ -624,7 +582,6 @@ function connectToStreamElements() {
     // Handle connection errors
     seSocket.on('unauthorized', (reason) => {
         console.error(chalk.red('[StreamElements] Authentication failed:'), reason);
-        // Optionally disconnect or handle differently
         if(seSocket) seSocket.disconnect();
     });
 
@@ -636,11 +593,59 @@ function connectToStreamElements() {
 
     seSocket.on('connect_error', (error) => {
         console.error(chalk.red('[StreamElements] Connection error:'), error);
-        // Note: Reconnection attempts might happen automatically depending on socket.io-client config
     });
 
     // Listen for events (tips/donations)
     seSocket.on('event', async (event) => {
+
+        // Handle Channel Point Redemption events from StreamElements
+        // Check if it's a channel point redemption event AND matches the target title
+        if (event.type === 'channelPointsRedemption') { 
+
+            const receivedTitle = event.data?.redemption;
+
+            // Check if the received title matches the one configured in .env
+            if (!receivedTitle || !TARGET_REWARD_TITLE || receivedTitle !== TARGET_REWARD_TITLE) {
+                console.log(chalk.grey(`[StreamElements] Ignored redemption: Title "${receivedTitle || 'N/A'}" does not match TARGET_REWARD_TITLE "${TARGET_REWARD_TITLE || 'Not Set'}".`));
+                return; // Ignore this redemption
+            }
+            
+            try {
+                const userName = event.data.username || 'Anonymous';
+                const userInput = event.data.message || ''; // Get user input (URL) from message field
+
+                console.log(chalk.magenta(`[StreamElements] Received channel point redemption: ${userName} - Reward: "${receivedTitle}" - Input: "${userInput}"`));
+
+                const youtubeUrl = extractYouTubeUrlFromText(userInput);
+
+                if (!youtubeUrl) {
+                    console.warn(chalk.yellow(`[StreamElements] No YouTube URL found in redemption from ${userName}: "${userInput}"`));
+                    sendChatMessage(`@${userName}, I couldn't find a YouTube link in your '${receivedTitle}' redemption message!`);
+                    return; // Don't process further
+                }
+
+                 // Create song request object
+                 const songRequest = {
+                    id: event.data._id || event._id || Date.now().toString(),
+                    youtubeUrl: youtubeUrl,
+                    requester: userName,
+                    timestamp: event.createdAt || new Date().toISOString(),
+                    requestType: 'channelPoint',
+                    channelPointReward: { 
+                        title: receivedTitle
+                    },
+                    source: 'streamelements_redemption'
+                };
+
+                await validateAndAddSong(songRequest);
+
+             } catch (error) {
+                 console.error(chalk.red('[StreamElements] Error processing channel point redemption:'), error);
+                 sendChatMessage(`@${userName}, sorry, there was an error processing your song request.`);
+             }
+             return; // Stop processing this event here
+        }
+        // --- END Channel Point Handling ---
 
         // Check if it's a tip/donation event
         if (event.type === 'tip') {
@@ -659,7 +664,7 @@ function connectToStreamElements() {
                 // If no YouTube URL, thank them for the donation but don't process as song request
                 if (!youtubeUrl) {
                     console.warn(chalk.yellow(`[StreamElements] No YouTube URL found in donation from ${userName}: "${message}"`));
-                    sendChatMessage(`Thanks @${userName} for the ${amount} ${currency} donation!`);
+                    sendChatMessage(`Thanks @${userName} for the ${amount} ${currency}! If you want to request a song with your dono next time, put the YouTube link in the dono message.`);
                     return;
                 }
                 
@@ -685,11 +690,11 @@ function connectToStreamElements() {
                     source: 'streamelements'
                 };
 
-                console.log(chalk.magenta(`[StreamElements] Processing donation request: ${userName} - ${youtubeUrl}`));
                 await validateAndAddSong(songRequest);
                 
             } catch (error) {
                 console.error(chalk.red('[StreamElements] Error processing donation:'), error);
+                sendChatMessage(`@${userName}, sorry, there was an error processing your song request.`);
             }
         }
     });
@@ -721,100 +726,18 @@ function shutdown(signal) {
 process.on('SIGINT', () => shutdown('SIGINT')); // Ctrl+C
 process.on('SIGTERM', () => shutdown('SIGTERM')); // kill command
 
-// Function to check Tailscale connectivity with retries
-async function checkTailscaleConnectivity(retries = 3, delay = 2000) {
-  for (let i = 0; i < retries; i++) {
-    try {
-      // Check if the callback URL can be reached from the server
-      const response = await fetch(`${CALLBACK_URL}/health-check`, {
-        method: 'GET',
-        timeout: 5000 // 5 second timeout
-      }).catch(err => {
-        console.error(`Fetch error (Attempt ${i + 1}/${retries}): ${err.message}`);
-        return null; // Treat fetch errors like connection failures for retry logic
-      });
-
-      if (response?.ok) {
-        console.log(chalk.green(`✅ [Tailscale] Connectivity check passed: ${CALLBACK_URL} is accessible.`));
-        return true; // Success, exit the loop and function
-      }
-
-      // Log failure reason for this attempt
-      if (!response) {
-        console.warn(chalk.red(`❌ [Tailscale] Connectivity check failed (Attempt ${i + 1}/${retries}) - no response from ${CALLBACK_URL}/health-check`));
-      } else {
-        console.warn(chalk.red(`❌ [Tailscale] Connectivity check failed (Attempt ${i + 1}/${retries}) - status: ${response.status} from ${CALLBACK_URL}/health-check`));
-      }
-
-      // If not the last attempt, wait before retrying
-      if (i < retries - 1) {
-        console.log(`Retrying in ${delay / 1000} seconds...`);
-        await new Promise(resolve => setTimeout(resolve, delay));
-      }
-
-    } catch (error) {
-      // Catch any other errors during the check attempt
-      console.error(`❌ [Tailscale] Connectivity check error (Attempt ${i + 1}/${retries}):`, error);
-      // If not the last attempt, wait before potentially retrying
-      if (i < retries - 1) {
-        console.log(`Retrying in ${delay / 1000} seconds...`);
-        await new Promise(resolve => setTimeout(resolve, delay));
-      }
-    }
-  }
-
-  // If all retries failed
-  console.error(`❌ [Tailscale] Connectivity check failed after ${retries} attempts.`);
-  console.warn(`   Ensure Tailscale is running and ${CALLBACK_URL} is reachable.`);
-  return false;
-}
-
 // Start the server and load initial data
 async function startServer() {
   await loadHistory(); // Load history before starting watcher/server
 
-  // Try to load the broadcaster's user token
-  await loadBroadcasterUserToken();
-
-  // Fetch necessary Twitch Broadcaster ID
-  const broadcasterId = await getBroadcasterId();
-
-  // Use the Target Reward ID directly from environment variable
-  targetRewardId = TARGET_REWARD_ID; // Assign to the global variable for the webhook handler
-
-  // Create EventSub subscription if IDs were found AND broadcaster has logged in (token exists)
-  if (broadcasterId && targetRewardId) {
-      // Check if Callback URL and Secret are also present
-      if (!CALLBACK_URL || !EVENTSUB_SECRET) {
-          console.error("CALLBACK_URL or EVENTSUB_SECRET missing in .env. Cannot create EventSub subscription.");
-      } else {
-        // Create subscription with App Token
-        await createEventSubSubscription(broadcasterId, targetRewardId);
-      }
-  } else {
-      console.error(`Could not find necessary IDs (Broadcaster: ${broadcasterId}, Reward: ${targetRewardId}), EventSub subscription skipped.`);
-  }
-
-  // Connect to StreamElements Socket API for donation events
+  // Connect to StreamElements Socket API for donation/redemption events
   connectToStreamElements();
 
   // Use the custom HTTP server for listening
   // Explicitly bind to 0.0.0.0 to allow access from all interfaces
   customHttpServer.listen(SOCKET_PORT, '0.0.0.0', async () => {
       console.log(chalk.green(`🚀 Server running at http://0.0.0.0:${SOCKET_PORT}/`))
-      console.log(chalk.cyan(`   EventSub expecting requests at ${CALLBACK_URL}/twitch/eventsub`));
-      console.log(chalk.cyan(`   StreamElements expecting requests at ${CALLBACK_URL}/streamelements/webhook`)); // Added this line
       console.log(chalk.blue("   Initializing subsystems..."));
-
-      // Check Tailscale connectivity AFTER server is listening
-      if (CALLBACK_URL && CALLBACK_URL.includes('.ts.net')) {
-        const tailscaleConnected = await checkTailscaleConnectivity(); // Retry logic is already built-in
-        if (!tailscaleConnected) {
-          // Log the warning if it fails after retries
-          console.warn(`⚠️ [Tailscale] Connectivity check FAILED after server start. Webhooks might not work.`);
-        }
-        // No need for explicit success message here, it's logged within the function
-      }
   })
 }
 
@@ -932,113 +855,7 @@ function parseIsoDuration(isoDuration) {
     return hours * 3600 + minutes * 60 + seconds
 }
 
-// --- NEW: Twitch EventSub Webhook Verification Middleware ---
-function verifyTwitchSignature(req, reqBodyBuffer) {
-    const messageId = req.headers['twitch-eventsub-message-id'];
-    const timestamp = req.headers['twitch-eventsub-message-timestamp'];
-    const signature = req.headers['twitch-eventsub-message-signature'];
-
-    if (!messageId || !timestamp || !signature) {
-        console.warn('Missing Twitch signature headers');
-        return false;
-    }
-
-    const computedSignature = 'sha256=' + crypto.createHmac('sha256', EVENTSUB_SECRET)
-        .update(messageId + timestamp + reqBodyBuffer)
-        .digest('hex');
-
-    if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(computedSignature))) {
-        console.warn('Twitch signature validation failed!');
-        return false;
-    }
-    return true;
-}
-
-// --- NEW: StreamElements Webhook Verification ---
-function verifyStreamElementsSignature(req, reqBodyBuffer) {
-    const signature = req.headers['x-signature'];
-    
-    if (!signature || !SE_WEBHOOK_SECRET) {
-        console.warn(chalk.yellow('[StreamElements Webhook] Missing signature header or webhook secret'));
-        return false;
-    }
-
-    const computedSignature = crypto.createHmac('sha256', SE_WEBHOOK_SECRET)
-        .update(reqBodyBuffer)
-        .digest('hex');
-    
-    if (signature !== computedSignature) {
-        console.warn('StreamElements signature validation failed!');
-        return false;
-    }
-    return true;
-}
-
-// --- EventSub Subscription Function - Uses App Token ---
-async function createEventSubSubscription(broadcasterId, rewardId) {
-    if (!broadcasterId || !rewardId) {
-        console.error(chalk.red("[Twitch EventSub] Cannot create subscription: Missing broadcaster or reward ID."));
-        return;
-    }
-    if (!EVENTSUB_SECRET || !CALLBACK_URL) {
-         console.error(chalk.red("[Twitch EventSub] Cannot create subscription: Missing EVENTSUB_SECRET or CALLBACK_URL."));
-        return;
-    }
-
-    // Get the App Access Token for this call
-    const appAccessToken = await getTwitchAppAccessToken();
-    if (!appAccessToken) {
-        console.error(chalk.red("[Twitch EventSub] Cannot create subscription: Failed to get App Access Token."));
-        return;
-    }
-
-    const body = {
-        type: "channel.channel_points_custom_reward_redemption.add",
-        version: "1",
-        condition: {
-            broadcaster_user_id: broadcasterId,
-            reward_id: rewardId // Only subscribe to the specific reward
-        },
-        transport: {
-            method: "webhook",
-            callback: CALLBACK_URL + '/twitch/eventsub', // Ensure this matches the endpoint path
-            secret: EVENTSUB_SECRET
-        }
-    };
-
-    try {
-        const response = await fetch('https://api.twitch.tv/helix/eventsub/subscriptions', {
-            method: 'POST',
-            body: JSON.stringify(body),
-            headers: {
-                'Client-ID': TWITCH_CLIENT_ID,
-                'Authorization': `Bearer ${appAccessToken}`,
-                'Content-Type': 'application/json'
-            }
-        });
-
-        if (!response.ok) {
-            const errorText = await response.text();
-             // Check for 409 Conflict (Subscription already exists) - often safe to ignore
-             if (response.status === 409) {
-                console.warn(chalk.yellow(`[Twitch EventSub] Subscription likely already exists (Status 409). Assuming active.`));
-                // Optional: Query existing subscriptions and delete/recreate if needed,
-                // or just assume it's okay if it exists. For simplicity, we'll proceed.
-            } else {
-                throw new Error(`Subscription request failed with status ${response.status}: ${errorText}`);
-            }
-        } else {
-             const data = await response.json();
-             console.log(chalk.green("✅ [Twitch EventSub] Subscription created/verified successfully."));
-             // You might want to store data.data[0].id (the subscription ID) if you plan to manage/delete it later
-        }
-
-    } catch (error) {
-        console.error(chalk.red("[Twitch EventSub] Error creating/verifying subscription:"), error);
-    }
-}
-
-// --- NEW: Regex to find YouTube URL in text ---
+// Regex to find YouTube URL in text
 function extractYouTubeUrlFromText(text) {
     if (!text) return null;
     // Basic regex to find YouTube watch URLs or short URLs
@@ -1047,241 +864,23 @@ function extractYouTubeUrlFromText(text) {
     return match ? match[0] : null; // Return the full matched URL
 }
 
-// --- NEW: Function to load Broadcaster User Token from file ---
-async function loadBroadcasterUserToken() {
-    console.log(chalk.blue(`[Auth] Loading broadcaster user token from ${path.basename(userTokenFilePath)}...`));
-    try {
-        const data = await readFile(userTokenFilePath, 'utf-8');
-        const tokenData = JSON.parse(data);
-        // Basic validation: Check if token exists and maybe if it has expired
-        if (tokenData && tokenData.access_token) {
-            // Optional: Check expiry (add a buffer, e.g., 5 minutes)
-            if (tokenData.expires_at && tokenData.expires_at < (Date.now() + 5 * 60 * 1000)) {
-                console.warn(chalk.yellow(`[Auth] Broadcaster user token found in ${path.basename(userTokenFilePath)} has expired or will expire soon.`));
-                 // TODO: Implement refresh token logic here if needed later
-                 broadcasterUserAccessToken = null; // Don't use expired token
-                 return false;
-            }
-            console.log(chalk.green("✅ [Auth] Broadcaster user token loaded successfully."));
-            broadcasterUserAccessToken = tokenData.access_token;
-            return true;
-        } else {
-            console.warn(chalk.yellow(`[Auth] Invalid token data structure found in ${path.basename(userTokenFilePath)}.`));
-            broadcasterUserAccessToken = null;
-            return false;
-        }
-    } catch (error) {
-        if (error.code === 'ENOENT') {
-            console.warn(chalk.yellow(`[Auth] Broadcaster token file not found (${path.basename(userTokenFilePath)}). Login via website needed for certain actions.`));
-        } else {
-            console.error(chalk.red(`[Auth] Error loading broadcaster user token:`), error);
-        }
-        broadcasterUserAccessToken = null;
-        return false;
-    }
-}
-
-// --- MODIFIED: HTTP Server Request Handler ---
+// HTTP Server Request Handler
 const customHttpServer = createServer((req, res) => {
     const parsedUrl = url.parse(req.url, true);
     const { pathname } = parsedUrl;
     const method = req.method;
 
-    // Simple health check endpoint for Tailscale connectivity testing
+    // Simple health check endpoint
     if (pathname === '/health-check' && method === 'GET') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ status: 'ok', server: 'twitch-integration-server' }));
         return;
     }
 
-    // Route for Twitch EventSub Webhook
-    if (pathname === '/twitch/eventsub' && method === 'POST') {
-        
-        let rawBody = [];
-        req.on('data', (chunk) => {
-            rawBody.push(chunk);
-        }).on('end', async () => {
-            const bodyBuffer = Buffer.concat(rawBody);
-
-            // 1. Verify Signature
-            if (!verifyTwitchSignature(req, bodyBuffer)) {
-                console.error(chalk.red('❌ [Twitch EventSub] Signature validation failed - potential causes:'));
-                console.error(chalk.red('   1. Request is not genuinely from Twitch.'));
-                console.error(chalk.red('   2. EVENTSUB_SECRET in .env mismatches the one used for subscription.'));
-                console.error(chalk.red('   3. Payload tampering during transit.'));
-                res.writeHead(403);
-                res.end("Signature validation failed.");
-                return;
-            }
-
-            const bodyString = bodyBuffer.toString('utf-8');
-            const notification = JSON.parse(bodyString);
-            const messageType = req.headers['twitch-eventsub-message-type'];
-
-            // 2. Handle Challenge Request
-            if (messageType === 'webhook_callback_verification') {
-                console.log(chalk.blue('[Twitch EventSub] Received webhook verification challenge. Responding...'));
-                res.writeHead(200, { 'Content-Type': 'text/plain' });
-                res.end(notification.challenge); // Send challenge back
-                console.log(chalk.green('[Twitch EventSub] Challenge response sent.'));
-                return;
-            }
-
-            // 3. Handle Notification Request
-            if (messageType === 'notification') {
-                const { event, subscription } = notification;
-
-                // Check if it's the correct event type and reward ID
-                if (targetRewardId && 
-                    subscription.type === 'channel.channel_points_custom_reward_redemption.add' &&
-                    event.reward.id === targetRewardId) {
-
-                    // Extract needed info
-                    const youtubeUrl = extractYouTubeUrlFromText(event.user_input);
-                    const requester = event.user_name; // Display Name
-                    const requesterLogin = event.user_login; // Login Name
-
-                    if (!youtubeUrl) {
-                        console.warn(chalk.yellow(`[Twitch EventSub] No YouTube URL found in redemption from ${requester}: "${event.user_input}"`));
-                         // Send a failure message to Twitch chat
-                         sendChatMessage(`@${requester}, I couldn't find a YouTube link in your channel point redemption message!`);
-                        // Respond 200 OK to Twitch anyway, as we acknowledged the event
-                        res.writeHead(200);
-                        res.end("OK");
-                        return;
-                    }
-
-                    // Construct the request object for validateAndAddSong
-                    const songRequest = {
-                        id: event.id, // Use the redemption event ID
-                        youtubeUrl: youtubeUrl,
-                        requester: requester,
-                        timestamp: event.redeemed_at || new Date().toISOString(),
-                        requestType: 'channelPoint',
-                        channelPointReward: {
-                            id: event.reward.id,
-                            title: event.reward.title,
-                            cost: event.reward.cost,
-                            prompt: event.reward.prompt
-                        },
-                        source: 'eventsub' // Indicate the source
-                    };
-
-                    console.log(chalk.magenta(`[Twitch EventSub] Processing channel point request: ${requester} - ${youtubeUrl}`));
-                    // Call the existing validation function
-                    await validateAndAddSong(songRequest);
-
-                } else {
-                     console.log(chalk.grey(`[Twitch EventSub] Received notification for ignored type/reward: Type=${subscription.type}, RewardID=${event.reward?.id}`));
-                }
-
-                // Respond 200 OK to Twitch to acknowledge receipt
-                res.writeHead(200);
-                res.end("OK");
-                return;
-            }
-
-            // Handle other message types if needed (e.g., 'revocation')
-             console.log(chalk.yellow(`[Twitch EventSub] Received unhandled message type: ${messageType}`));
-             res.writeHead(200); // Acknowledge receipt even if not fully handled
-             res.end("OK");
-
-
-        });
-    } else if (pathname === '/streamelements/webhook' && method === 'POST') {
-        console.log(`[${new Date().toISOString()}] Received POST request on /streamelements/webhook`);
-        console.log(`Headers: ${JSON.stringify(req.headers, null, 2)}`);
-        
-        let rawBody = [];
-        req.on('data', (chunk) => {
-            rawBody.push(chunk);
-        }).on('end', async () => {
-            const bodyBuffer = Buffer.concat(rawBody);
-
-            // 1. Verify signature if secret is configured
-            if (SE_WEBHOOK_SECRET) {
-                if (!verifyStreamElementsSignature(req, bodyBuffer)) {
-                    console.error('❌ [StreamElements Webhook] Signature validation failed');
-                    res.writeHead(403);
-                    res.end("Signature validation failed");
-                    return;
-                }
-            } else {
-                console.warn('⚠️ [StreamElements Webhook] Secret not configured, skipping signature verification');
-            }
-
-            try {
-                const bodyString = bodyBuffer.toString('utf-8');
-                const event = JSON.parse(bodyString);
-                
-                // 2. Verify it's a donation event
-                if (event.type !== 'tip' && event.type !== 'donation') {
-                    console.log(chalk.grey(`[StreamElements Webhook] Ignoring non-donation event: ${event.type}`));
-                    res.writeHead(200);
-                    res.end("OK");
-                    return;
-                }
-                
-                console.log('Received StreamElements donation event:', JSON.stringify(event, null, 2));
-                
-                // 3. Extract data from the donation
-                const userName = event.data.username || 'Anonymous';
-                const amount = event.data.amount || 0;
-                const currency = event.data.currency || 'USD';
-                const message = event.data.message || '';
-                
-                // 4. Check minimum donation amount ($3)
-                const MIN_DONATION_AMOUNT = 3;
-                if (amount < MIN_DONATION_AMOUNT) {
-                    console.log(`Donation amount (${amount} ${currency}) is below minimum required (${MIN_DONATION_AMOUNT} ${currency})`);
-                    sendChatMessage(`Thanks @${userName} for the ${amount} ${currency} donation! Song requests require a minimum donation of ${MIN_DONATION_AMOUNT} ${currency}.`);
-                    res.writeHead(200);
-                    res.end("OK");
-                    return;
-                }
-                
-                // 5. Extract YouTube URL from the donation message
-                const youtubeUrl = extractYouTubeUrlFromText(message);
-                
-                if (!youtubeUrl) {
-                    console.warn(`No YouTube URL found in donation message from ${userName}: "${message}"`);
-                    sendChatMessage(`Thanks @${userName} for the ${amount} ${currency} donation! To request a song, include a YouTube link in your donation message.`);
-                    res.writeHead(200);
-                    res.end("OK");
-                    return;
-                }
-                
-                // 6. Create song request from donation
-                const songRequest = {
-                    id: event.data._id || Date.now().toString(),
-                    youtubeUrl: youtubeUrl,
-                    requester: userName,
-                    timestamp: event.data.createdAt || new Date().toISOString(),
-                    requestType: 'donation',
-                    donationInfo: {
-                        amount: amount,
-                        currency: currency
-                    },
-                    source: 'streamelements'
-                };
-                
-                await validateAndAddSong(songRequest);
-                
-                // 7. Respond to StreamElements
-                res.writeHead(200);
-                res.end("OK");
-                
-            } catch (error) {
-                console.error('Error processing StreamElements webhook:', error);
-                res.writeHead(400);
-                res.end("Error processing webhook");
-            }
-        });
-    } else {
-        // Default: Not Found or handle other routes if necessary
-        res.writeHead(404);
-        res.end('Not Found');
-    }
+    // Default: Not Found or handle other routes if necessary
+    res.writeHead(404, { 'Content-Type': 'text/plain' });
+    res.end('Not Found - Use Socket.IO or /health-check');
+    
 });
 
 // Attach Socket.IO to the custom HTTP server
