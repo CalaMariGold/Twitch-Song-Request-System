@@ -85,6 +85,7 @@ import {
 } from "@/lib/types" 
 import { io, Socket } from "socket.io-client"
 import Link from 'next/link'
+import { StatisticsCard } from "@/components/StatisticsCard"
 
 interface TwitchUser {
   id: string
@@ -899,66 +900,13 @@ export default function AdminDashboard() {
           </Card>
 
           {/* All-Time Stats Card */}
-          <Card className="bg-gray-800 border-gray-700">
-              <CardHeader>
-                  <CardTitle className="text-white flex items-center"><BarChart2 className="mr-2 h-5 w-5" /> All-Time Statistics</CardTitle>
-                  <CardDescription>Overall system usage stats.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                  {isLoadingStats ? (
-                      <div className="flex items-center justify-center h-32">
-                          <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
-                          <span className="ml-2 text-gray-400">Loading stats...</span>
-                      </div>
-                  ) : allTimeStats ? (
-                       // Adjusted TabsList style
-                      <Tabs defaultValue="requesters" className="w-full">
-                          <TabsList className="grid w-full grid-cols-3 bg-gray-700 mb-4 h-9">
-                              {/* Adjusted TabsTrigger active style */}
-                              <TabsTrigger value="requesters" className="text-xs data-[state=active]:bg-gray-600 data-[state=active]:text-white">Requesters</TabsTrigger>
-                              <TabsTrigger value="songs" className="text-xs data-[state=active]:bg-gray-600 data-[state=active]:text-white">Songs</TabsTrigger>
-                              <TabsTrigger value="artists" className="text-xs data-[state=active]:bg-gray-600 data-[state=active]:text-white">Artists</TabsTrigger>
-                          </TabsList>
-                           {/* Applied consistent ScrollArea style */}
-                          <TabsContent value="requesters">
-                              <ScrollArea className="h-[200px] pr-2 rounded-md border border-gray-700 p-3 bg-gray-700/50">
-                                <ol className="list-decimal list-inside space-y-1 text-sm">
-                                    {allTimeStats.topRequesters.length > 0 ? allTimeStats.topRequesters.map((r, i) => (
-                                        <li key={i} className="text-gray-300">
-                                            <span className="font-medium text-white">{r.requester}</span> ({r.request_count})
-                                        </li>
-                                    )) : <p className="text-gray-400 italic text-center py-2">No requester data yet.</p>}
-                                </ol>
-                              </ScrollArea>
-                          </TabsContent>
-                          <TabsContent value="songs">
-                               <ScrollArea className="h-[200px] pr-2 rounded-md border border-gray-700 p-3 bg-gray-700/50">
-                                <ol className="list-decimal list-inside space-y-1 text-sm">
-                                    {allTimeStats.topSongs.length > 0 ? allTimeStats.topSongs.map((s, i) => (
-                                        <li key={i} className="text-gray-300 truncate" title={`${s.title || '?'} - ${s.artist || '?'}`}>
-                                            <span className="font-medium text-white">{s.title || 'Unknown Title'}</span> by <span className="italic">{s.artist || 'Unknown Artist'}</span> ({s.play_count})
-                                        </li>
-                                     )) : <p className="text-gray-400 italic text-center py-2">No song data yet.</p>}
-                                </ol>
-                               </ScrollArea>
-                          </TabsContent>
-                          <TabsContent value="artists">
-                                <ScrollArea className="h-[200px] pr-2 rounded-md border border-gray-700 p-3 bg-gray-700/50">
-                                <ol className="list-decimal list-inside space-y-1 text-sm">
-                                     {allTimeStats.topArtists.length > 0 ? allTimeStats.topArtists.map((a, i) => (
-                                        <li key={i} className="text-gray-300">
-                                            <span className="font-medium text-white">{a.artist || 'Unknown Artist'}</span> ({a.play_count})
-                                        </li>
-                                     )) : <p className="text-gray-400 italic text-center py-2">No artist data yet.</p>}
-                                </ol>
-                                </ScrollArea>
-                          </TabsContent>
-                      </Tabs>
-                  ) : (
-                      <p className="text-gray-400 italic text-center py-10">Could not load statistics.</p>
-                  )}
-              </CardContent>
-          </Card>
+          <StatisticsCard 
+            isLoading={isLoadingStats}
+            stats={allTimeStats}
+            includeRequesters={true}
+            title="All-Time Statistics"
+            description="Overall system usage stats."
+          />
 
           {/* Blocked Users Card */}
           <Card className="bg-gray-800 border-gray-700">

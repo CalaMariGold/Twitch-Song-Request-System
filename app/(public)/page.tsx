@@ -8,7 +8,8 @@ import { Button } from "@/components/ui/button"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { BarChart2 } from "lucide-react"
 import { io, Socket } from "socket.io-client"
-import { SongRequest, QueueState } from "@/lib/types"
+import { SongRequest, QueueState, AllTimeStats } from "@/lib/types"
+import { StatisticsCard } from "@/components/StatisticsCard"
 
 export default function PublicDashboard() {
   const [queueState, setQueueState] = useState<QueueState>({
@@ -20,6 +21,8 @@ export default function PublicDashboard() {
   })
   const [socket, setSocket] = useState<Socket | null>(null)
   const [isConnected, setIsConnected] = useState(false) // Optional: For showing connection status
+  const [allTimeStats, setAllTimeStats] = useState<AllTimeStats | null>(null)
+  const [isLoadingStats, setIsLoadingStats] = useState(true)
 
   // Socket Connection & State Fetching
   useEffect(() => {
@@ -28,6 +31,7 @@ export default function PublicDashboard() {
     socketInstance.on('connect', () => {
       setIsConnected(true)
       console.log('Connected to Socket.IO server (Public Page)')
+      socketInstance.emit('getAllTimeStats')
     })
     
     socketInstance.on('disconnect', () => {
@@ -65,6 +69,18 @@ export default function PublicDashboard() {
         activeSong: initialState.activeSong,
         isLoading: false
       }))
+    })
+    
+    // Handle statistics updates
+    socketInstance.on('allTimeStatsUpdate', (stats: AllTimeStats) => {
+      console.log('Public: Received all-time stats')
+      setAllTimeStats(stats)
+      setIsLoadingStats(false)
+    })
+
+    socketInstance.on('allTimeStatsError', (error: { message: string }) => {
+      console.error('Public: Failed to load all-time stats:', error.message)
+      setIsLoadingStats(false)
     })
     
     // Request initial state
@@ -114,14 +130,26 @@ export default function PublicDashboard() {
           </Link>
         </div>
         
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Main Content: Queue */}
-          <div className="md:col-span-2">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          {/* Main Content Area (3/4 width) */}
+          <div className="md:col-span-3 space-y-6">
+            {/* Song Request Queue */}
             <SongRequestQueue />
+            
+            {/* All-Time Stats Card - Moved under the queue */}
+            <StatisticsCard 
+              isLoading={isLoadingStats}
+              stats={allTimeStats}
+              includeRequesters={true}
+              title="All-Time Statistics"
+              description="Overall system usage stats."
+              className="bg-gray-800/80 border-gray-700 backdrop-blur-sm"
+              heightClass="h-[220px]"
+            />
           </div>
 
-          {/* Side Panel: Statistics */}
-          <div className="md:col-span-1 space-y-6">
+          {/* Side Panel: Queue Statistics (1/4 width) */}
+          <div className="md:col-span-1">
             <Card className="bg-gray-800/80 border-gray-700 backdrop-blur-sm">
               <CardHeader>
                 <CardTitle className="text-white flex items-center gap-2">
@@ -133,7 +161,7 @@ export default function PublicDashboard() {
                 {queueState.isLoading ? (
                   <div className="text-center py-4 text-gray-400">Loading stats...</div>
                 ) : (
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-4">
                     <div className="bg-gray-700/70 p-4 rounded-lg text-center">
                       <p className="text-xs text-gray-400">In Queue</p>
                       <p className="text-2xl font-bold text-white">{queueState.queue.length}</p>
@@ -148,11 +176,8 @@ export default function PublicDashboard() {
                     </div>
                   </div>
                 )}
-                 {/* Optional: Add connection status indicator here */}
-                 {/* <p className={`text-xs text-right ${isConnected ? 'text-green-500' : 'text-red-500'}`}>{isConnected ? 'Connected' : 'Disconnected'}</p> */}
               </CardContent>
             </Card>
-            {/* You could add more cards here later, e.g., Active Song */}
           </div>
         </div>
       </div>
