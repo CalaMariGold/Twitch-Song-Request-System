@@ -23,7 +23,7 @@ export default function SongRequestQueue() {
   const [state, setState] = useState<AppState>({
     queue: [],
     history: [],
-    nowPlaying: null,
+    activeSong: null,
     settings: {},
     blacklist: [],
     blockedUsers: [],
@@ -65,7 +65,7 @@ export default function SongRequestQueue() {
         ...prev,
         queue: serverState.queue || [],
         history: serverState.history || [],
-        nowPlaying: serverState.nowPlaying,
+        activeSong: serverState.activeSong,
         settings: serverState.settings || {},
         blacklist: serverState.blacklist || [],
         blockedUsers: serverState.blockedUsers || [],
@@ -100,11 +100,11 @@ export default function SongRequestQueue() {
     })
     // ********************************
 
-    newSocket.on(socketEvents.NOW_PLAYING, (song: SongRequest | null) => {
-      console.log('Now playing updated:', song)
+    newSocket.on(socketEvents.ACTIVE_SONG, (song: SongRequest | null) => {
+      console.log('Active song updated:', song)
       setState((prev: AppState) => ({
         ...prev,
-        nowPlaying: song,
+        activeSong: song,
       }))
     })
 
@@ -139,7 +139,7 @@ export default function SongRequestQueue() {
     <ErrorBoundary>
       <div className="w-full max-w-4xl mx-auto p-6 bg-gray-900 text-white rounded-lg shadow-xl">
         <Header isConnected={isConnected} />
-        <ActiveSong song={state.nowPlaying} isLoading={state.isLoading} />
+        <ActiveSong song={state.activeSong} isLoading={state.isLoading} />
 
         <div className="mb-4 relative">
           <Input

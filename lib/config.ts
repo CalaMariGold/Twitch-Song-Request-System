@@ -48,7 +48,7 @@ export const constants = {
 export const socketEvents = {
   NEW_SONG_REQUEST: 'newSongRequest',
   QUEUE_UPDATE: 'queueUpdate',
-  NOW_PLAYING: 'nowPlaying',
+  ACTIVE_SONG: 'activeSong',
   CONNECT: 'connect',
   DISCONNECT: 'disconnect',
   ERROR: 'error'

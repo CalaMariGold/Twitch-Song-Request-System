@@ -57,7 +57,7 @@ export interface SongRequest {
 export interface QueueState {
   queue: SongRequest[];
   history: SongRequest[];
-  nowPlaying: SongRequest | null;
+  activeSong: SongRequest | null;
   isLoading: boolean;
   error: Error | null;
 }
@@ -115,7 +115,7 @@ export interface AllTimeStats {
 export interface AppState {
   queue: SongRequest[]
   history: SongRequest[] // Typically recent history for display
-  nowPlaying: SongRequest | null
+  activeSong: SongRequest | null
   settings: Settings
   blacklist: BlacklistItem[]
   blockedUsers: BlockedUser[]
@@ -131,7 +131,7 @@ export interface SocketEvents {
     initialState: (state: AppState) => void;
     queueUpdate: (queue: SongRequest[]) => void;
     historyUpdate: (history: SongRequest[]) => void; // For broadcasting recent history changes
-    nowPlaying: (song: SongRequest | null) => void;
+    activeSong: (song: SongRequest | null) => void;
     newSongRequest: (request: SongRequest) => void; // Feedback for successful request
     settingsUpdate: (settings: Settings) => void;
     blacklistUpdate: (blacklist: BlacklistItem[]) => void;
@@ -148,7 +148,7 @@ export interface SocketEvents {
     clearQueue: () => void;
     resetSystem: () => void; // Consider removing if clearQueue/stop is enough
     setMaxDuration: (minutes: number) => void; // Or seconds, match backend
-    updateNowPlaying: (song: SongRequest | null) => void; // When admin forces next song or stops
+    updateActiveSong: (song: SongRequest | null) => void; // When admin forces next song or stops
     updateBlacklist: (newBlacklist: BlacklistItem[]) => void;
     updateBlockedUsers: (newBlockedUsers: BlockedUser[]) => void;
     getAllTimeStats: () => void;

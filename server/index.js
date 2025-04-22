@@ -194,8 +194,8 @@ try {
     `;
     db.exec(createHistoryTableStmt);
 
-    const createNowPlayingTableStmt = `
-        CREATE TABLE IF NOT EXISTS now_playing (
+    const createActiveSongTableStmt = `
+        CREATE TABLE IF NOT EXISTS active_song (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             youtubeUrl TEXT NOT NULL,
             title TEXT,
@@ -210,7 +210,7 @@ try {
             startedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
     `;
-    db.exec(createNowPlayingTableStmt);
+    db.exec(createActiveSongTableStmt);
 
     const createActiveQueueTableStmt = `
         CREATE TABLE IF NOT EXISTS active_queue (
@@ -283,7 +283,7 @@ try {
 // --- SQLite Prepared Statements ---
 let insertHistoryStmt, insertQueueStmt, deleteQueueStmt, clearQueueStmt;
 let saveSettingStmt, addBlacklistStmt, removeBlacklistStmt, addBlockedUserStmt, removeBlockedUserStmt;
-let saveNowPlayingStmt, clearNowPlayingStmt;
+let saveActiveSongStmt, clearActiveSongStmt;
 
 try {
     // History & Queue (define now, use later)
@@ -308,9 +308,9 @@ try {
     deleteQueueStmt = db.prepare('DELETE FROM active_queue WHERE youtubeUrl = ?');
     clearQueueStmt = db.prepare('DELETE FROM active_queue');
 
-    // Now Playing
-    saveNowPlayingStmt = db.prepare(`
-        INSERT OR REPLACE INTO now_playing (
+    // Active Song
+    saveActiveSongStmt = db.prepare(`
+        INSERT OR REPLACE INTO active_song (
             youtubeUrl, title, artist, channelId, durationSeconds,
             requester, requesterLogin, requesterAvatar, thumbnailUrl, requestType, startedAt
         ) VALUES (
@@ -318,7 +318,7 @@ try {
             @requester, @requesterLogin, @requesterAvatar, @thumbnailUrl, @requestType, CURRENT_TIMESTAMP
         )
     `);
-    clearNowPlayingStmt = db.prepare('DELETE FROM now_playing');
+    clearActiveSongStmt = db.prepare('DELETE FROM active_song');
 
     // Settings
     saveSettingStmt = db.prepare(`
@@ -345,7 +345,7 @@ try {
 const state = {
   queue: [], // Will be loaded from active_queue table
   history: [], // History loading from DB deferred for now
-  nowPlaying: null,
+  activeSong: null,
   settings: {}, // Will be loaded from settings table
   blacklist: [], // Will be loaded from blacklist table
   blockedUsers: [] // Will be loaded from blocked_users table
@@ -362,7 +362,7 @@ const io = new Server(httpServer, {
 // Function to load initial state from Database
 function loadInitialState() {
     console.log(chalk.blue('[Database] Loading initial state...'));
-    let loadedState = { queue: [], settings: {}, blacklist: [], blockedUsers: [], nowPlaying: null };
+    let loadedState = { queue: [], settings: {}, blacklist: [], blockedUsers: [], activeSong: null };
     try {
         // Load Active Queue
         const loadQueueStmt = db.prepare(`
@@ -391,8 +391,8 @@ function loadInitialState() {
         }));
         console.log(chalk.blue(`[Database] Loaded ${loadedState.queue.length} songs into the active queue.`));
 
-        // Load Now Playing Song
-        loadedState.nowPlaying = loadNowPlayingFromDB();
+        // Load Active song
+        loadedState.activeSong = loadActiveSongFromDB();
 
         // Load Settings
         const loadSettingsStmt = db.prepare('SELECT key, value FROM settings');
@@ -526,18 +526,18 @@ function addSongToDbQueue(song) {
     }
 }
 
-function saveNowPlayingToDB(song) {
+function saveActiveSongToDB(song) {
     if (!song) {
-        clearNowPlayingFromDB();
+        clearActiveSongFromDB();
         return;
     }
     
     try {
-        // Clear existing now playing entry first
-        clearNowPlayingFromDB();
+        // Clear existing active song entry first
+        clearActiveSongFromDB();
         
         // Add the new song
-        saveNowPlayingStmt.run({
+        saveActiveSongStmt.run({
             youtubeUrl: song.youtubeUrl,
             title: song.title || null,
             artist: song.artist || null,
@@ -549,37 +549,37 @@ function saveNowPlayingToDB(song) {
             thumbnailUrl: song.thumbnailUrl || null,
             requestType: song.requestType
         });
-        console.log(chalk.grey(`[DB Write] Saved current playing song: ${song.title}`));
+        console.log(chalk.grey(`[DB Write] Saved current active song: ${song.title}`));
     } catch (err) {
-        console.error(chalk.red('[Database] Failed to save now playing song:'), err);
+        console.error(chalk.red('[Database] Failed to save active song:'), err);
     }
 }
 
-function clearNowPlayingFromDB() {
+function clearActiveSongFromDB() {
     try {
-        clearNowPlayingStmt.run();
-        console.log(chalk.grey('[DB Write] Cleared now_playing table.'));
+        clearActiveSongStmt.run();
+        console.log(chalk.grey('[DB Write] Cleared active_song table.'));
     } catch (err) {
-        console.error(chalk.red('[Database] Failed to clear now_playing table:'), err);
+        console.error(chalk.red('[Database] Failed to clear active_song table:'), err);
     }
 }
 
-function loadNowPlayingFromDB() {
+function loadActiveSongFromDB() {
     try {
-        const loadNowPlayingStmt = db.prepare(`
+        const loadActiveSongStmt = db.prepare(`
             SELECT id, youtubeUrl, title, artist, channelId, durationSeconds,
                    requester, requesterLogin, requesterAvatar, thumbnailUrl, requestType, startedAt
-            FROM now_playing ORDER BY id DESC LIMIT 1
+            FROM active_song ORDER BY id DESC LIMIT 1
         `);
-        const row = loadNowPlayingStmt.get();
+        const row = loadActiveSongStmt.get();
         
         if (!row) {
             console.log(chalk.blue('[Database] No active song found in database.'));
             return null;
         }
         
-        // Map DB row to state.nowPlaying format
-        const nowPlaying = {
+        // Map DB row to state.activeSong format
+        const activeSong = {
             id: row.id.toString(),
             youtubeUrl: row.youtubeUrl,
             title: row.title,
@@ -596,8 +596,8 @@ function loadNowPlayingFromDB() {
             source: 'database'
         };
         
-        console.log(chalk.blue(`[Database] Loaded active song: ${nowPlaying.title}`));
-        return nowPlaying;
+        console.log(chalk.blue(`[Database] Loaded active song: ${activeSong.title}`));
+        return activeSong;
     } catch (err) {
         console.error(chalk.red('[Database] Error loading active song:'), err);
         return null;
@@ -999,18 +999,18 @@ io.on('connection', (socket) => {
     socket.on('resetSystem', async () => {
         // Clear in-memory state
         state.queue = []
-        state.nowPlaying = null
+        state.activeSong = null
         state.history = []
 
         // Clear persistent state (Queue)
         clearDbQueue();
-        // Clear now playing song from DB
-        clearNowPlayingFromDB();
+        // Clear active song from DB
+        clearActiveSongFromDB();
         // Note: History table is NOT cleared by reset. Settings/Blacklist/Blocked are also NOT cleared.
 
         // Emit updates to all clients
         io.emit('queueUpdate', state.queue)
-        io.emit('nowPlaying', state.nowPlaying)
+        io.emit('activeSong', state.activeSong)
         io.emit('historyUpdate', state.history)
         console.log(chalk.magenta('[Admin] System reset via socket.'));
     })
@@ -1024,10 +1024,10 @@ io.on('connection', (socket) => {
         console.log(chalk.magenta(`[Admin] Max Duration set to ${minutes} mins via socket.`));
     })
 
-    // Handle now playing updates
-    socket.on('updateNowPlaying', async (song) => {
-        const previousSong = state.nowPlaying; // Store previous song
-        console.log(chalk.grey(`[Socket.IO] Received updateNowPlaying. New song: ${song ? `ID: ${song.id}, Title: ${song.title}` : 'null'}. Previous song: ${previousSong ? `ID: ${previousSong.id}, Title: ${previousSong.title}` : 'null'}`)); 
+    // Handle active song updates
+    socket.on('updateActiveSong', async (song) => {
+        const previousSong = state.activeSong; // Store previous song
+        console.log(chalk.grey(`[Socket.IO] Received updateActiveSong. New song: ${song ? `ID: ${song.id}, Title: ${song.title}` : 'null'}. Previous song: ${previousSong ? `ID: ${previousSong.id}, Title: ${previousSong.title}` : 'null'}`)); 
 
         if (song) {
             if (previousSong) { // No need to check history array anymore, just log if previous existed
@@ -1067,9 +1067,9 @@ io.on('connection', (socket) => {
                      }
                  }
             }
-            state.nowPlaying = song
-            // Save the now playing song to the database
-            saveNowPlayingToDB(song);
+            state.activeSong = song
+            // Save the active song to the database
+            saveActiveSongToDB(song);
             
             // Remove song from IN-MEMORY queue first
             const queueBeforeFilterLength = state.queue.length;
@@ -1122,13 +1122,13 @@ io.on('connection', (socket) => {
             if (previousSong) { // Only log console message if there *was* a song playing
                 console.log(chalk.yellow(`[Queue] Song finished/removed: "${previousSong.title}"`));
             }
-            state.nowPlaying = null
-            // Clear the now playing song from the database
-            clearNowPlayingFromDB();
+            state.activeSong = null
+            // Clear the active song from the database
+            clearActiveSongFromDB();
         }
         
         // Broadcast updates
-        io.emit('nowPlaying', state.nowPlaying)
+        io.emit('activeSong', state.activeSong)
         io.emit('queueUpdate', state.queue)
     })
 
@@ -1184,14 +1184,14 @@ io.on('connection', (socket) => {
         // Log the song to history
         const result = logCompletedSong(song);
         if (result) {
-            // Clear the nowPlaying state
-            state.nowPlaying = null;
-            // Clear the now playing song from the database
-            clearNowPlayingFromDB();
+            // Clear the activeSong state
+            state.activeSong = null;
+            // Clear the active song from the database
+            clearActiveSongFromDB();
             
             // Emit events to clients
             io.emit('songFinished', song);
-            io.emit('nowPlaying', null);
+            io.emit('activeSong', null);
 
             // Update history for all clients
             if (typeof result === 'object' && result.history) {
@@ -1473,10 +1473,10 @@ async function startServer() {
   state.settings = { ...state.settings, ...loadedState.settings }; // Merge defaults with loaded
   state.blacklist = loadedState.blacklist;
   state.blockedUsers = loadedState.blockedUsers;
-  state.nowPlaying = loadedState.nowPlaying; // Set the nowPlaying state from loaded data
+  state.activeSong = loadedState.activeSong; // Set the activeSong state from loaded data
 
-  // Log the nowPlaying state for debugging
-  console.log(chalk.blue(`[Server] Loaded nowPlaying: ${state.nowPlaying ? state.nowPlaying.title : 'null'}`));
+  // Log the activeSong state for debugging
+  console.log(chalk.blue(`[Server] Loaded activeSong: ${state.activeSong ? state.activeSong.title : 'null'}`));
 
   // Connect to StreamElements Socket API for donation/redemption events
   connectToStreamElements();

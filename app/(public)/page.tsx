@@ -14,7 +14,7 @@ export default function PublicDashboard() {
   const [queueState, setQueueState] = useState<QueueState>({
     queue: [],
     history: [],
-    nowPlaying: null,
+    activeSong: null,
     isLoading: true,
     error: null
   })
@@ -39,8 +39,8 @@ export default function PublicDashboard() {
       setQueueState((prev: QueueState) => ({ ...prev, queue, isLoading: false }))
     })
     
-    socketInstance.on('nowPlaying', (song: SongRequest | null) => {
-      setQueueState((prev: QueueState) => ({ ...prev, nowPlaying: song, isLoading: false }))
+    socketInstance.on('activeSong', (song: SongRequest | null) => {
+      setQueueState((prev: QueueState) => ({ ...prev, activeSong: song, isLoading: false }))
     })
     
     socketInstance.on('historyUpdate', (history: SongRequest[]) => {
@@ -62,7 +62,7 @@ export default function PublicDashboard() {
         ...prev,
         queue: initialState.queue || [],
         history: initialState.history || [],
-        nowPlaying: initialState.nowPlaying,
+        activeSong: initialState.activeSong,
         isLoading: false
       }))
     })
@@ -152,7 +152,7 @@ export default function PublicDashboard() {
                  {/* <p className={`text-xs text-right ${isConnected ? 'text-green-500' : 'text-red-500'}`}>{isConnected ? 'Connected' : 'Disconnected'}</p> */}
               </CardContent>
             </Card>
-            {/* You could add more cards here later, e.g., Now Playing */}
+            {/* You could add more cards here later, e.g., Active Song */}
           </div>
         </div>
       </div>

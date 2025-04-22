@@ -103,7 +103,7 @@ export default function AdminDashboard() {
   const [appState, setAppState] = useState<AppState>({
     queue: [],
     history: [],
-    nowPlaying: null,
+    activeSong: null,
     settings: { maxDuration: 10 },
     blacklist: [],
     blockedUsers: [],
@@ -152,9 +152,9 @@ export default function AdminDashboard() {
       setAppState(prev => ({ ...prev, queue }))
     })
 
-    socketInstance.on('nowPlaying', (song: SongRequest | null) => {
+    socketInstance.on('activeSong', (song: SongRequest | null) => {
       console.log('Admin: Active song updated', song)
-      setAppState(prev => ({ ...prev, nowPlaying: song }))
+      setAppState(prev => ({ ...prev, activeSong: song }))
     })
 
     socketInstance.on('historyUpdate', (history: SongRequest[]) => {
@@ -240,16 +240,16 @@ export default function AdminDashboard() {
   const handlePlaySong = (song: SongRequest) => {
     if (!socket) return
     console.log(`Admin: Setting active song ${song.id}`)
-    socket.emit('updateNowPlaying', song) 
+    socket.emit('updateActiveSong', song) 
     toast({ title: "Song Selected", description: `Now active: ${song.title}` })
   }
 
   const handleSkipSong = () => {
-    if (!socket || !appState.nowPlaying) return
-    const skippedSong = appState.nowPlaying
+    if (!socket || !appState.activeSong) return
+    const skippedSong = appState.activeSong
     console.log(`Admin: Skipping song ${skippedSong.id}`)
     const nextSong = appState.queue.length > 0 ? appState.queue[0] : null
-    socket.emit('updateNowPlaying', nextSong) 
+    socket.emit('updateActiveSong', nextSong) 
     toast({ title: "Song Skipped", description: `Skipped: ${skippedSong.title}` })
     if (nextSong) {
        toast({ title: "New Song Active", description: `Now showing: ${nextSong.title}` })
@@ -259,8 +259,8 @@ export default function AdminDashboard() {
   }
   
   const handleMarkAsFinished = () => {
-    if (!socket || !appState.nowPlaying) return
-    const finishedSong = appState.nowPlaying
+    if (!socket || !appState.activeSong) return
+    const finishedSong = appState.activeSong
     console.log(`Admin: Marking song ${finishedSong.id} as finished`)
     socket.emit('markSongAsFinished', finishedSong)
     toast({ title: "Song Completed", description: `"${finishedSong.title}" moved to history.` })
@@ -540,54 +540,54 @@ export default function AdminDashboard() {
                  <div className="flex items-center justify-center h-24">
                     <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
                  </div>
-              ) : appState.nowPlaying ? (
+              ) : appState.activeSong ? (
                 <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-4 sm:space-y-0 sm:space-x-4">
                   {/* Larger Thumbnail */}
                   <div className="relative w-full sm:w-32 h-24 sm:h-20 rounded-md overflow-hidden flex-shrink-0">
                      <img 
-                        src={appState.nowPlaying.thumbnailUrl || 'https://via.placeholder.com/128x80'} 
-                        alt={appState.nowPlaying.title || 'Video thumbnail'}
+                        src={appState.activeSong.thumbnailUrl || 'https://via.placeholder.com/128x80'} 
+                        alt={appState.activeSong.title || 'Video thumbnail'}
                         className="w-full h-full object-cover"
                      />
                   </div>
 
                   <div className="flex-grow min-w-0">
-                    <p className="font-semibold text-white text-lg truncate" title={appState.nowPlaying.title}>{appState.nowPlaying.title || 'Unknown Title'}</p>
+                    <p className="font-semibold text-white text-lg truncate" title={appState.activeSong.title}>{appState.activeSong.title || 'Unknown Title'}</p>
                     <p className="text-sm text-gray-400 truncate hover:text-gray-300 transition-colors">
-                      {appState.nowPlaying.channelId ? (
-                        <Link href={`https://www.youtube.com/channel/${appState.nowPlaying.channelId}`} target="_blank" rel="noopener noreferrer" className="underline">
-                            {appState.nowPlaying.artist || 'Unknown Artist'}
+                      {appState.activeSong.channelId ? (
+                        <Link href={`https://www.youtube.com/channel/${appState.activeSong.channelId}`} target="_blank" rel="noopener noreferrer" className="underline">
+                            {appState.activeSong.artist || 'Unknown Artist'}
                         </Link>
                        ) : (
-                         appState.nowPlaying.artist || 'Unknown Artist'
+                         appState.activeSong.artist || 'Unknown Artist'
                        )}
                     </p>
                     <div className="text-xs text-gray-500 flex items-center flex-wrap gap-x-2 gap-y-1 mt-1">
                         Requested by: 
                         <Avatar className="w-4 h-4 rounded-full inline-block">
-                          <AvatarImage src={appState.nowPlaying.requesterAvatar} alt={appState.nowPlaying.requester} />
-                          <AvatarFallback className="text-[8px]">{appState.nowPlaying.requester.slice(0,1)}</AvatarFallback>
+                          <AvatarImage src={appState.activeSong.requesterAvatar} alt={appState.activeSong.requester} />
+                          <AvatarFallback className="text-[8px]">{appState.activeSong.requester.slice(0,1)}</AvatarFallback>
                         </Avatar>
-                         <Link href={`https://www.twitch.tv/${appState.nowPlaying.requesterLogin || appState.nowPlaying.requester.toLowerCase()}`} target="_blank" rel="noopener noreferrer" className="hover:text-gray-300 underline transition-colors">
-                           <span>{appState.nowPlaying.requester}</span>
+                         <Link href={`https://www.twitch.tv/${appState.activeSong.requesterLogin || appState.activeSong.requester.toLowerCase()}`} target="_blank" rel="noopener noreferrer" className="hover:text-gray-300 underline transition-colors">
+                           <span>{appState.activeSong.requester}</span>
                          </Link>
                        {/* Adjusted Badge Styles */}
-                       {appState.nowPlaying.requestType === 'donation' && (
+                       {appState.activeSong.requestType === 'donation' && (
                           <Badge variant="secondary" className="px-1.5 py-0.5 text-xs bg-green-800 text-green-200 border-green-700">
                             Dono
                           </Badge>
                         )}
-                        {appState.nowPlaying.requestType === 'channelPoint' && (
+                        {appState.activeSong.requestType === 'channelPoint' && (
                           <Badge variant="outline" className="px-1.5 py-0.5 text-xs bg-purple-800 text-purple-200 border-purple-700">
                             Points
                           </Badge>
                         )}
-                         {appState.nowPlaying.requestType !== 'donation' && appState.nowPlaying.requestType !== 'channelPoint' && appState.nowPlaying.requestType !== 'manual_admin' && (
+                         {appState.activeSong.requestType !== 'donation' && appState.activeSong.requestType !== 'channelPoint' && appState.activeSong.requestType !== 'manual_admin' && (
                             <Badge variant="secondary" className="px-1.5 py-0.5 text-xs">
-                                {appState.nowPlaying.requestType}
+                                {appState.activeSong.requestType}
                             </Badge>
                          )}
-                         {appState.nowPlaying.requestType === 'manual_admin' && (
+                         {appState.activeSong.requestType === 'manual_admin' && (
                               <Badge variant="outline" className="px-1.5 py-0.5 text-xs bg-blue-800 text-blue-200 border-blue-700">
                                 Manual
                               </Badge>
@@ -597,8 +597,8 @@ export default function AdminDashboard() {
                   <div className="flex flex-col items-end space-y-2 w-full sm:w-auto">
                     <div className="text-sm text-gray-400 flex items-center">
                       <Clock className="inline-block mr-1 -mt-0.5" size={16} />
-                      {formatDuration(appState.nowPlaying.durationSeconds)}
-                      <a href={appState.nowPlaying.youtubeUrl} target="_blank" rel="noopener noreferrer" aria-label="Watch on YouTube" className="ml-2">
+                      {formatDuration(appState.activeSong.durationSeconds)}
+                      <a href={appState.activeSong.youtubeUrl} target="_blank" rel="noopener noreferrer" aria-label="Watch on YouTube" className="ml-2">
                         <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
                           <Youtube className="h-5 w-5 text-red-600 hover:text-red-500 transition-colors" />
                         </Button>
