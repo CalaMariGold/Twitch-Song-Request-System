@@ -83,20 +83,36 @@ io.on('connection', (socket) => {
     
     // Send initial state including fetched history
     socket.emit('initialState', {
-         ...state,
-         history: recentHistory // Include history from DB
+        ...state,
+        history: recentHistory // Include history from DB
     })
-
+    
     // Handle explicit getState request
     socket.on('getState', () => {
-        let recentHistory = db.getRecentHistory();
-        // Send current state including recent history
-        socket.emit('initialState', {
-             ...state,
-             history: recentHistory // Overwrite in-memory history with recent DB history
-         });
+       let recentHistory = db.getRecentHistory();
+       // Send current state including recent history
+       socket.emit('initialState', {
+            ...state,
+            history: recentHistory // Overwrite in-memory history with recent DB history
+        });
     })
-
+    
+    // Get YouTube video details (for Request Plan feature)
+    socket.on('getYouTubeDetails', async (youtubeUrl, callback) => {
+      try {
+        const videoId = extractVideoId(youtubeUrl)
+        if (!videoId) {
+          return callback({ error: 'Invalid YouTube URL' })
+        }
+        
+        const videoDetails = await fetchYouTubeDetails(videoId)
+        callback(null, videoDetails)
+      } catch (error) {
+        console.error('Error fetching YouTube details:', error)
+        callback({ error: error.message || 'Failed to fetch video details' })
+      }
+    })
+    
     // Handle queue updates
     socket.on('updateQueue', (updatedQueue) => {
         // Update in-memory queue first

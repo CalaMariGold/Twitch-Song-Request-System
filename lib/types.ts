@@ -203,4 +203,36 @@ export interface AppError extends Error {
   context?: any
 }
 
+/**
+ * Represents a planned song request that a user has saved for later
+ */
+export interface PlannedRequest {
+  /** Unique identifier for the planned request */
+  id: string
+  /** Full YouTube URL of the song */
+  youtubeUrl: string
+  /** Title of the song (from YouTube) */
+  title?: string
+  /** Artist/channel name (from YouTube) */
+  artist?: string
+  /** YouTube Channel ID (for linking) */
+  channelId?: string
+  /** Formatted duration (e.g., "3:45") */
+  duration?: string
+  /** Duration in seconds */
+  durationSeconds?: number
+  /** Thumbnail URL of the song */
+  thumbnailUrl?: string
+  /** Timestamp when this was added to the plan */
+  addedAt: string
+  /** Optional Spotify information */
+  spotify?: {
+    uri: string;
+    id: string;
+    name: string;
+    artists: { id: string; name: string }[];
+    album?: { id: string; name: string; images?: { url: string; height: number; width: number }[] };
+  }
+}
+
 export {} 

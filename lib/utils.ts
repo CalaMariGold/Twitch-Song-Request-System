@@ -1,7 +1,7 @@
 import { type ClassValue, clsx } from "clsx"
 import { twMerge } from "tailwind-merge"
 import React from "react"
-import { SongRequest } from "./types"
+import { SongRequest, PlannedRequest } from "./types"
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -134,4 +134,89 @@ export function formatDate(dateString: string): string {
   } catch (error) {
     return dateString
   }
+}
+
+// Request Plan localStorage functions
+
+/**
+ * Get request plan from localStorage
+ */
+export function getRequestPlan(userId: string): PlannedRequest[] {
+  if (typeof window === 'undefined') return []
+  
+  try {
+    const storageKey = `request_plan_${userId}`
+    const storedPlan = localStorage.getItem(storageKey)
+    return storedPlan ? JSON.parse(storedPlan) : []
+  } catch (e) {
+    console.error('Failed to load request plan from localStorage:', e)
+    return []
+  }
+}
+
+/**
+ * Save request plan to localStorage
+ */
+export function saveRequestPlan(userId: string, plan: PlannedRequest[]): void {
+  if (typeof window === 'undefined') return
+  
+  try {
+    const storageKey = `request_plan_${userId}`
+    localStorage.setItem(storageKey, JSON.stringify(plan))
+  } catch (e) {
+    console.error('Failed to save request plan to localStorage:', e)
+  }
+}
+
+/**
+ * Add song to request plan
+ */
+export function addToRequestPlan(userId: string, song: Partial<PlannedRequest> & { youtubeUrl: string }): PlannedRequest[] {
+  const currentPlan = getRequestPlan(userId)
+  
+  // Check if song already exists in plan
+  const exists = currentPlan.some(item => item.youtubeUrl === song.youtubeUrl)
+  if (exists) return currentPlan
+  
+  // Create new planned request with defaults
+  const newPlannedRequest: PlannedRequest = {
+    id: Date.now().toString(),
+    youtubeUrl: song.youtubeUrl,
+    title: song.title || 'Unknown Title',
+    artist: song.artist || 'Unknown Artist',
+    channelId: song.channelId,
+    duration: song.duration,
+    durationSeconds: song.durationSeconds,
+    thumbnailUrl: song.thumbnailUrl,
+    addedAt: new Date().toISOString(),
+    spotify: song.spotify
+  }
+  
+  // Add to plan and save
+  const updatedPlan = [...currentPlan, newPlannedRequest]
+  saveRequestPlan(userId, updatedPlan)
+  return updatedPlan
+}
+
+/**
+ * Remove song from request plan
+ */
+export function removeFromRequestPlan(userId: string, songId: string): PlannedRequest[] {
+  const currentPlan = getRequestPlan(userId)
+  const updatedPlan = currentPlan.filter(song => song.id !== songId)
+  saveRequestPlan(userId, updatedPlan)
+  return updatedPlan
+}
+
+/**
+ * Reorder songs in request plan
+ */
+export function reorderRequestPlan(userId: string, startIndex: number, endIndex: number): PlannedRequest[] {
+  const currentPlan = getRequestPlan(userId)
+  const result = Array.from(currentPlan)
+  const [removed] = result.splice(startIndex, 1)
+  result.splice(endIndex, 0, removed)
+  
+  saveRequestPlan(userId, result)
+  return result
 } 
