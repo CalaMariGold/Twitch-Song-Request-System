@@ -654,6 +654,32 @@ async function validateAndAddSong(request) {
       const videoDetails = await fetchYouTubeDetails(videoId);
       console.log('Successfully fetched video details:', videoDetails);
 
+      // --- Determine Artist Name (Prioritize Spotify) ---
+      let finalArtistName = videoDetails.channelTitle; // Default to channel title
+      let spotifyTrack = null;
+
+      try {
+          console.log(chalk.blue(`[Spotify] Searching for Spotify match for "${videoDetails.title}"`));
+          spotifyTrack = await spotify.getSpotifyEquivalent({
+              title: videoDetails.title,
+              artist: videoDetails.channelTitle // Use channel title for initial search query
+          });
+
+          if (spotifyTrack && spotifyTrack.artists && spotifyTrack.artists.length > 0) {
+              const spotifyArtistNames = spotifyTrack.artists.map(a => a.name).join(', ');
+              console.log(chalk.green(`[Spotify] Found match: "${spotifyTrack.name}" by ${spotifyArtistNames}. Using Spotify artist(s).`));
+              finalArtistName = spotifyArtistNames; // Use Spotify artist name(s)
+          } else {
+              console.log(chalk.yellow(`[Spotify] No suitable match found for "${videoDetails.title}". Using YouTube channel title as artist.`));
+              // Keep finalArtistName as videoDetails.channelTitle
+          }
+      } catch (spotifyError) {
+          console.error(chalk.red('[Spotify] Error finding match:'), spotifyError);
+          // Don't fail the entire song request if Spotify search fails, use default artist name
+          console.log(chalk.yellow(`[Spotify] Proceeding with YouTube channel title ("${finalArtistName}") as artist due to error.`));
+      }
+      // --- END Spotify Search ---
+
       // Check song duration based on request type
       const MAX_CHANNEL_POINT_DURATION_SECONDS = 300; // 5 minutes
       const MAX_DONATION_DURATION_SECONDS = 600; // 10 minutes
@@ -674,7 +700,8 @@ async function validateAndAddSong(request) {
       if (!bypassRestrictions) {
         const blacklist = state.blacklist || [];
         const songTitle = videoDetails.title.toLowerCase();
-        const artistName = videoDetails.channelTitle.toLowerCase();
+        // Use the determined finalArtistName (Spotify or YT Channel) for blacklist check
+        const artistNameLower = finalArtistName.toLowerCase();
 
         const blacklistedSong = blacklist.find(item =>
             item.type === 'song' && songTitle.includes(item.term.toLowerCase())
@@ -686,24 +713,28 @@ async function validateAndAddSong(request) {
         }
 
         const blacklistedArtist = blacklist.find(item =>
-            item.type === 'artist' && artistName.includes(item.term.toLowerCase())
+            // Check against the final determined artist name
+            item.type === 'artist' && artistNameLower.includes(item.term.toLowerCase())
         );
         if (blacklistedArtist) {
-            console.log(chalk.yellow(`[Blacklist] Artist "${videoDetails.channelTitle}" contains term "${blacklistedArtist.term}" - rejecting`));
-             sendChatMessage(`@${request.requester}, sorry, songs by "${videoDetails.channelTitle}" are currently blacklisted.`);
+            // Log using the final artist name
+            console.log(chalk.yellow(`[Blacklist] Artist "${finalArtistName}" contains term "${blacklistedArtist.term}" - rejecting`));
+            sendChatMessage(`@${request.requester}, sorry, songs by "${finalArtistName}" are currently blacklisted.`);
             return;
         }
 
         const blacklistedKeyword = blacklist.find(item =>
             item.type === 'keyword' &&
-            (songTitle.includes(item.term.toLowerCase()) || artistName.includes(item.term.toLowerCase()))
+            // Check against both title and final artist name
+            (songTitle.includes(item.term.toLowerCase()) || artistNameLower.includes(item.term.toLowerCase()))
         );
         if (blacklistedKeyword) {
-            console.log(chalk.yellow(`[Blacklist] Song contains keyword "${blacklistedKeyword.term}" - rejecting "${videoDetails.title}"`));
-             sendChatMessage(`@${request.requester}, sorry, your request for "${videoDetails.title}" could not be added due to a blacklisted keyword.`);
+            console.log(chalk.yellow(`[Blacklist] Song/Artist contains keyword "${blacklistedKeyword.term}" - rejecting "${videoDetails.title}"`));
+            sendChatMessage(`@${request.requester}, sorry, your request for "${videoDetails.title}" could not be added due to a blacklisted keyword.`);
             return;
         }
       }
+      // --- END Blacklist Check ---
 
       // Create song request object
       const songRequest = {
@@ -714,7 +745,7 @@ async function validateAndAddSong(request) {
           requesterAvatar: requesterAvatar,
           timestamp: request.timestamp || new Date().toISOString(),
           title: videoDetails.title,
-          artist: videoDetails.channelTitle,
+          artist: finalArtistName, // Use the determined artist name
           channelId: videoDetails.channelId,
           duration: videoDetails.duration,
           durationSeconds: videoDetails.durationSeconds,
@@ -722,28 +753,10 @@ async function validateAndAddSong(request) {
           source: 'youtube',
           channelPointReward: request.requestType === 'channelPoint' ? request.channelPointReward : undefined,
           requestType: request.requestType,
-          donationInfo: request.requestType === 'donation' ? request.donationInfo : undefined
+          donationInfo: request.requestType === 'donation' ? request.donationInfo : undefined,
+          spotify: spotifyTrack // Attach the found Spotify track object (or null)
       };
       
-      // Find Spotify equivalent for the song
-      try {
-        console.log(chalk.blue(`[Spotify] Searching for Spotify match for "${songRequest.title}"`));
-        const spotifyTrack = await spotify.getSpotifyEquivalent({
-          title: songRequest.title,
-          artist: songRequest.artist
-        });
-        
-        if (spotifyTrack) {
-          console.log(chalk.green(`[Spotify] Found match for "${songRequest.title}": "${spotifyTrack.name}" by ${spotifyTrack.artists.map(a => a.name).join(', ')}`));
-          songRequest.spotify = spotifyTrack;
-        } else {
-          console.log(chalk.yellow(`[Spotify] No match found for "${songRequest.title}"`));
-        }
-      } catch (spotifyError) {
-        console.error(chalk.red('[Spotify] Error finding match:'), spotifyError);
-        // Don't fail the entire song request if Spotify search fails
-      }
-
       // Determine queue insertion position based on request type
       let insertIndex = state.queue.length; // Default to end
       let queuePosition = 0;
