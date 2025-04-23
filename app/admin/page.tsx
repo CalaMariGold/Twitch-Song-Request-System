@@ -580,7 +580,7 @@ export default function AdminDashboard() {
                           </Button>
                         </a>
                         {appState.activeSong.spotify && (
-                          <a href={appState.activeSong.spotify.externalUrl} target="_blank" rel="noopener noreferrer" aria-label="Listen on Spotify">
+                          <a href={appState.activeSong.spotify.uri} target="_blank" rel="noopener noreferrer" aria-label="Listen on Spotify">
                             <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
                               <SpotifyIcon className="h-5 w-5 text-green-500 hover:text-green-400 transition-colors" />
                             </Button>
@@ -707,7 +707,7 @@ export default function AdminDashboard() {
                                        </Button>
                                   </a>
                                   {song.spotify && (
-                                    <a href={song.spotify.externalUrl} target="_blank" rel="noopener noreferrer" aria-label="Listen on Spotify">
+                                    <a href={song.spotify.uri} target="_blank" rel="noopener noreferrer" aria-label="Listen on Spotify">
                                       <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
                                         <SpotifyIcon className="h-4 w-4 text-green-500 hover:text-green-400" />
                                       </Button>
@@ -819,7 +819,7 @@ export default function AdminDashboard() {
                                   </Button>
                                 </a>
                                 {song.spotify && (
-                                  <a href={song.spotify.externalUrl} target="_blank" rel="noopener noreferrer" aria-label="Listen on Spotify">
+                                  <a href={song.spotify.uri} target="_blank" rel="noopener noreferrer" aria-label="Listen on Spotify">
                                     <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
                                       <SpotifyIcon className="h-4 w-4 text-green-500 hover:text-green-400" />
                                     </Button>

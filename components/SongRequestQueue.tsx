@@ -270,7 +270,7 @@ function ActiveSong({ song, isLoading }: { song: SongRequest | null, isLoading: 
             
             {/* Spotify Link Button - Only show if Spotify data exists */}
             {song.spotify && (
-              <a href={song.spotify.externalUrl} target="_blank" rel="noopener noreferrer" aria-label="Listen on Spotify">
+              <a href={song.spotify.uri} target="_blank" rel="noopener noreferrer" aria-label="Listen on Spotify">
                 <Button variant="ghost" className="p-2">
                   <SpotifyIcon className="h-10 w-10 text-green-500" />
                 </Button>
@@ -371,7 +371,7 @@ function SongList({ songs }: { songs: SongRequest[] }) {
                 
                 {/* Spotify Link Button - Only show if Spotify data exists */}
                 {song.spotify && (
-                  <a href={song.spotify.externalUrl} target="_blank" rel="noopener noreferrer" aria-label="Listen on Spotify">
+                  <a href={song.spotify.uri} target="_blank" rel="noopener noreferrer" aria-label="Listen on Spotify">
                     <Button variant="ghost" className="p-1">
                       <SpotifyIcon className="h-5 w-5 text-green-500" />
                     </Button>
