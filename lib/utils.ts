@@ -13,7 +13,7 @@ export function cn(...inputs: ClassValue[]) {
 
 /**
  * Format timestamp to a human-readable date/time
- * Uses Eastern Time (UTC-4) for display
+ * Uses Eastern Time (UTC-4/UTC-5) for display
  * Shows "Today" instead of the date if the timestamp is from today
  */
 export function formatTimestamp(isoString?: string): string {
@@ -36,18 +36,25 @@ export function formatTimestamp(isoString?: string): string {
       date.getMonth() === now.getMonth() && 
       date.getDate() === now.getDate()
     
+    // Get the timezone abbreviation (EST/EDT)
+    const timeZoneString = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/New_York',
+      timeZoneName: 'short'
+    }).formatToParts(date).find(part => part.type === 'timeZoneName')?.value || 'ET'
+    
     if (isToday) {
-      // For today's date, just show "Today, HH:MM AM/PM"
-      return `Today, ${date.toLocaleString('en-US', timeOptions)}`
+      // For today's date, just show "Today, HH:MM AM/PM EST/EDT"
+      return `Today, ${date.toLocaleString('en-US', timeOptions)} ${timeZoneString}`
     } else {
-      // For other dates, show the full date and time
-      return date.toLocaleString('en-US', {
+      // For other dates, show the full date and time with timezone
+      return `${date.toLocaleString('en-US', {
         ...timeOptions,
         month: 'short',
         day: 'numeric'
-      })
+      })} ${timeZoneString}`
     }
   } catch (e) {
+    console.error('Error formatting timestamp:', e)
     return 'Invalid Date'
   }
 }

@@ -36,7 +36,7 @@ function initDatabase() {
                 requesterAvatar TEXT,
                 thumbnailUrl TEXT,
                 requestType TEXT NOT NULL, -- 'channelPoint' or 'donation'
-                completedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                completedAt TEXT DEFAULT (datetime('now')), -- Ensure this is ISO format
                 spotifyData TEXT -- Spotify data as JSON string
             );
         `;
@@ -426,7 +426,21 @@ function logCompletedSong(song) {
         // Serialize Spotify data if present
         const spotifyData = song.spotify ? JSON.stringify(song.spotify) : null;
         
-        insertHistoryStmt.run({
+        // Ensure we use ISO string for timestamp
+        const now = new Date().toISOString();
+        
+        // Create a statement that explicitly sets the completedAt value
+        const insertWithTimestampStmt = db.prepare(`
+            INSERT INTO song_history (
+                youtubeUrl, title, artist, channelId, durationSeconds,
+                requester, requesterLogin, requesterAvatar, thumbnailUrl, requestType, completedAt, spotifyData
+            ) VALUES (
+                @youtubeUrl, @title, @artist, @channelId, @durationSeconds,
+                @requester, @requesterLogin, @requesterAvatar, @thumbnailUrl, @requestType, @completedAt, @spotifyData
+            )
+        `);
+        
+        insertWithTimestampStmt.run({
             youtubeUrl: song.youtubeUrl,
             title: song.title || null,
             artist: song.artist || null,
@@ -437,8 +451,10 @@ function logCompletedSong(song) {
             requesterAvatar: song.requesterAvatar || null,
             thumbnailUrl: song.thumbnailUrl || null,
             requestType: song.requestType,
+            completedAt: now,
             spotifyData: spotifyData
         });
+        
         console.log(chalk.grey(`[DB Write] Logged completed song in history: ${song.title}`));
         
         // Get the updated history to return
@@ -501,6 +517,21 @@ function getRecentHistory(limit = 50) {
                 delete item.spotifyData; // Remove raw JSON string after parsing
             }
             
+            // Ensure the timestamp is properly converted to an ISO string
+            // SQLite may store as UTC, but we need to ensure it's properly formatted for the client
+            let timestamp = item.completedAt;
+            try {
+                // If not already an ISO string, convert to a proper one
+                if (timestamp && !timestamp.includes('T')) {
+                    const date = new Date(timestamp);
+                    if (!isNaN(date.getTime())) {
+                        timestamp = date.toISOString();
+                    }
+                }
+            } catch (err) {
+                console.error(chalk.red('[Database] Error formatting timestamp:'), err);
+            }
+            
             return {
                 id: item.id.toString(),
                 youtubeUrl: item.youtubeUrl,
@@ -510,7 +541,7 @@ function getRecentHistory(limit = 50) {
                 requester: item.requester,
                 requesterLogin: item.requesterLogin,
                 requesterAvatar: item.requesterAvatar,
-                timestamp: item.completedAt,
+                timestamp: timestamp,
                 duration: item.durationSeconds ? formatDurationFromSeconds(item.durationSeconds) : null,
                 durationSeconds: item.durationSeconds,
                 thumbnailUrl: item.thumbnailUrl,

@@ -590,7 +590,7 @@ export default function AdminDashboard() {
                     </div>
                     {appState.activeSong.timestamp && (
                       <div className="text-xs text-gray-500">
-                        Started: {formatTimestamp(appState.activeSong.timestamp)}
+                        Added: {formatTimestamp(appState.activeSong.timestamp)}
                       </div>
                     )}
                      {/* Song Controls */}

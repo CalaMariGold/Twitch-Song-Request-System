@@ -223,13 +223,20 @@ function ActiveSong({ song, isLoading }: { song: SongRequest | null, isLoading: 
             </Avatar>
             <div>
               <h3 className="text-lg font-medium">{song.title}</h3>
-              {song.channelId ? (
-                <Link href={`https://www.youtube.com/channel/${song.channelId}`} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-gray-300 underline transition-colors">
-                  {song.artist || 'Unknown Artist'}
-                </Link>
-              ) : (
-                <p className="text-gray-400">{song.artist || 'Unknown Artist'}</p>
-              )}
+              <div className="flex items-center space-x-2">
+                {song.channelId ? (
+                  <Link href={`https://www.youtube.com/channel/${song.channelId}`} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-gray-300 underline transition-colors">
+                    {song.artist || 'Unknown Artist'}
+                  </Link>
+                ) : (
+                  <p className="text-gray-400">{song.artist || 'Unknown Artist'}</p>
+                )}
+                {/* Active Song Duration */}
+                <span className="text-sm text-gray-400 flex items-center">
+                  <Clock className="inline-block mr-1 -mt-0.5" size={14} />
+                  {song.duration || '?:??'}
+                </span>
+              </div>
               <div className="text-sm text-gray-500 flex items-center flex-wrap gap-x-2 gap-y-1 mt-1">
                 Requested by:{' '}
                 <Avatar className="w-4 h-4 rounded-full inline-block">
@@ -253,22 +260,11 @@ function ActiveSong({ song, isLoading }: { song: SongRequest | null, isLoading: 
             </div>
           </div>
 
-          {/* Duration */}
-          <div className="text-sm text-gray-400">
-             <Clock className="inline-block mr-1 -mt-0.5" size={16} />
-             {song.duration || '0:00'}
-             {song.timestamp && (
-               <div className="text-xs text-gray-500 mt-1">
-                 Started: {formatTimestamp(song.timestamp)}
-               </div>
-             )}
-          </div>
-
           <div className="flex space-x-1">
             {/* YouTube Link Button */}
             <a href={song.youtubeUrl} target="_blank" rel="noopener noreferrer" aria-label="Watch on YouTube">
               <Button variant="ghost" className="p-2">
-                <Youtube className="h-8 w-8 text-red-600" />
+                <Youtube className="h-12 w-12 text-red-600" />
               </Button>
             </a>
             
@@ -276,7 +272,7 @@ function ActiveSong({ song, isLoading }: { song: SongRequest | null, isLoading: 
             {song.spotify && (
               <a href={song.spotify.externalUrl} target="_blank" rel="noopener noreferrer" aria-label="Listen on Spotify">
                 <Button variant="ghost" className="p-2">
-                  <SpotifyIcon className="h-8 w-8 text-green-500" />
+                  <SpotifyIcon className="h-10 w-10 text-green-500" />
                 </Button>
               </a>
             )}
@@ -349,47 +345,52 @@ function SongList({ songs }: { songs: SongRequest[] }) {
                   <Link href={`https://www.twitch.tv/${song.requesterLogin || song.requester.toLowerCase()}`} target="_blank" rel="noopener noreferrer" className="hover:text-gray-300 underline transition-colors">
                     {song.requester}
                   </Link>
+                  
+                  {/* Moved request type badges right after username */}
+                  {song.requestType === 'donation' && (
+                    <Badge variant="secondary" className="px-1.5 py-0.5 text-xs bg-green-800 text-green-200 border-green-700">
+                      Dono
+                    </Badge>
+                  )}
+                  {song.requestType === 'channelPoint' && (
+                    <Badge variant="outline" className="px-1.5 py-0.5 text-xs bg-purple-800 text-purple-200 border-purple-700">
+                      Points
+                    </Badge>
+                  )}
                 </div>
-                {/* History item timestamp display */}
-                {song.source === 'database_history' && (
-                  <span className="text-xs text-gray-500 ml-auto pl-2 whitespace-nowrap">
-                    {formatTimestamp(song.timestamp)}
-                  </span>
-                )}
-                {/* Queue item timestamp display */}
-                {(song.source === 'database' || !song.source) && song.timestamp && (
-                  <span className="text-xs text-gray-500 ml-auto pl-2 whitespace-nowrap">
-                    Added: {formatTimestamp(song.timestamp)}
-                  </span>
-                )}
-                {/* Request type badges */}
-                {song.requestType === 'donation' && (
-                  <Badge variant="secondary" className="px-1.5 py-0.5 text-xs bg-green-800 text-green-200 border-green-700">
-                    Dono
-                  </Badge>
-                )}
-                {song.requestType === 'channelPoint' && (
-                  <Badge variant="outline" className="px-1.5 py-0.5 text-xs bg-purple-800 text-purple-200 border-purple-700">
-                    Points
-                  </Badge>
-                )}
               </div>
             </div>
-            <div className="flex space-x-1 flex-shrink-0">
-              {/* YouTube Link Button */}
-              <a href={song.youtubeUrl} target="_blank" rel="noopener noreferrer" aria-label="Watch on YouTube">
-                <Button variant="ghost" className="p-1">
-                  <Youtube className="h-5 w-5 text-red-600" />
-                </Button>
-              </a>
-              
-              {/* Spotify Link Button - Only show if Spotify data exists */}
-              {song.spotify && (
-                <a href={song.spotify.externalUrl} target="_blank" rel="noopener noreferrer" aria-label="Listen on Spotify">
+            <div className="flex flex-col items-end space-y-1 flex-shrink-0">
+              <div className="flex space-x-1">
+                {/* YouTube Link Button */}
+                <a href={song.youtubeUrl} target="_blank" rel="noopener noreferrer" aria-label="Watch on YouTube">
                   <Button variant="ghost" className="p-1">
-                    <SpotifyIcon className="h-5 w-5 text-green-500" />
+                    <Youtube className="h-5 w-5 text-red-600" />
                   </Button>
                 </a>
+                
+                {/* Spotify Link Button - Only show if Spotify data exists */}
+                {song.spotify && (
+                  <a href={song.spotify.externalUrl} target="_blank" rel="noopener noreferrer" aria-label="Listen on Spotify">
+                    <Button variant="ghost" className="p-1">
+                      <SpotifyIcon className="h-5 w-5 text-green-500" />
+                    </Button>
+                  </a>
+                )}
+              </div>
+              
+              {/* Current Queue item timestamp display - moved to underneath the buttons */}
+              {song.source !== 'database_history' && (
+                <span className="text-xs text-gray-500 whitespace-nowrap">
+                  Added: {formatTimestamp(song.timestamp)}
+                </span>
+              )}
+              
+              {/* History item timestamp display - stays underneath the buttons */}
+              {song.source === 'database_history' && (
+                <span className="text-xs text-gray-500 whitespace-nowrap">
+                  Completed: {formatTimestamp(song.timestamp)}
+                </span>
               )}
             </div>
           </div>
