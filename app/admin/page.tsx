@@ -521,85 +521,122 @@ export default function AdminDashboard() {
                     <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
                  </div>
               ) : appState.activeSong ? (
-                <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-4 sm:space-y-0 sm:space-x-4">
-                  {/* Larger Thumbnail */}
-                  <div className="relative w-full sm:w-32 h-24 sm:h-20 rounded-md overflow-hidden flex-shrink-0">
-                     <img 
-                        src={appState.activeSong.thumbnailUrl || 'https://via.placeholder.com/128x80'} 
-                        alt={appState.activeSong.title || 'Video thumbnail'}
-                        className="w-full h-full object-cover"
-                     />
-                  </div>
-
-                  <div className="flex-grow min-w-0">
-                    <p className="font-semibold text-white text-lg truncate" title={appState.activeSong.title}>{appState.activeSong.title || 'Unknown Title'}</p>
-                    <p className="text-sm text-gray-400 truncate hover:text-gray-300 transition-colors">
-                      {appState.activeSong.channelId ? (
-                        <Link href={`https://www.youtube.com/channel/${appState.activeSong.channelId}`} target="_blank" rel="noopener noreferrer" className="underline">
-                            {appState.activeSong.artist || 'Unknown Artist'}
-                        </Link>
-                       ) : (
-                         appState.activeSong.artist || 'Unknown Artist'
-                       )}
-                    </p>
-                    <div className="text-xs text-gray-500 flex items-center flex-wrap gap-x-2 gap-y-1 mt-1">
-                        Requested by: 
-                        <Avatar className="w-4 h-4 rounded-full inline-block">
-                          <AvatarImage src={appState.activeSong.requesterAvatar} alt={appState.activeSong.requester} />
-                          <AvatarFallback className="text-[8px]">{appState.activeSong.requester.slice(0,1)}</AvatarFallback>
-                        </Avatar>
-                         <Link href={`https://www.twitch.tv/${appState.activeSong.requesterLogin || appState.activeSong.requester.toLowerCase()}`} target="_blank" rel="noopener noreferrer" className="hover:text-gray-300 underline transition-colors">
-                           <span>{appState.activeSong.requester}</span>
-                         </Link>
-                       {/* Adjusted Badge Styles */}
-                       {appState.activeSong.requestType === 'donation' && (
-                          <Badge variant="secondary" className="px-1.5 py-0.5 text-xs bg-green-800 text-green-200 border-green-700">
-                            Dono
-                          </Badge>
-                        )}
-                        {appState.activeSong.requestType === 'channelPoint' && (
-                          <Badge variant="outline" className="px-1.5 py-0.5 text-xs bg-purple-800 text-purple-200 border-purple-700">
-                            Points
-                          </Badge>
-                        )}
-                         {appState.activeSong.requestType !== 'donation' && appState.activeSong.requestType !== 'channelPoint' && (
-                            <Badge variant="secondary" className="px-1.5 py-0.5 text-xs">
-                                {appState.activeSong.requestType}
-                            </Badge>
-                         )}
+                <div className="space-y-4">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-4 sm:space-y-0 sm:space-x-4">
+                    {/* Larger Thumbnail */}
+                    <div className="relative w-full sm:w-32 h-24 sm:h-20 rounded-md overflow-hidden flex-shrink-0">
+                       <img 
+                          src={appState.activeSong.thumbnailUrl || 'https://via.placeholder.com/128x80'} 
+                          alt={appState.activeSong.title || 'Video thumbnail'}
+                          className="w-full h-full object-cover"
+                       />
                     </div>
-                  </div>
-                  <div className="flex flex-col items-end space-y-2 w-full sm:w-auto">
-                    <div className="text-sm text-gray-400 flex items-center">
-                      <Clock className="inline-block mr-1 -mt-0.5" size={16} />
-                      {formatDuration(appState.activeSong.durationSeconds)}
-                      <div className="flex ml-2">
-                        <a href={appState.activeSong.youtubeUrl} target="_blank" rel="noopener noreferrer" aria-label="Watch on YouTube" className="mr-1">
-                          <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
-                            <Youtube className="h-5 w-5 text-red-600 hover:text-red-500 transition-colors" />
-                          </Button>
-                        </a>
-                        {appState.activeSong.spotify && (
-                          <a href={appState.activeSong.spotify.uri} target="_blank" rel="noopener noreferrer" aria-label="Listen on Spotify">
+
+                    <div className="flex-grow min-w-0">
+                      <p className="font-semibold text-white text-lg truncate" title={appState.activeSong.title}>{appState.activeSong.title || 'Unknown Title'}</p>
+                      <p className="text-sm text-gray-400 truncate hover:text-gray-300 transition-colors">
+                        {appState.activeSong.channelId ? (
+                          <Link href={`https://www.youtube.com/channel/${appState.activeSong.channelId}`} target="_blank" rel="noopener noreferrer" className="underline">
+                              {appState.activeSong.artist || 'Unknown Artist'}
+                          </Link>
+                         ) : (
+                           appState.activeSong.artist || 'Unknown Artist'
+                         )}
+                      </p>
+                      <div className="text-xs text-gray-500 flex items-center flex-wrap gap-x-2 gap-y-1 mt-1">
+                          Requested by: 
+                          <Avatar className="w-4 h-4 rounded-full inline-block">
+                            <AvatarImage src={appState.activeSong.requesterAvatar} alt={appState.activeSong.requester} />
+                            <AvatarFallback className="text-[8px]">{appState.activeSong.requester.slice(0,1)}</AvatarFallback>
+                          </Avatar>
+                           <Link href={`https://www.twitch.tv/${appState.activeSong.requesterLogin || appState.activeSong.requester.toLowerCase()}`} target="_blank" rel="noopener noreferrer" className="hover:text-gray-300 underline transition-colors">
+                             <span>{appState.activeSong.requester}</span>
+                           </Link>
+                         {/* Adjusted Badge Styles */}
+                         {appState.activeSong.requestType === 'donation' && (
+                            <Badge variant="secondary" className="px-1.5 py-0.5 text-xs bg-green-800 text-green-200 border-green-700">
+                              Dono
+                            </Badge>
+                          )}
+                          {appState.activeSong.requestType === 'channelPoint' && (
+                            <Badge variant="outline" className="px-1.5 py-0.5 text-xs bg-purple-800 text-purple-200 border-purple-700">
+                              Points
+                            </Badge>
+                          )}
+                           {appState.activeSong.requestType !== 'donation' && appState.activeSong.requestType !== 'channelPoint' && (
+                              <Badge variant="secondary" className="px-1.5 py-0.5 text-xs">
+                                  {appState.activeSong.requestType}
+                              </Badge>
+                           )}
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-end space-y-2 w-full sm:w-auto">
+                      <div className="text-sm text-gray-400 flex items-center">
+                        <Clock className="inline-block mr-1 -mt-0.5" size={16} />
+                        {formatDuration(appState.activeSong.durationSeconds)}
+                        <div className="flex ml-2">
+                          <a href={appState.activeSong.youtubeUrl} target="_blank" rel="noopener noreferrer" aria-label="Watch on YouTube" className="mr-1">
                             <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
-                              <SpotifyIcon className="h-5 w-5 text-green-500 hover:text-green-400 transition-colors" />
+                              <Youtube className="h-5 w-5 text-red-600 hover:text-red-500 transition-colors" />
                             </Button>
                           </a>
-                        )}
+                          {appState.activeSong.spotify && (
+                            <a href={appState.activeSong.spotify.uri} target="_blank" rel="noopener noreferrer" aria-label="Listen on Spotify">
+                              <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+                                <SpotifyIcon className="h-5 w-5 text-green-500 hover:text-green-400 transition-colors" />
+                              </Button>
+                            </a>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                    {appState.activeSong.timestamp && (
-                      <div className="text-xs text-gray-500">
-                        Added: {formatTimestamp(appState.activeSong.timestamp)}
+                      {appState.activeSong.timestamp && (
+                        <div className="text-xs text-gray-500">
+                          Added: {formatTimestamp(appState.activeSong.timestamp)}
+                        </div>
+                      )}
+                       {/* Song Controls */}
+                      <div className="flex justify-end space-x-1">
+                          {/* Queue management controls */}
+                          <Button variant="ghost" size="sm" className="h-8 w-8 p-1 text-gray-400 hover:text-white" onClick={handleSkipSong}><SkipForward className="h-4 w-4" /></Button>
+                          <Button variant="outline" size="sm" className="h-8 text-xs" onClick={handleMarkAsFinished}>Mark Finished</Button>
                       </div>
-                    )}
-                     {/* Song Controls */}
-                    <div className="flex justify-end space-x-1">
-                        {/* Queue management controls */}
-                        <Button variant="ghost" size="sm" className="h-8 w-8 p-1 text-gray-400 hover:text-white" onClick={handleSkipSong}><SkipForward className="h-4 w-4" /></Button>
-                        <Button variant="outline" size="sm" className="h-8 text-xs" onClick={handleMarkAsFinished}>Mark Finished</Button>
                     </div>
                   </div>
+                  
+                  {/* Spotify Integration - replaced embedded player with direct links */}
+                  {appState.activeSong.spotify && (
+                    <div className="mt-2 pt-2 border-t border-gray-700">
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 bg-[#1DB954]/10 rounded-md p-3">
+                        <div className="flex items-center">
+                          <SpotifyIcon className="h-6 w-6 text-[#1DB954] mr-2" />
+                          <div>
+                            <div className="text-white font-medium">{appState.activeSong.spotify.name}</div>
+                            <div className="text-gray-400 text-sm">
+                              {appState.activeSong.spotify.artists?.map(a => a.name).join(', ')}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 ml-auto">
+                          <a 
+                            href={appState.activeSong.spotify.uri} 
+                            target="_blank" 
+                            rel="noopener noreferrer" 
+                            className="bg-[#1DB954] text-black font-medium px-4 py-2 rounded-full hover:bg-[#1DB954]/90 transition-colors flex items-center"
+                          >
+                            <SpotifyIcon className="h-4 w-4 mr-2" /> Play on Spotify
+                          </a>
+                          <a 
+                            href={appState.activeSong.spotify.externalUrl || `https://open.spotify.com/track/${appState.activeSong.spotify.id}`} 
+                            target="_blank" 
+                            rel="noopener noreferrer" 
+                            className="bg-gray-700 text-white px-3 py-2 rounded-full hover:bg-gray-600 transition-colors flex items-center text-sm"
+                          >
+                            <LinkIcon className="h-3 w-3 mr-1" /> Web Player
+                          </a>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <p className="text-gray-400 italic text-center py-8">No active song.</p>
@@ -1012,7 +1049,7 @@ export default function AdminDashboard() {
             </CardContent>
           </Card>
 
-           {/* Settings Card - ADD BASIC STRUCTURE */}
+           {/* Settings Card */}
            <Card className="bg-gray-800 border-gray-700">
             <CardHeader>
                 <CardTitle className="text-white flex items-center"><SettingsIcon className="mr-2 h-5 w-5" /> System Settings</CardTitle>
@@ -1046,8 +1083,6 @@ export default function AdminDashboard() {
                 <p className="text-xs text-gray-400 text-center pt-2">More settings coming soon...</p>
             </CardContent>
           </Card>
-
-
         </div>
       </div>
     </div>
