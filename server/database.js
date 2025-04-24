@@ -37,9 +37,6 @@ function initDatabase(dbPath) {
         // Enable WAL mode for better concurrency
         db.pragma('journal_mode = WAL');
 
-        // Alter existing tables to add Spotify column if it doesn't exist
-        ensureSpotifyColumnsExist();
-
         // Schema Setup (Create tables if they don't exist)
         const createHistoryTableStmt = `
             CREATE TABLE IF NOT EXISTS song_history (
@@ -125,6 +122,9 @@ function initDatabase(dbPath) {
             );
         `;
         db.exec(createBlockedUsersTableStmt);
+
+        // Run migration logic *after* base tables are guaranteed to exist
+        ensureSpotifyColumnsExist();
 
         // Index Creation
         const createHistoryIndexes = `
