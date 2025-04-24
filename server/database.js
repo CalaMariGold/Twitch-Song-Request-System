@@ -287,20 +287,22 @@ function prepareStatements() {
         // History & Queue statements
         insertHistoryStmt = db.prepare(`
             INSERT INTO song_history (
-                youtubeUrl, title, artist, channelId, durationSeconds,
-                requester, requesterLogin, requesterAvatar, thumbnailUrl, requestType, completedAt, spotifyData
+                youtubeUrl, title, artist, channelId, durationSeconds, 
+                requester, requesterLogin, requesterAvatar, thumbnailUrl, 
+                requestType, completedAt, spotifyData 
             ) VALUES (
-                @youtubeUrl, @title, @artist, @channelId, @durationSeconds,
-                @requester, @requesterLogin, @requesterAvatar, @thumbnailUrl, @requestType, CURRENT_TIMESTAMP, @spotifyData
+                @youtubeUrl, @title, @artist, @channelId, @durationSeconds, 
+                @requester, @requesterLogin, @requesterAvatar, @thumbnailUrl, 
+                @requestType, @completedAt, @spotifyData
             )
         `);
         insertQueueStmt = db.prepare(`
             INSERT INTO active_queue (
                 youtubeUrl, title, artist, channelId, durationSeconds,
-                requester, requesterLogin, requesterAvatar, thumbnailUrl, requestType, priority, spotifyData
+                requester, requesterLogin, requesterAvatar, thumbnailUrl, requestType, priority, addedAt, spotifyData
             ) VALUES (
                 @youtubeUrl, @title, @artist, @channelId, @durationSeconds,
-                @requester, @requesterLogin, @requesterAvatar, @thumbnailUrl, @requestType, @priority, @spotifyData
+                @requester, @requesterLogin, @requesterAvatar, @thumbnailUrl, @requestType, @priority, @addedAt, @spotifyData
             )
         `);
         deleteQueueStmt = db.prepare('DELETE FROM active_queue WHERE id = ?');
@@ -313,7 +315,7 @@ function prepareStatements() {
                 requester, requesterLogin, requesterAvatar, thumbnailUrl, requestType, startedAt, spotifyData
             ) VALUES (
                 @youtubeUrl, @title, @artist, @channelId, @durationSeconds,
-                @requester, @requesterLogin, @requesterAvatar, @thumbnailUrl, @requestType, CURRENT_TIMESTAMP, @spotifyData
+                @requester, @requesterLogin, @requesterAvatar, @thumbnailUrl, @requestType, @startedAt, @spotifyData
             )
         `);
         clearActiveSongStmt = db.prepare('DELETE FROM active_song');
@@ -324,11 +326,11 @@ function prepareStatements() {
         `);
 
         // Blacklist
-        addBlacklistStmt = db.prepare('INSERT OR IGNORE INTO blacklist (pattern, type) VALUES (?, ?)');
+        addBlacklistStmt = db.prepare('INSERT OR IGNORE INTO blacklist (pattern, type, addedAt) VALUES (?, ?, ?)');
         removeBlacklistStmt = db.prepare('DELETE FROM blacklist WHERE pattern = ? AND type = ?');
 
         // Blocked Users
-        addBlockedUserStmt = db.prepare('INSERT OR IGNORE INTO blocked_users (username) VALUES (?)');
+        addBlockedUserStmt = db.prepare('INSERT OR IGNORE INTO blocked_users (username, addedAt) VALUES (?, ?)');
         removeBlockedUserStmt = db.prepare('DELETE FROM blocked_users WHERE username = ?');
 
         console.log(chalk.blue('[Database] Prepared statements created.'));
@@ -350,9 +352,9 @@ function saveSetting(key, value) {
     }
 }
 
-function addBlacklistPattern(pattern, type) {
+function addBlacklistPattern(pattern, type, addedAt) {
     try {
-        const result = addBlacklistStmt.run(pattern, type);
+        const result = addBlacklistStmt.run(pattern, type, addedAt);
         if (result.changes > 0) {
             console.log(chalk.grey(`[DB Write] Added blacklist pattern: ${pattern} (Type: ${type})`));
         }
@@ -372,9 +374,9 @@ function removeBlacklistPattern(pattern, type) {
     }
 }
 
-function addBlockedUser(username) {
+function addBlockedUser(username, addedAt) {
     try {
-        const result = addBlockedUserStmt.run(username);
+        const result = addBlockedUserStmt.run(username, addedAt);
         if (result.changes > 0) {
             console.log(chalk.grey(`[DB Write] Added blocked user: ${username}`));
         }
@@ -403,6 +405,8 @@ function addSongToDbQueue(song) {
         
         // Serialize Spotify data if present
         const spotifyData = song.spotifyData ? JSON.stringify(song.spotifyData) : null;
+        // Ensure addedAt exists on the song object, default if not (should exist)
+        const addedAt = song.addedAt || new Date().toISOString(); 
         
         // Use the prepared statement defined earlier
         insertQueueStmt.run({
@@ -417,6 +421,7 @@ function addSongToDbQueue(song) {
             thumbnailUrl: song.thumbnailUrl || null,
             requestType: song.requestType,
             priority: priority,
+            addedAt: addedAt, // Pass the addedAt timestamp
             spotifyData: spotifyData
         });
         console.log(chalk.grey(`[DB Write] Added song to active_queue: ${song.title}`));
@@ -442,8 +447,10 @@ function saveActiveSongToDB(song) {
         
         // Serialize Spotify data if present
         const spotifyData = song.spotifyData ? JSON.stringify(song.spotifyData) : null;
+        // Use the timestamp from the song object, default to now if missing
+        const startedAt = song.timestamp || new Date().toISOString(); 
         
-        // Add the new song
+        // Add the new song using the prepared statement
         saveActiveSongStmt.run({
             youtubeUrl: song.youtubeUrl || null,
             title: song.title || null,
@@ -455,6 +462,7 @@ function saveActiveSongToDB(song) {
             requesterAvatar: song.requesterAvatar || null,
             thumbnailUrl: song.thumbnailUrl || null,
             requestType: song.requestType,
+            startedAt: startedAt, // Pass the explicit timestamp
             spotifyData: spotifyData
         });
         console.log(chalk.grey(`[DB Write] Saved current active song: ${song.title}`));
@@ -552,6 +560,8 @@ function logCompletedSong(song) {
     try {
         // Serialize Spotify data if present
         const spotifyData = song.spotifyData ? JSON.stringify(song.spotifyData) : null;
+        // Ensure completedAt is set, default to now if not provided (should always be provided by caller now)
+        const completedAt = song.completedAt || new Date().toISOString();
 
         // Use the prepared statement defined earlier
         insertHistoryStmt.run({
@@ -565,6 +575,7 @@ function logCompletedSong(song) {
             requesterAvatar: song.requesterAvatar || null,
             thumbnailUrl: song.thumbnailUrl || null,
             requestType: song.requestType,
+            completedAt: completedAt, // Use the determined completedAt value
             spotifyData: spotifyData
         });
         console.log(chalk.grey(`[DB Write] Logged completed song to history: ${song.title}`));

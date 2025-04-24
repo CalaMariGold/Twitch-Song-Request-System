@@ -216,7 +216,8 @@ io.on('connection', (socket) => {
 
         if (song) {
             if (previousSong) { 
-                 const result = db.logCompletedSong(previousSong); // Log previous song to DB
+                 const previousSongWithTimestamp = { ...previousSong, completedAt: new Date().toISOString() };
+                 const result = db.logCompletedSong(previousSongWithTimestamp); // Log previous song to DB
                  if (result) {
                      io.emit('songFinished', previousSong); // Emit event for clients
                      
@@ -254,7 +255,8 @@ io.on('connection', (socket) => {
         } else {
             // Song finished or stopped
             if (previousSong) {
-                const result = db.logCompletedSong(previousSong); // Log previous song to DB
+                const previousSongWithTimestamp = { ...previousSong, completedAt: new Date().toISOString() };
+                const result = db.logCompletedSong(previousSongWithTimestamp); // Log previous song to DB
                  if (result) {
                      io.emit('songFinished', previousSong); // Emit event for clients
                      
@@ -305,7 +307,7 @@ io.on('connection', (socket) => {
             !state.blacklist.some(newItem => newItem.term === oldItem.term && newItem.type === oldItem.type)
         );
 
-        addedItems.forEach(item => db.addBlacklistPattern(item.term, item.type));
+        addedItems.forEach(item => db.addBlacklistPattern(item.term, item.type, new Date().toISOString()));
         removedItems.forEach(item => db.removeBlacklistPattern(item.term, item.type));
 
         io.emit('blacklistUpdate', state.blacklist)
@@ -325,7 +327,7 @@ io.on('connection', (socket) => {
             !state.blockedUsers.some(newUser => newUser.username.toLowerCase() === oldUser.username.toLowerCase())
         );
 
-        addedUsers.forEach(user => db.addBlockedUser(user.username));
+        addedUsers.forEach(user => db.addBlockedUser(user.username, new Date().toISOString()));
         removedUsers.forEach(user => db.removeBlockedUser(user.username));
 
         io.emit('blockedUsersUpdate', state.blockedUsers)
@@ -339,8 +341,11 @@ io.on('connection', (socket) => {
             return;
         }
         
+        // Add completedAt to song before logging
+        const completedSong = { ...song, completedAt: new Date().toISOString() };
+
         // Move active song to history
-        const result = db.logCompletedSong(song);
+        const result = db.logCompletedSong(completedSong);
         if (result) {
             // Clear active song
             state.activeSong = null;
@@ -450,7 +455,9 @@ io.on('connection', (socket) => {
         console.log(chalk.magenta(`[Admin] Skipping song: ${songToSkip.title}`));
 
         // 1. Log the skipped song to history
-        const logged = db.logCompletedSong(songToSkip);
+        // Add completedAt to songToSkip before logging
+        const skippedSongWithTimestamp = { ...songToSkip, completedAt: new Date().toISOString() };
+        const logged = db.logCompletedSong(skippedSongWithTimestamp);
         if (!logged) {
             console.error(chalk.red(`[Admin] Failed to log skipped song ${songToSkip.title} to history.`));
             return;
