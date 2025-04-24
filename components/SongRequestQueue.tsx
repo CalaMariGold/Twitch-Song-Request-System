@@ -12,7 +12,7 @@ import { motion, AnimatePresence } from "framer-motion"
 import { ErrorBoundary } from "@/components/ErrorBoundary"
 import { SongRequest, AppState, PlannedRequest } from "@/lib/types"
 import { constants, socketEvents } from "@/lib/config"
-import { Header } from "./Header"
+import { Header } from "@/components/Header"
 import { Badge } from "@/components/ui/badge"
 import Link from 'next/link'
 import { 
