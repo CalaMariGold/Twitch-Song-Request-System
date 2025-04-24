@@ -3,9 +3,26 @@ import { exchangeCodeForToken, getTwitchUserInfo, isAdmin } from '@/lib/auth'
 import { config } from '@/lib/config'
 import { writeFile } from 'fs/promises'
 import path from 'path'
+import fs from 'fs/promises'
 
-// Define path for storing the token (relative to project root)
-const tokenFilePath = path.join(process.cwd(), 'auth', 'auth_tokens.json');
+// Define path for storing the token
+const persistentPath = process.env.PERSISTENT_DATA_PATH; // Path provided by Railway Volume mount
+const baseAuthDir = persistentPath ? path.join(persistentPath, 'auth') : path.join(process.cwd(), 'auth');
+const tokenFileName = 'auth_tokens.json';
+const tokenFilePath = path.join(baseAuthDir, tokenFileName);
+
+async function ensureDirExists(filePath: string) {
+    const dir = path.dirname(filePath);
+    try {
+        await fs.access(dir); // Check if directory exists
+    } catch (error: any) {
+        if (error.code === 'ENOENT') { // If directory doesn't exist
+            await fs.mkdir(dir, { recursive: true }); // Create it recursively
+        } else {
+            throw error; // Re-throw other errors
+        }
+    }
+}
 
 export async function GET(request: Request) {
   try {
@@ -43,6 +60,7 @@ export async function GET(request: Request) {
             scope: tokenData.scope
         };
         try {
+            await ensureDirExists(tokenFilePath); // Ensure the directory exists before writing
             await writeFile(tokenFilePath, JSON.stringify(tokenToSave, null, 2), 'utf-8');
             console.log(`User token saved to ${tokenFilePath}`);
         } catch (fileError) {

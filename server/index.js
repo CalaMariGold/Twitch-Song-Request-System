@@ -28,6 +28,11 @@ const SOCKET_PORT = process.env.SOCKET_PORT ? parseInt(process.env.SOCKET_PORT, 
 const httpServer = createServer()
 const dbPath = process.env.DB_PATH || path.join(__dirname, '..', 'data', 'songRequestSystem.db');
 
+// Determine allowed origins from environment variable
+const allowedOriginsEnv = process.env.ALLOWED_ORIGINS || "http://localhost:3000,http://localhost:3001"; // Default for dev
+const allowedOrigins = allowedOriginsEnv.split(',').map(origin => origin.trim());
+console.log(chalk.blue(`[Config] Allowed CORS Origins: ${allowedOrigins.join(', ')}`))
+
 // Configuration for Duration Limits (Read from .env with defaults)
 const MAX_DONATION_DURATION_SECONDS = parseInt(process.env.MAX_DONATION_DURATION_SECONDS || '600', 10); // Default 10 minutes
 const MAX_CHANNEL_POINT_DURATION_SECONDS = parseInt(process.env.MAX_CHANNEL_POINT_DURATION_SECONDS || '300', 10); // Default 5 minutes
@@ -76,7 +81,7 @@ const state = {
 
 const io = new Server(httpServer, {
     cors: {
-        origin: ["http://localhost:3000", "http://localhost:3001"],
+        origin: allowedOrigins, // Use the dynamic list of origins
         methods: ["GET", "POST"],
         credentials: true
     }

@@ -15,16 +15,21 @@ let saveActiveSongStmt, clearActiveSongStmt;
  */
 function initDatabase(dbPath) {
     try {
-        // Use provided dbPath or default
-        const defaultPath = path.join(__dirname, '..', 'data', 'songRequestSystem.db');
-        const finalDbPath = dbPath || defaultPath;
-        
-        // Ensure directory exists
+        // Determine the base directory for data
+        const persistentPath = process.env.PERSISTENT_DATA_PATH; // Path provided by Railway Volume mount
+        const baseDataDir = persistentPath || path.join(__dirname, '..'); // Use volume path or project root
+
+        // Define the specific file path within the base directory
+        const dbFileName = 'data/songRequestSystem.db'; // Keep the subdirectory structure if desired
+        const finalDbPath = dbPath || path.join(baseDataDir, dbFileName);
+
+        // Ensure directory exists (whether it's PERSISTENT_DATA_PATH/data or ../data)
         const dbDir = path.dirname(finalDbPath);
         if (!fs.existsSync(dbDir)) {
             fs.mkdirSync(dbDir, { recursive: true });
+            console.log(chalk.yellow(`[Database] Created directory: ${dbDir}`));
         }
-        
+
         console.log(chalk.blue(`[Database] Initializing database at: ${finalDbPath}`));
         db = new Database(finalDbPath);
         console.log(chalk.blue(`[Database] Connected to SQLite database at ${finalDbPath}`));
