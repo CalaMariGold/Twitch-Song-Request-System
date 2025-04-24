@@ -141,11 +141,13 @@ export interface SocketEvents {
     songFinished: (song: SongRequest) => void; // When a song completes or is skipped
     allTimeStatsUpdate: (stats: AllTimeStats) => void;
     allTimeStatsError: (error: { message: string }) => void;
+    adminAuthenticated: () => void; // NEW: Confirmation from server that admin auth succeeded
 
     // Emitted by Client (Admin)
     getState: () => void;
+    authenticateAdmin: (data: { login: string }) => void; // NEW: Admin client sends auth data
     updateQueue: (updatedQueue: SongRequest[]) => void; // For reordering
-    addSong: (songRequestData: Partial<SongRequest> & { youtubeUrl: string; requester: string }) => void; // Manual add
+    addSong: (songRequestData: Partial<SongRequest> & { youtubeUrl: string; requester: string; bypassRestrictions?: boolean }) => void; // Manual add (added bypassRestrictions)
     removeSong: (songId: string) => void;
     clearQueue: () => void;
     resetSystem: () => void;
@@ -159,6 +161,10 @@ export interface SocketEvents {
     markSongAsFinished: (song: SongRequest) => void; // Mark the current song as finished and move to history
     returnToQueue: (song: SongRequest) => void; // Return a song from history to the top of the queue
     skipSong: () => void; // Added for admin skipping song
+
+    // Emitted by Client (Public/User)
+    getYouTubeDetails: (youtubeUrl: string, callback: (error: { message: string } | null, details?: YouTubeVideoDetails) => void) => void;
+    deleteMyRequest: (data: { requestId: string; userLogin: string }) => void;
 }
 
 /**

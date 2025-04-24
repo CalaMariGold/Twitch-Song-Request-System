@@ -24,6 +24,15 @@ const { connectToStreamElements, disconnectFromStreamElements } = require('./str
 const spotify = require('./spotify')
 require('dotenv').config()
 
+// --- NEW: Admin Auth Setup ---
+const authenticatedAdminSockets = new Set(); 
+const ADMIN_USERNAMES_LOWER = (process.env.ADMIN_USERNAMES || '')
+                                .split(',')
+                                .map(name => name.trim().toLowerCase())
+                                .filter(name => name); // Ensure lowercase and filter empty
+console.log(chalk.blue(`[Config] Admin Usernames (lowercase): ${ADMIN_USERNAMES_LOWER.join(', ')}`));
+// --- END NEW ---
+
 // Increase debug output
 process.env.DEBUG = 'socket.io:*';
 
@@ -112,6 +121,50 @@ const io = new Server(httpServer, {
 
 // Socket.IO connection handling
 io.on('connection', (socket) => {
+    console.log(`Client connected: ${socket.id}`); // Log connection
+
+    // --- NEW: Admin Auth Handler ---
+    socket.on('authenticateAdmin', (data) => {
+      if (data && data.login && ADMIN_USERNAMES_LOWER.includes(data.login.toLowerCase())) {
+        console.log(chalk.cyan(`[Auth] Admin authenticated: ${data.login} (Socket ID: ${socket.id})`));
+        authenticatedAdminSockets.add(socket.id);
+        // Optionally send confirmation back to client
+        socket.emit('adminAuthenticated'); 
+      } else {
+        console.warn(chalk.yellow(`[Auth] Failed admin authentication attempt for socket: ${socket.id}`), data);
+        // Optionally send error back to client
+        // socket.emit('adminAuthFailed');
+      }
+    });
+    // --- END NEW ---
+
+    // --- NEW: Wrapper function for admin checks ---
+    const requireAdmin = (handler) => {
+      return (...args) => {
+        if (!authenticatedAdminSockets.has(socket.id)) {
+          console.warn(chalk.yellow(`[Security] Unauthorized attempt for admin action by socket: ${socket.id}. Event: ${handler.name || 'anonymous'}`));
+          // Optionally emit an error back to the specific client
+          // socket.emit('adminError', { message: 'Authentication required for this action.' });
+          return; // Stop processing
+        }
+        // If authorized, call the original handler
+        try {
+          handler(...args);
+        } catch (error) {
+            console.error(chalk.red(`[Error] Error in admin handler for socket ${socket.id}:`), error);
+            // Optionally emit a generic error back
+            // socket.emit('adminError', { message: 'An error occurred processing your request.' });
+        }
+      };
+    };
+    // --- END NEW ---
+
+    // --- NEW: Disconnect Cleanup ---
+    socket.on('disconnect', () => {
+      console.log(`Client disconnected: ${socket.id}`);
+      authenticatedAdminSockets.delete(socket.id); // Clean up on disconnect
+    });
+    // --- END NEW ---
     
     // Send initial state to newly connected client - fetch history from DB first
     let recentHistory = db.getRecentHistory();
@@ -149,7 +202,7 @@ io.on('connection', (socket) => {
     })
     
     // Handle queue updates
-    socket.on('updateQueue', (updatedQueue) => {
+    socket.on('updateQueue', requireAdmin((updatedQueue) => {
         // Update in-memory queue first
         state.queue = updatedQueue;
 
@@ -164,8 +217,8 @@ io.on('connection', (socket) => {
 
         // Inform ALL clients (including sender) of the updated queue
         io.emit('queueUpdate', state.queue);
-        console.log(chalk.magenta(`[Admin] Queue updated and DB re-synced via socket.`));
-    })
+        console.log(chalk.magenta(`[Admin:${socket.id}] Queue updated and DB re-synced via socket.`));
+    }))
 
     // Handle addSong event
     socket.on('addSong', async (songRequestData) => {
@@ -177,32 +230,39 @@ io.on('connection', (socket) => {
         // Extract bypass flag, default to false if not provided
         const bypass = songRequestData.bypassRestrictions === true;
 
-        // Call the centralized validation and adding function, passing the bypass flag
+        // --- NEW: Check auth if bypassing ---
+        if (bypass && !authenticatedAdminSockets.has(socket.id)) {
+             console.warn(chalk.yellow(`[Security] Unauthorized attempt to bypass restrictions by socket: ${socket.id}`));
+             return; // Stop processing
+        }
+        // --- END NEW ---
+
+        console.log(chalk.magenta(`[Admin:${bypass ? socket.id : 'N/A'}] Adding song via socket. Bypass: ${bypass}`));
         await validateAndAddSong({ ...songRequestData, source: 'socket' }, bypass);
     })
 
     // Handle remove song
-    socket.on('removeSong', (songId) => {
+    socket.on('removeSong', requireAdmin((songId) => {
         const songToRemove = state.queue.find(song => song.id === songId);
         if (songToRemove) {
             state.queue = state.queue.filter(song => song.id !== songId);
             db.removeSongFromDbQueue(songId); // Fixed: use songId not youtubeUrl
             io.emit('queueUpdate', state.queue);
-            console.log(chalk.magenta(`[Admin] Song removed via socket: ${songId}`));
+            console.log(chalk.magenta(`[Admin:${socket.id}] Song removed via socket: ${songId}`));
         } else {
-            console.warn(chalk.yellow(`[Admin] Attempted to remove non-existent song ID: ${songId}`));
+            console.warn(chalk.yellow(`[Admin:${socket.id}] Attempted to remove non-existent song ID: ${songId}`));
         }
-    })
+    }))
 
     // Handle clear queue
-    socket.on('clearQueue', () => {
+    socket.on('clearQueue', requireAdmin(() => {
         state.queue = [];
         db.clearDbQueue(); // Clear DB
         io.emit('queueUpdate', state.queue);
-        console.log(chalk.magenta(`[Admin] Queue cleared via socket.`));
-    })
+        console.log(chalk.magenta(`[Admin:${socket.id}] Queue cleared via socket.`));
+    }))
 
-    socket.on('resetSystem', async () => {
+    socket.on('resetSystem', requireAdmin(async () => {
         // Clear in-memory state
         state.queue = []
         state.activeSong = null
@@ -218,8 +278,8 @@ io.on('connection', (socket) => {
         io.emit('queueUpdate', state.queue)
         io.emit('activeSong', state.activeSong)
         io.emit('historyUpdate', state.history)
-        console.log(chalk.magenta('[Admin] System reset via socket.'));
-    })
+        console.log(chalk.magenta(`[Admin:${socket.id}] System reset via socket.`));
+    }))
 
     // Handle user deleting their own request
     socket.on('deleteMyRequest', (data) => {
@@ -267,16 +327,16 @@ io.on('connection', (socket) => {
     });
 
     // Handle settings
-    socket.on('setMaxDuration', (minutes) => {
+    socket.on('setMaxDuration', requireAdmin((minutes) => {
         state.settings = state.settings || {}
         state.settings.maxDuration = minutes
         db.saveSetting('maxDuration', minutes); // Save setting to DB
         io.emit('settingsUpdate', state.settings)
-        console.log(chalk.magenta(`[Admin] Max Duration set to ${minutes} mins via socket.`));
-    })
+        console.log(chalk.magenta(`[Admin:${socket.id}] Max Duration set to ${minutes} mins via socket.`));
+    }))
 
     // Handle active song updates
-    socket.on('updateActiveSong', async (song) => {
+    socket.on('updateActiveSong', requireAdmin(async (song) => {
         const previousSong = state.activeSong; // Store previous song
 
         if (song) {
@@ -345,10 +405,11 @@ io.on('connection', (socket) => {
         // Broadcast updates
         io.emit('activeSong', state.activeSong)
         io.emit('queueUpdate', state.queue)
-    })
+        console.log(chalk.magenta(`[Admin:${socket.id}] Active song updated via socket. New song: ${song ? song.title : 'None'}`));
+    }))
 
     // Handle blacklist updates
-    socket.on('updateBlacklist', (newBlacklist) => {
+    socket.on('updateBlacklist', requireAdmin((newBlacklist) => {
         const oldBlacklist = state.blacklist || [];
         state.blacklist = newBlacklist || [];
 
@@ -364,11 +425,11 @@ io.on('connection', (socket) => {
         removedItems.forEach(item => db.removeBlacklistPattern(item.term, item.type));
 
         io.emit('blacklistUpdate', state.blacklist)
-        console.log(chalk.magenta(`[Admin] Blacklist updated via socket (${state.blacklist.length} items). Added: ${addedItems.length}, Removed: ${removedItems.length}`));
-    })
+        console.log(chalk.magenta(`[Admin:${socket.id}] Blacklist updated via socket (${(state.blacklist || []).length} items). Added: ${addedItems.length}, Removed: ${removedItems.length}`));
+    }))
 
     // Handle blocked users
-    socket.on('updateBlockedUsers', (newBlockedUsers) => {
+    socket.on('updateBlockedUsers', requireAdmin((newBlockedUsers) => {
         const oldBlockedUsers = state.blockedUsers || [];
         state.blockedUsers = newBlockedUsers || [];
 
@@ -384,11 +445,11 @@ io.on('connection', (socket) => {
         removedUsers.forEach(user => db.removeBlockedUser(user.username));
 
         io.emit('blockedUsersUpdate', state.blockedUsers)
-        console.log(chalk.magenta(`[Admin] Blocked users updated via socket (${state.blockedUsers.length} users). Added: ${addedUsers.length}, Removed: ${removedUsers.length}`));
-    })
+        console.log(chalk.magenta(`[Admin:${socket.id}] Blocked users updated via socket (${(state.blockedUsers || []).length} users). Added: ${addedUsers.length}, Removed: ${removedUsers.length}`));
+    }))
 
     // Handle marking a song as finished (from admin)
-    socket.on('markSongAsFinished', (song) => {
+    socket.on('markSongAsFinished', requireAdmin((song) => {
         if (!song) {
             console.error(chalk.red('[Admin] Attempted to mark null song as finished'));
             return;
@@ -407,7 +468,7 @@ io.on('connection', (socket) => {
             // Broadcast updates
             io.emit('activeSong', null);
             io.emit('songFinished', song);
-            console.log(chalk.magenta(`[Admin] Song marked as finished: ${song.title}`));
+            console.log(chalk.magenta(`[Admin:${socket.id}] Song marked as finished: ${song.title}`));
             
             // Fetch and emit updated history AFTER successful logging
             const recentHistory = db.getRecentHistory();
@@ -423,16 +484,16 @@ io.on('connection', (socket) => {
                 console.error(chalk.red('[Statistics] Error refreshing statistics:'), statsError);
             }
         }
-    });
+    }));
 
     // Handle returning a song from history to the queue
-    socket.on('returnToQueue', (song) => {
+    socket.on('returnToQueue', requireAdmin((song) => {
         if (!song) {
             console.warn(chalk.yellow('[Socket.IO] returnToQueue called with null/undefined song'));
             return;
         }
 
-        console.log(chalk.magenta(`[Admin] Returning song "${song.title}" (ID: ${song.id}) to queue from history via socket.`));
+        console.log(chalk.magenta(`[Admin:${socket.id}] Returning song "${song.title}" (ID: ${song.id}) to queue from history via socket.`));
         
         // Create a new song object with a new ID
         // Assign a higher priority to ensure it stays at the top after restart
@@ -454,15 +515,15 @@ io.on('connection', (socket) => {
 
         // Emit queue update to all clients
         io.emit('queueUpdate', state.queue);
-    });
+    }))
 
     // Add handler for clearing history
-    socket.on('clearHistory', () => {
+    socket.on('clearHistory', requireAdmin(() => {
         const success = db.clearDbHistory();
         if (success) {
             // Send empty history to all clients
             io.emit('historyUpdate', []);
-            console.log(chalk.magenta('[Admin] History cleared via socket.'));
+            console.log(chalk.magenta(`[Admin:${socket.id}] History cleared via socket.`));
             
             // After clearing history, refresh and broadcast all-time stats
             try {
@@ -474,16 +535,16 @@ io.on('connection', (socket) => {
                 socket.emit('allTimeStatsError', { message: 'Failed to refresh statistics after clearing history' });
             }
         }
-    });
+    }))
 
     // Add handler for deleting individual history items
-    socket.on('deleteHistoryItem', (id) => {
+    socket.on('deleteHistoryItem', requireAdmin((id) => {
         const success = db.deleteHistoryItem(id);
         if (success) {
             // Fetch and send updated history to all clients
             const recentHistory = db.getRecentHistory();
                 io.emit('historyUpdate', recentHistory);
-                console.log(chalk.magenta(`[Admin] History item ${id} deleted via socket.`));
+                console.log(chalk.magenta(`[Admin:${socket.id}] History item ${id} deleted via socket.`));
                 
                 // After deleting history item, refresh and broadcast all-time stats
                 try {
@@ -494,10 +555,10 @@ io.on('connection', (socket) => {
                     console.error(chalk.red('[Statistics] Error refreshing stats after history deletion:'), error);
             }
         }
-    });
+    }))
 
     // Add handler for skipping a song
-    socket.on('skipSong', () => {
+    socket.on('skipSong', requireAdmin(() => {
         const songToSkip = state.activeSong;
         if (!songToSkip) {
             console.warn(chalk.yellow('[Admin] Skip requested but no song is active.'));
@@ -550,12 +611,8 @@ io.on('connection', (socket) => {
             console.error(chalk.red('[Statistics] Error refreshing statistics after skip:'), statsError);
         }
 
-        console.log(chalk.magenta(`[Admin] Song skipped. New active song: ${nextSong ? nextSong.title : 'None'}`));
-    });
-
-    socket.on('disconnect', () => {
-        
-    })
+        console.log(chalk.magenta(`[Admin:${socket.id}] Song skipped. New active song: ${nextSong ? nextSong.title : 'None'}`));
+    }))
 })
 
 // Start the server and load initial data

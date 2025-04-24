@@ -142,6 +142,31 @@ export default function AdminDashboard() {
     socketInstance.on('connect', () => {
       setIsConnected(true)
       console.log('Admin: Connected to Socket.IO server')
+
+      // --- NEW: Authenticate admin socket connection --- 
+      const cookies = document.cookie.split(';').reduce((acc, cookie) => {
+        const [key, value] = cookie.trim().split('=');
+        if (key) acc[key] = value;
+        return acc;
+      }, {} as Record<string, string>);
+      const userJson = cookies['twitch_user'];
+      if (userJson) {
+        try {
+          const userData = JSON.parse(decodeURIComponent(userJson));
+          if (userData && userData.login) {
+            console.log(`Admin: Authenticating socket connection for user ${userData.login}`);
+            socketInstance.emit('authenticateAdmin', { login: userData.login });
+          } else {
+            console.error('Admin: Failed to get login from user cookie for socket auth.');
+          }
+        } catch (e) {
+          console.error('Admin: Failed to parse user cookie for socket auth:', e);
+        }
+      } else {
+        console.warn('Admin: twitch_user cookie not found for socket authentication.');
+      }
+      // --- END NEW ---
+
       socketInstance.emit('getState')
       socketInstance.emit('getAllTimeStats')
       setIsLoadingStats(true)
@@ -228,6 +253,20 @@ export default function AdminDashboard() {
         socketInstance.io.opts.transports = ['websocket']
       }
     })
+    
+    // --- NEW: Listen for auth confirmation/failure (Optional) ---
+    socketInstance.on('adminAuthenticated', () => {
+        console.log('[Auth] Socket connection successfully authenticated by server.');
+        toast({ title: "Admin Session Active", description: "Backend connection secured.", duration: 2000 });
+    });
+    /* // Optional: Handle auth failure explicitly if needed
+    socketInstance.on('adminAuthFailed', () => {
+        console.error('[Auth] Server rejected socket authentication.');
+        toast({ title: "Admin Auth Failed", description: "Backend rejected connection auth. Admin actions may fail.", variant: "destructive" });
+        // Potentially disconnect or disable admin controls here
+    });
+    */
+    // --- END NEW ---
     
     setSocket(socketInstance)
 
