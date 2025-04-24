@@ -7,7 +7,7 @@ import SongRequestQueue from "@/components/SongRequestQueue"
 import AnimatedBackground from "@/components/AnimatedBackground"
 import { Button } from "@/components/ui/button"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
-import { BarChart2, Clock } from "lucide-react"
+import { BarChart2, Clock, DollarSign, Star, AlertTriangle, Gift, ExternalLink } from "lucide-react"
 import { io, Socket } from "socket.io-client"
 import { SongRequest, QueueState, AllTimeStats } from "@/lib/types"
 import { StatisticsCard } from "@/components/StatisticsCard"
@@ -179,6 +179,77 @@ export default function PublicDashboard() {
                   </p>
                 </CardContent>
               </a>
+            </Card>
+
+            {/* How to Request Card */}
+            <Card className="bg-brand-purple-deep/70 border-brand-purple-neon/30 backdrop-blur-md shadow-glow-purple-sm">
+              <CardHeader className="pb-2 pt-3"> {/* Adjust header padding */}
+                <CardTitle className="text-brand-pink-light flex items-center gap-2 text-glow-pink">
+                  <Gift size={18} />
+                  How to Request
+                </CardTitle>
+              </CardHeader>
+              {/* Adjusted CardContent for cleaner look */}
+              <CardContent className="space-y-3 px-3 pb-3 pt-1 text-sm"> {/* Adjust content padding */}
+                {/* Donation Section */}
+                <div className="space-y-1.5"> {/* Slightly reduce spacing */}
+                  <h4 className="font-semibold text-white flex items-center gap-1.5 pt-1"> {/* Add padding top to move header effectively up */}
+                    <DollarSign size={16} className="text-green-400"/> Priority Request (Donation)
+                  </h4>
+                  <p className="text-brand-purple-light/90 text-xs">
+                    Include the YouTube link OR Artist & Song Title in your donation message.
+                  </p>
+                  {/* Add margin top/bottom to the link/button wrapper */}
+                  <a 
+                    href="https://streamelements.com/calamarigold/tip" 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="block my-3.0" /* Added margin */
+                  >
+                    <Button 
+                      variant="default" 
+                      size="sm" 
+                      className="w-full bg-gradient-to-r from-brand-pink-light to-brand-pink-neon text-brand-black font-bold hover:opacity-90 transition-opacity shadow-md hover:shadow-lg text-glow-white-xs"
+                    >
+                      Tip Here to Request <ExternalLink size={14} className="ml-1.5" />
+                    </Button>
+                  </a>
+                  <ul className="list-disc list-inside text-brand-purple-light/80 space-y-0.5 pl-1 text-xs">
+                    <li>Donations get queue priority!</li>
+                    <li>$1 USD per minute</li>
+                    <li>Minimum $3 USD</li>
+                    <li>Max 10 min duration</li>
+                    <li>Back-to-back requests need a 1 song gap</li>
+                  </ul>
+                </div>
+
+                <hr className="border-brand-purple-dark/50" />
+
+                {/* Channel Points Section */}
+                <div className="space-y-1">
+                   <h4 className="font-semibold text-white flex items-center gap-1.5">
+                     <Star size={16} className="text-yellow-400" /> Channel Point Request
+                   </h4>
+                   <p className="text-brand-purple-light/90 text-xs">
+                     Redeem the 'Request a Song!' reward on Twitch to add a song to the end of the queue.
+                   </p>
+                </div>
+                
+                <hr className="border-brand-purple-dark/50" />
+
+                {/* Song Rules Section */}
+                <div className="space-y-1">
+                   <h4 className="font-semibold text-white flex items-center gap-1.5">
+                     <AlertTriangle size={16} className="text-red-400" /> Song Rules
+                   </h4>
+                   <ul className="list-disc list-inside text-brand-purple-light/80 space-y-0.5 pl-1 text-xs">
+                    <li>No Deathcore</li>
+                    <li>No Jazz</li>
+                    <li>No YouTuber/Fandom songs (ie FNAF)</li>
+                    <li>No AI-Generated Music</li>
+                  </ul>
+                </div>
+              </CardContent>
             </Card>
 
             {/* Queue Statistics Card - Use brand colors, add blur and subtle glow */}
