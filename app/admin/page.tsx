@@ -127,13 +127,16 @@ export default function AdminDashboard() {
   // Socket Connection and Event Listeners
   useEffect(() => {
     const socketHost = process.env.NEXT_PUBLIC_SOCKET_URL || '';
+    let connectionAttempts = 0;
+    
     const socketInstance: Socket<SocketEvents> = io(socketHost, {
       transports: ['polling', 'websocket'],
       path: '/socket.io/',
       timeout: 20000,
       forceNew: true,
       autoConnect: true,
-      upgrade: true
+      upgrade: true,
+      reconnectionAttempts: 5
     });
     
     socketInstance.on('connect', () => {
@@ -215,10 +218,15 @@ export default function AdminDashboard() {
         })
     })
 
-    socketInstance.on('connect_error', (err) => {
-      console.error('Admin: Socket connection error:', err)
-      setAppState(prev => ({ ...prev, error: new Error('Connection failed'), isLoading: false }))
-      setIsConnected(false)
+    socketInstance.on('connect_error', (error) => {
+      console.error('Admin: Socket connection error:', error)
+      connectionAttempts++;
+      
+      // If first attempt fails, try with websocket only
+      if (connectionAttempts === 1) {
+        console.log('Admin: First connection attempt failed, trying with websocket only...')
+        socketInstance.io.opts.transports = ['websocket']
+      }
     })
     
     setSocket(socketInstance)

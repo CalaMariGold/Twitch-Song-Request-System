@@ -36,6 +36,16 @@ const allowedOriginsEnv = process.env.ALLOWED_ORIGINS || "http://localhost:3000,
 const allowedOrigins = allowedOriginsEnv.split(',').map(origin => origin.trim());
 console.log(chalk.blue(`[Config] Allowed CORS Origins: ${allowedOrigins.join(', ')}`))
 
+// Add domain detection
+const productionDomain = process.env.NEXT_PUBLIC_APP_URL 
+  ? new URL(process.env.NEXT_PUBLIC_APP_URL).origin 
+  : null;
+  
+if (productionDomain) {
+  console.log(chalk.blue(`[Config] Adding production domain to allowed origins: ${productionDomain}`));
+  allowedOrigins.push(productionDomain);
+}
+
 // Configuration for Duration Limits (Read from .env with defaults)
 const MAX_DONATION_DURATION_SECONDS = parseInt(process.env.MAX_DONATION_DURATION_SECONDS || '600', 10); // Default 10 minutes
 const MAX_CHANNEL_POINT_DURATION_SECONDS = parseInt(process.env.MAX_CHANNEL_POINT_DURATION_SECONDS || '300', 10); // Default 5 minutes
@@ -85,8 +95,8 @@ const state = {
 const io = new Server(httpServer, {
     allowEIO3: true,
     cors: {
-        // Allow connections from the frontend domain AND the internal proxy
-        origin: "*", // Allow any origin - simpler for proxy scenarios
+        // Update to use the specific allowed origins
+        origin: allowedOrigins,
         methods: ["GET", "POST"],
         credentials: true
     },

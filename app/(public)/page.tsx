@@ -31,13 +31,16 @@ export default function PublicDashboard() {
   // Socket Connection & State Fetching
   useEffect(() => {
     const socketHost = process.env.NEXT_PUBLIC_SOCKET_URL || '';
+    let connectionAttempts = 0;
+    
     const socketInstance = io(socketHost, {
       transports: ['polling', 'websocket'], // Try polling first, then upgrade to websocket
       path: '/socket.io/',
       timeout: 20000, // Increase timeout
       forceNew: true,
       autoConnect: true,
-      upgrade: true
+      upgrade: true,
+      reconnectionAttempts: 5
     })
     
     socketInstance.on('connect', () => {
@@ -49,6 +52,17 @@ export default function PublicDashboard() {
     socketInstance.on('disconnect', () => {
       setIsConnected(false)
       console.log('Disconnected from Socket.IO server (Public Page)')
+    })
+    
+    socketInstance.on('connect_error', (error) => {
+      console.error('Socket connection error (Public Page):', error)
+      connectionAttempts++;
+      
+      // If first attempt fails, try with websocket only
+      if (connectionAttempts === 1) {
+        console.log('First connection attempt failed, trying with websocket only...')
+        socketInstance.io.opts.transports = ['websocket']
+      }
     })
     
     socketInstance.on('queueUpdate', (queue: SongRequest[]) => {

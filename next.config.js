@@ -22,7 +22,7 @@ const nextConfig = {
         return [
             {
                 source: '/socket.io/:path*',
-                destination: 'http://127.0.0.1:3002/socket.io/:path*',
+                destination: 'http://localhost:3002/socket.io/:path*',
                 basePath: false
             }
         ]
@@ -40,6 +40,14 @@ const nextConfig = {
                     {
                         key: 'Connection',
                         value: 'keep-alive',
+                    },
+                    {
+                        key: 'Proxy-Connection',
+                        value: 'keep-alive',
+                    },
+                    {
+                        key: 'Upgrade',
+                        value: 'websocket',
                     }
                 ],
             }

@@ -525,7 +525,7 @@ export default function SongRequestQueue() {
   // Socket connection management
   useEffect(() => {
     // Use an absolute path for the socket connection
-    // This will use the current domain with the socket.io path
+    // When NEXT_PUBLIC_SOCKET_URL is empty, it will use the current domain
     const socketHost = process.env.NEXT_PUBLIC_SOCKET_URL || '';
     console.log(`Attempting to connect WebSocket to: ${socketHost || 'current domain'}`);
 
@@ -544,7 +544,7 @@ export default function SongRequestQueue() {
       upgrade: true
     })
 
-    newSocket.on(socketEvents.CONNECT, () => {
+    newSocket.on('connect', () => {
       console.log('Connected to WebSocket server')
       setIsConnected(true)
       connectionAttempts = 0; // Reset counter on successful connection
@@ -552,15 +552,16 @@ export default function SongRequestQueue() {
       newSocket.emit('getState');
     })
 
-    newSocket.on(socketEvents.DISCONNECT, (reason) => {
-      console.log('Disconnected from WebSocket server:', reason)
-      setIsConnected(false)
-    })
-
     newSocket.on('connect_error', (error: Error) => {
       console.error('Socket connection error:', error)
       connectionAttempts++;
       console.log(`Connection attempt ${connectionAttempts}/${maxAttempts}`);
+      
+      if (connectionAttempts === 1) {
+        console.log('First connection attempt failed, trying with different transport settings...');
+        // If on first attempt, try reconnecting with just websocket
+        newSocket.io.opts.transports = ['websocket'];
+      }
       
       if (connectionAttempts >= maxAttempts) {
         console.error('Max connection attempts reached. Showing dummy data.');
