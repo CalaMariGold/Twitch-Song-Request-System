@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import Link from "next/link"
+import Image from "next/image"
 import SongRequestQueue from "@/components/SongRequestQueue"
 import AnimatedBackground from "@/components/AnimatedBackground"
 import { Button } from "@/components/ui/button"
@@ -158,8 +159,29 @@ export default function PublicDashboard() {
           </div>
 
           {/* Side Panel: Queue Statistics (1/4 width) */}
-          <div className="md:col-span-1">
-            {/* Use brand colors, add blur and subtle glow */}
+          <div className="md:col-span-1 space-y-6">
+
+            {/* ShinyFest Poster Card */}
+            <Card className="bg-gradient-to-br from-brand-pink-light/80 to-brand-pink-dark/80 border-brand-pink-neon/40 backdrop-blur-md shadow-glow-pink-md hover:shadow-glow-pink-lg transition-shadow duration-300 overflow-hidden">
+              <a href="https://calamarigold-shop.fourthwall.com/products/shinyfest-2025-concert-poster" target="_blank" rel="noopener noreferrer" className="block hover:opacity-90 transition-opacity">
+                <CardContent className="p-4 flex flex-col items-center text-center">
+                  <div className="relative w-full aspect-[5/7] mb-3 border-2 border-brand-pink-neon/30 rounded-md overflow-hidden shadow-inner shadow-brand-black/30">
+                    <Image 
+                      src="/shinyfest 2025 poster.png" 
+                      alt="ShinyFest 2025 Poster" 
+                      layout="fill" 
+                      objectFit="cover" 
+                      priority // Load image sooner
+                    />
+                  </div>
+                  <p className="text-sm font-semibold text-white text-glow-white-xs leading-snug">
+                    ShinyFest 2025 poster now available for sale!
+                  </p>
+                </CardContent>
+              </a>
+            </Card>
+
+            {/* Queue Statistics Card - Use brand colors, add blur and subtle glow */}
             <Card className="bg-brand-purple-deep/70 border-brand-purple-neon/30 backdrop-blur-md shadow-glow-purple-sm">
               <CardHeader>
                 <CardTitle className="text-brand-pink-light flex items-center gap-2 text-glow-pink">

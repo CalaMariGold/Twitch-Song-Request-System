@@ -258,24 +258,18 @@ io.on('connection', (socket) => {
                  if (result) {
                      io.emit('songFinished', previousSong); // Emit event for clients
                      
-                     // Check if result has history array (new format) or is boolean (old format)
-                     if (typeof result === 'object' && result.history) {
-                         io.emit('historyUpdate', result.history);
-                         console.log(chalk.blue(`[Database] Emitted historyUpdate with ${result.history.length} items after song completion.`));
-                         
-                         // Also emit stats if available
-                         try {
-                             const statistics = fetchAllTimeStats(db.getDb());
-                             io.emit('allTimeStatsUpdate', statistics);
-                             console.log(chalk.blue('[Statistics] Broadcast updated statistics after song completion'));
-                         } catch (statsError) {
-                             console.error(chalk.red('[Statistics] Error refreshing statistics:'), statsError);
-                         }
-                     } else {
-                         // Fallback to fetching history (should not happen with updated code)
-                         const recentHistory = db.getRecentHistory();
-                             io.emit('historyUpdate', recentHistory);
-                             console.log(chalk.blue(`[Database] Emitted historyUpdate with ${recentHistory.length} items after song completion (fallback).`));
+                     // Fetch and emit updated history AFTER successful logging
+                     const recentHistory = db.getRecentHistory();
+                     io.emit('historyUpdate', recentHistory);
+                     console.log(chalk.blue(`[History] Broadcast updated history (${recentHistory.length} items) after song completion.`));
+                     
+                     // Also update statistics
+                     try {
+                         const statistics = fetchAllTimeStats(db.getDb());
+                         io.emit('allTimeStatsUpdate', statistics);
+                         console.log(chalk.blue('[Statistics] Broadcast updated statistics after song completion.'));
+                     } catch (statsError) {
+                         console.error(chalk.red('[Statistics] Error refreshing statistics:'), statsError);
                      }
                  }
             }
@@ -297,24 +291,18 @@ io.on('connection', (socket) => {
                  if (result) {
                      io.emit('songFinished', previousSong); // Emit event for clients
                      
-                     // Check if result has history array (new format) or is boolean (old format)
-                     if (typeof result === 'object' && result.history) {
-                         io.emit('historyUpdate', result.history);
-                         console.log(chalk.blue(`[Database] Emitted historyUpdate with ${result.history.length} items after song completion.`));
-                         
-                         // Also emit stats if available
-                         try {
-                             const statistics = fetchAllTimeStats(db.getDb());
-                             io.emit('allTimeStatsUpdate', statistics);
-                             console.log(chalk.blue('[Statistics] Broadcast updated statistics after song completion'));
-                         } catch (statsError) {
-                             console.error(chalk.red('[Statistics] Error refreshing statistics:'), statsError);
-                         }
-                     } else {
-                         // Fallback to fetching history (should not happen with updated code)
-                         const recentHistory = db.getRecentHistory();
-                             io.emit('historyUpdate', recentHistory);
-                             console.log(chalk.blue(`[Database] Emitted historyUpdate with ${recentHistory.length} items after song completion (fallback).`));
+                     // Fetch and emit updated history AFTER successful logging
+                     const recentHistory = db.getRecentHistory();
+                     io.emit('historyUpdate', recentHistory);
+                     console.log(chalk.blue(`[History] Broadcast updated history (${recentHistory.length} items) after song stopped/removed.`));
+                     
+                     // Also update statistics
+                     try {
+                         const statistics = fetchAllTimeStats(db.getDb());
+                         io.emit('allTimeStatsUpdate', statistics);
+                         console.log(chalk.blue('[Statistics] Broadcast updated statistics after song stopped/removed.'));
+                     } catch (statsError) {
+                         console.error(chalk.red('[Statistics] Error refreshing statistics:'), statsError);
                      }
                  }
             }
@@ -393,20 +381,16 @@ io.on('connection', (socket) => {
             io.emit('songFinished', song);
             console.log(chalk.magenta(`[Admin] Song marked as finished: ${song.title}`));
             
-            // Update history for all clients
-            if (typeof result === 'object' && result.history) {
-                io.emit('historyUpdate', result.history);
-            } else {
-                // Fallback to fetching history
-                const recentHistory = db.getRecentHistory();
-                    io.emit('historyUpdate', recentHistory);
-            }
+            // Fetch and emit updated history AFTER successful logging
+            const recentHistory = db.getRecentHistory();
+            io.emit('historyUpdate', recentHistory);
+            console.log(chalk.blue(`[History] Broadcast updated history (${recentHistory.length} items) after marking song finished.`));
             
             // Also update statistics
             try {
                 const statistics = fetchAllTimeStats(db.getDb());
                 io.emit('allTimeStatsUpdate', statistics);
-                console.log(chalk.blue('[Statistics] Broadcast updated statistics after song completion'));
+                console.log(chalk.blue('[Statistics] Broadcast updated statistics after song completion.'));
             } catch (statsError) {
                 console.error(chalk.red('[Statistics] Error refreshing statistics:'), statsError);
             }
@@ -423,18 +407,21 @@ io.on('connection', (socket) => {
         console.log(chalk.magenta(`[Admin] Returning song "${song.title}" (ID: ${song.id}) to queue from history via socket.`));
         
         // Create a new song object with a new ID
+        // Assign a higher priority to ensure it stays at the top after restart
+        const priorityOverride = 2; // Higher than donation (1) and channel points (0)
         const newSong = {
             ...song,
             id: Date.now().toString(), // Generate a new ID
             timestamp: new Date().toISOString(), // Update timestamp to now
             requestType: song.requestType,
+            priority: priorityOverride, // Explicitly set high priority
             source: 'history_requeue'
         };
 
         // Add to the beginning of the queue
         state.queue.unshift(newSong);
         
-        // Add to DB queue
+        // Add to DB queue (addSongToDbQueue will now use the priority set above)
         db.addSongToDbQueue(newSong);
 
         // Emit queue update to all clients
@@ -524,6 +511,7 @@ io.on('connection', (socket) => {
         // Fetch and broadcast updated history
         const recentHistory = db.getRecentHistory();
         io.emit('historyUpdate', recentHistory);
+        console.log(chalk.blue(`[History] Broadcast updated history (${recentHistory.length} items) after skipping song.`));
 
          // Also update statistics
          try {

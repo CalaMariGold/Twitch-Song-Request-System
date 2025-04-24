@@ -400,8 +400,11 @@ function removeBlockedUser(username) {
 
 function addSongToDbQueue(song) {
     try {
-        // Determine priority (e.g., higher value for donations)
-        const priority = song.requestType === 'donation' ? 1 : 0;
+        // Determine priority: Use explicit priority if passed (e.g., from history requeue),
+        // otherwise calculate based on requestType (higher value for donations)
+        const priority = typeof song.priority === 'number' 
+            ? song.priority 
+            : (song.requestType === 'donation' ? 1 : 0);
         
         // Serialize Spotify data if present
         const spotifyData = song.spotifyData ? JSON.stringify(song.spotifyData) : null;
@@ -551,42 +554,59 @@ function clearDbQueue() {
 
 // --- Database History Functions ---
 
+function getDb() {
+    return db;
+}
+
 function logCompletedSong(song) {
-    if (!song) {
-        console.warn(chalk.yellow('[DB Write] logCompletedSong called with null/undefined song'));
-        return false; // Return false if song is invalid
+    if (!song || !song.id) {
+        console.warn(chalk.yellow('[Database] Attempted to log invalid song to history (missing original ID):'), song);
+        return false;
     }
-
+    if (!insertHistoryStmt || !deleteQueueStmt) {
+        console.error(chalk.red('[Database] Statements not prepared. Cannot log song or ensure queue removal.'));
+        return false;
+    }
+    
     try {
-        // Serialize Spotify data if present
-        const spotifyData = song.spotifyData ? JSON.stringify(song.spotifyData) : null;
-        // Ensure completedAt is set, default to now if not provided (should always be provided by caller now)
-        const completedAt = song.completedAt || new Date().toISOString();
-
-        // Use the prepared statement defined earlier
-        insertHistoryStmt.run({
-            youtubeUrl: song.youtubeUrl || null,
-            title: song.title || null,
-            artist: song.artist || null,
-            channelId: song.channelId || null,
-            durationSeconds: song.durationSeconds || null,
-            requester: song.requester,
-            requesterLogin: song.requesterLogin || null,
-            requesterAvatar: song.requesterAvatar || null,
-            thumbnailUrl: song.thumbnailUrl || null,
-            requestType: song.requestType,
-            completedAt: completedAt, // Use the determined completedAt value
-            spotifyData: spotifyData
+        const logAndCleanTransaction = getDb().transaction(() => {
+            const spotifyDataJson = song.spotifyData ? JSON.stringify(song.spotifyData) : null;
+            const completedAt = song.completedAt || new Date().toISOString();
+            const historyParams = {
+                youtubeUrl: song.youtubeUrl || null,
+                title: song.title || 'Unknown Title',
+                artist: song.artist || 'Unknown Artist',
+                channelId: song.channelId || null,
+                durationSeconds: song.durationSeconds || 0,
+                requester: song.requester || 'Unknown Requester',
+                requesterLogin: song.requesterLogin || null,
+                requesterAvatar: song.requesterAvatar || null,
+                thumbnailUrl: song.thumbnailUrl || null,
+                requestType: song.requestType || 'unknown',
+                completedAt: completedAt,
+                spotifyData: spotifyDataJson
+            };
+            insertHistoryStmt.run(historyParams);
+            
+            const deleteInfo = deleteQueueStmt.run(song.id);
+            return deleteInfo.changes;
         });
-        console.log(chalk.grey(`[DB Write] Logged completed song to history: ${song.title}`));
-        return true; // Return true on success
+        
+        const deleteCount = logAndCleanTransaction();
+        if (deleteCount > 0) {
+            console.log(chalk.grey(`[DB Write] Logged song "${song.title}" (Original ID: ${song.id}) to history and removed from active_queue.`));
+        } else {
+            console.log(chalk.grey(`[DB Write] Logged song "${song.title}" (Original ID: ${song.id}) to history. (Was already removed from active_queue).`));
+        }
+        
+        return true;
     } catch (err) {
-        console.error(chalk.red('[Database] Failed to log completed song to history:'), err);
-        return false; // Return false on failure
+        console.error(chalk.red('[Database] Error in logAndCleanTransaction:'), err);
+        console.error(chalk.red('Failed song data:'), song);
+        return false;
     }
 }
 
-// Function to clear history
 function clearDbHistory() {
     try {
         const clearHistoryStmt = db.prepare('DELETE FROM song_history');
@@ -599,7 +619,6 @@ function clearDbHistory() {
     }
 }
 
-// Function to delete a single history item
 function deleteHistoryItem(id) {
     if (!id) {
         console.warn(chalk.yellow('[DB Write] deleteHistoryItem called with null/undefined id'));
@@ -621,13 +640,11 @@ function deleteHistoryItem(id) {
     }
 }
 
-// Function to fetch recent history items
 function getRecentHistory(limit = 50) {
     try {
         const historyItems = db.prepare('SELECT * FROM song_history ORDER BY id DESC LIMIT ?').all(limit);
         
         return historyItems.map(item => {
-            // Parse Spotify data if present
             let spotifyData = null;
             if (item.spotifyData) {
                 try {
@@ -637,11 +654,8 @@ function getRecentHistory(limit = 50) {
                 }
             }
             
-            // Ensure the timestamp is properly converted to an ISO string
-            // SQLite may store as UTC, but we need to ensure it's properly formatted for the client
             let timestamp = item.completedAt;
             try {
-                // If not already an ISO string, convert to a proper one
                 if (timestamp && !timestamp.includes('T')) {
                     const date = new Date(timestamp);
                     if (!isNaN(date.getTime())) {
@@ -667,7 +681,7 @@ function getRecentHistory(limit = 50) {
                 thumbnailUrl: item.thumbnailUrl,
                 requestType: item.requestType,
                 source: 'database_history',
-                spotifyData: spotifyData // Use consistent property name for Spotify data
+                spotifyData: spotifyData
             };
         });
     } catch (err) {
@@ -676,21 +690,17 @@ function getRecentHistory(limit = 50) {
     }
 }
 
-// Function to load initial state from Database
 function loadInitialState() {
     console.log(chalk.blue('[Database] Loading initial state...'));
     let loadedState = { queue: [], settings: {}, blacklist: [], blockedUsers: [], activeSong: null };
     try {
-        // Load Active Queue
         const loadQueueStmt = db.prepare(`
             SELECT id, youtubeUrl, title, artist, channelId, durationSeconds,
                    requester, requesterLogin, requesterAvatar, thumbnailUrl, requestType, addedAt, spotifyData
-            FROM active_queue ORDER BY priority DESC, addedAt ASC
+            FROM active_queue ORDER BY priority DESC, id ASC
         `);
         const queueRows = loadQueueStmt.all();
-        // Map DB columns to state.queue song format (adjust if necessary)
         loadedState.queue = queueRows.map(row => {
-            // Parse Spotify data if present
             let spotifyData = null;
             if (row.spotifyData) {
                 try {
@@ -701,59 +711,53 @@ function loadInitialState() {
             }
             
             return {
-                id: row.id.toString(), // Ensure ID is string like original state
+                id: row.id.toString(),
                 youtubeUrl: row.youtubeUrl,
                 title: row.title,
                 artist: row.artist,
                 channelId: row.channelId,
-                duration: row.durationSeconds ? formatDurationFromSeconds(row.durationSeconds) : '0:00', // Format duration string
+                duration: row.durationSeconds ? formatDurationFromSeconds(row.durationSeconds) : '0:00',
                 durationSeconds: row.durationSeconds,
                 requester: row.requester,
                 requesterLogin: row.requesterLogin,
                 requesterAvatar: row.requesterAvatar,
                 thumbnailUrl: row.thumbnailUrl,
-                timestamp: row.addedAt, // Use addedAt as timestamp
+                timestamp: row.addedAt,
                 requestType: row.requestType,
                 source: 'database',
-                spotifyData: spotifyData // Use consistent property name for Spotify data
+                spotifyData: spotifyData
             };
         });
         console.log(chalk.blue(`[Database] Loaded ${loadedState.queue.length} songs into the active queue.`));
 
-        // Load Active song
         loadedState.activeSong = loadActiveSongFromDB();
 
-        // Load Settings
         const loadSettingsStmt = db.prepare('SELECT key, value FROM settings');
         const settingsRows = loadSettingsStmt.all();
         loadedState.settings = settingsRows.reduce((acc, row) => {
             try {
                 acc[row.key] = JSON.parse(row.value);
             } catch (e) {
-                acc[row.key] = row.value; // Fallback to raw value if not JSON
+                acc[row.key] = row.value;
             }
             return acc;
         }, {});
         console.log(chalk.blue(`[Database] Loaded ${Object.keys(loadedState.settings).length} settings.`));
 
-        // Load Blacklist - adapting to new schema with 'type'
         const loadBlacklistStmt = db.prepare('SELECT id, pattern, type, addedAt FROM blacklist');
-        const blacklistRows = loadBlacklistStmt.all(); // Added detailed logging
-        // Map DB columns to state.blacklist format
+        const blacklistRows = loadBlacklistStmt.all();
         loadedState.blacklist = blacklistRows.map(row => ({
-            id: row.id.toString(), // Use DB ID
-            term: row.pattern, // 'pattern' in DB is 'term' in state
+            id: row.id.toString(),
+            term: row.pattern,
             type: row.type,
             addedAt: row.addedAt
         }));
         console.log(chalk.blue(`[Database] Loaded ${loadedState.blacklist.length} blacklist items.`));
 
-        // Load Blocked Users - adapting to new schema with 'username'
         const loadBlockedUsersStmt = db.prepare('SELECT id, username, addedAt FROM blocked_users');
-        const blockedUserRows = loadBlockedUsersStmt.all(); // Added detailed logging
-         // Map DB columns to state.blockedUsers format
+        const blockedUserRows = loadBlockedUsersStmt.all();
         loadedState.blockedUsers = blockedUserRows.map(row => ({
-            id: row.id.toString(), // Use DB ID
+            id: row.id.toString(),
             username: row.username,
             addedAt: row.addedAt
         }));
@@ -761,7 +765,6 @@ function loadInitialState() {
 
     } catch (err) {
         console.error(chalk.red('[Database] Error loading initial state:'), err);
-        // Return empty state on error to allow server to start, but log the issue
     }
     return loadedState;
 }
@@ -779,7 +782,6 @@ function closeDatabase() {
     try {
         console.log(chalk.blue('[Database] Closing database connection...'));
         
-        // Clean up prepared statements
         insertHistoryStmt = null;
         insertQueueStmt = null;
         deleteQueueStmt = null;
@@ -792,7 +794,6 @@ function closeDatabase() {
         saveActiveSongStmt = null;
         clearActiveSongStmt = null;
         
-        // Close database
         db.close();
         db = null;
         console.log(chalk.blue('[Database] Database connection closed successfully.'));
@@ -808,35 +809,27 @@ module.exports = {
     loadInitialState,
     getRecentHistory,
     
-    // Settings functions
     saveSetting,
     
-    // Blacklist functions
     addBlacklistPattern,
     removeBlacklistPattern,
     
-    // Blocked user functions
     addBlockedUser,
     removeBlockedUser,
     
-    // Queue functions
     addSongToDbQueue,
     removeSongFromDbQueue,
     clearDbQueue,
     
-    // Active song functions
     saveActiveSongToDB,
     clearActiveSongFromDB,
     loadActiveSongFromDB,
     
-    // History functions
     logCompletedSong,
     clearDbHistory,
     deleteHistoryItem,
     
-    // Utility
     closeDatabase,
     
-    // Reference to the DB for direct operations
-    getDb: () => db
+    getDb
 }; 
