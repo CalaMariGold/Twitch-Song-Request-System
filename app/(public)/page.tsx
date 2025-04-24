@@ -12,6 +12,7 @@ import { io, Socket } from "socket.io-client"
 import { SongRequest, QueueState, AllTimeStats } from "@/lib/types"
 import { StatisticsCard } from "@/components/StatisticsCard"
 import { formatDuration, calculateTotalQueueDuration } from "@/lib/utils"
+import React from "react"
 
 export default function PublicDashboard() {
   const [queueState, setQueueState] = useState<QueueState>({
@@ -143,7 +144,9 @@ export default function PublicDashboard() {
             </div>
 
             {/* Song Request Queue */}
-            <SongRequestQueue />
+            <React.Suspense fallback={<div className="h-[600px] rounded-lg bg-brand-purple-deep/50 animate-pulse"></div>}>
+              <SongRequestQueue />
+            </React.Suspense>
             
             {/* All-Time Stats Card - Moved under the queue */}
             <StatisticsCard 
@@ -169,10 +172,10 @@ export default function PublicDashboard() {
                     <Image 
                       src="/shinyfest 2025 poster.png" 
                       alt="ShinyFest 2025 Poster" 
-                      layout="fill" 
-                      objectFit="cover" 
-                      priority // Load image sooner
-                      quality={90} // Increase image quality
+                      fill
+                      className="object-cover"
+                      priority
+                      quality={90}
                     />
                   </div>
                   <p className="text-sm font-semibold text-white text-glow-white-xs leading-snug">

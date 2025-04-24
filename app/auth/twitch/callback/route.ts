@@ -5,6 +5,8 @@ import { writeFile } from 'fs/promises'
 import path from 'path'
 import fs from 'fs/promises'
 
+export const dynamic = 'force-dynamic'
+
 // Define path for storing the token
 const persistentPath = process.env.PERSISTENT_DATA_PATH; // Path provided by Railway Volume mount
 const baseAuthDir = persistentPath ? path.join(persistentPath, 'auth') : path.join(process.cwd(), 'auth');
