@@ -24,6 +24,9 @@ const { connectToStreamElements, disconnectFromStreamElements } = require('./str
 const spotify = require('./spotify')
 require('dotenv').config()
 
+// Increase debug output
+process.env.DEBUG = 'socket.io:*';
+
 const SOCKET_PORT = process.env.SOCKET_PORT ? parseInt(process.env.SOCKET_PORT, 10) : 3002
 const httpServer = createServer()
 const dbPath = process.env.DB_PATH || path.join(__dirname, '..', 'data', 'songRequestSystem.db');
@@ -95,12 +98,7 @@ const io = new Server(httpServer, {
     // Allow upgrades
     allowUpgrades: true,
     // Handle websocket errors more gracefully
-    upgradeTimeout: 10000,
-    // Add adapter to improve socket reliability
-    adapter: {
-        pubClient: null,
-        subClient: null
-    }
+    upgradeTimeout: 10000
 })
 
 // Socket.IO connection handling
@@ -789,6 +787,7 @@ async function startServer() {
   // Explicitly bind to 0.0.0.0 to allow access from all interfaces
   httpServer.listen(SOCKET_PORT, '0.0.0.0', async () => {
       console.log(chalk.green(`🚀 Backend Socket.IO server listening on 0.0.0.0:${SOCKET_PORT}`))
+      console.log(chalk.blue(`   HTTP Server address: ${JSON.stringify(httpServer.address())}`))
       console.log(chalk.blue("   Initializing subsystems..."));
   })
 }

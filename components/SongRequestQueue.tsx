@@ -529,6 +529,10 @@ export default function SongRequestQueue() {
     const socketHost = process.env.NEXT_PUBLIC_SOCKET_URL || '';
     console.log(`Attempting to connect WebSocket to: ${socketHost || 'current domain'}`);
 
+    // Track connection attempts
+    let connectionAttempts = 0;
+    const maxAttempts = 5;
+
     const newSocket = io(socketHost, {
       transports: ['polling', 'websocket'], // Try polling first, then upgrade to websocket
       reconnectionAttempts: constants.SOCKET_RECONNECT_ATTEMPTS,
@@ -543,6 +547,7 @@ export default function SongRequestQueue() {
     newSocket.on(socketEvents.CONNECT, () => {
       console.log('Connected to WebSocket server')
       setIsConnected(true)
+      connectionAttempts = 0; // Reset counter on successful connection
       // Request initial state only after connection is established
       newSocket.emit('getState');
     })
@@ -550,13 +555,25 @@ export default function SongRequestQueue() {
     newSocket.on(socketEvents.DISCONNECT, (reason) => {
       console.log('Disconnected from WebSocket server:', reason)
       setIsConnected(false)
-      // Optionally reset state or show persistent disconnected message
-      // setState((prev: AppState) => ({ ...prev, isLoading: true, error: new Error('Connection lost') }))
     })
 
-    newSocket.on(socketEvents.ERROR, (error) => {
-      console.error('Socket error:', error)
-      setState((prev: AppState) => ({ ...prev, error: new Error(`Socket connection error: ${error.message || 'Unknown error'}`) }))
+    newSocket.on('connect_error', (error: Error) => {
+      console.error('Socket connection error:', error)
+      connectionAttempts++;
+      console.log(`Connection attempt ${connectionAttempts}/${maxAttempts}`);
+      
+      if (connectionAttempts >= maxAttempts) {
+        console.error('Max connection attempts reached. Showing dummy data.');
+        // Set some dummy data to show the UI in a reasonable state
+        setState((prev: AppState) => ({
+          ...prev,
+          queue: [],
+          history: [],
+          activeSong: null,
+          isLoading: false,
+          error: new Error(`Failed to connect to the server after ${maxAttempts} attempts.`)
+        }));
+      }
     })
 
     // Handle initial state from server

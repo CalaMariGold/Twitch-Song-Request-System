@@ -27,11 +27,26 @@ const nextConfig = {
             }
         ]
     },
-    // Disable buffer optimization (can interfere with WebSockets)
-    output: {
-        webassemblyModuleFilename: 'static/wasm/[modulehash].wasm',
-        buffer: false
-    }
+    // Add a custom route handler for socket.io
+    async headers() {
+        return [
+            {
+                source: '/socket.io/:path*',
+                headers: [
+                    {
+                        key: 'Cache-Control',
+                        value: 'no-store, no-cache, must-revalidate, proxy-revalidate',
+                    },
+                    {
+                        key: 'Connection',
+                        value: 'keep-alive',
+                    }
+                ],
+            }
+        ]
+    },
+    // Change to valid output format
+    output: 'standalone'
 }
 
 module.exports = nextConfig 
