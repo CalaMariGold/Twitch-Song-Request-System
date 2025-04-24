@@ -42,9 +42,9 @@ export async function GET(request: Request) {
     // Get user info
     const userInfo = await getTwitchUserInfo(tokenData.access_token)
     
-    // --- NEW: Save the token to a file --- 
-    // IMPORTANT: This is for local development ONLY. 
-    // In production, tokens should be stored securely (e.g., encrypted DB).
+    // --- Save the token to a file --- 
+    // Saves the token to a file. In Railway deployment, this uses the persistent volume.
+    // Consider more robust storage (e.g., encrypted DB) for higher security needs.
     // Access TWITCH_CHANNEL_NAME directly from process.env in API routes
     const broadcasterLogin = process.env.TWITCH_CHANNEL_NAME;
     if (!broadcasterLogin) {
