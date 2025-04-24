@@ -80,6 +80,7 @@ const state = {
 }
 
 const io = new Server(httpServer, {
+    allowEIO3: true,
     cors: {
         // Allow connections from the frontend domain AND the internal proxy
         origin: "*", // Allow any origin - simpler for proxy scenarios
@@ -773,7 +774,7 @@ async function startServer() {
   // Use the custom HTTP server for listening
   // Explicitly bind to 0.0.0.0 to allow access from all interfaces
   httpServer.listen(SOCKET_PORT, '0.0.0.0', async () => {
-      console.log(chalk.green(`🚀 Server running at http://0.0.0.0:${SOCKET_PORT}/`))
+      console.log(chalk.green(`🚀 Backend Socket.IO server listening on 0.0.0.0:${SOCKET_PORT}`))
       console.log(chalk.blue("   Initializing subsystems..."));
   })
 }
