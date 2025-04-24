@@ -44,9 +44,7 @@ const nextConfig = {
                 ],
             }
         ]
-    },
-    // Change to valid output format
-    output: 'standalone'
+    }
 }
 
 module.exports = nextConfig 
