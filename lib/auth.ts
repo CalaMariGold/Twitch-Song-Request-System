@@ -26,7 +26,7 @@ export interface TwitchAuthResponse {
  * Get Twitch OAuth URL for login
  */
 export function getTwitchAuthUrl(): string {
-  const scopes = ['user:read:email', 'channel:read:redemptions']
+  const scopes = ['user:read:email']
   
   return `https://id.twitch.tv/oauth2/authorize?` +
     `client_id=${config.NEXT_PUBLIC_TWITCH_CLIENT_ID}&` +
@@ -85,20 +85,4 @@ export function isAdmin(username: string): boolean {
   // Normalize the usernames to lowercase for comparison
   const normalizedUsernames = ADMIN_USERNAMES.map(name => name.toLowerCase())
   return normalizedUsernames.includes(username.toLowerCase())
-}
-
-/**
- * Validate session token
- */
-export async function validateToken(accessToken: string): Promise<boolean> {
-  try {
-    const response = await fetch('https://id.twitch.tv/oauth2/validate', {
-      headers: {
-        'Authorization': `OAuth ${accessToken}`
-      }
-    })
-    return response.ok
-  } catch (error) {
-    return false
-  }
 } 
