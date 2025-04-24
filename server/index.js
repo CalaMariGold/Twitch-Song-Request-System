@@ -93,7 +93,6 @@ const state = {
 }
 
 const io = new Server(httpServer, {
-    allowEIO3: true,
     cors: {
         // Update to use the specific allowed origins
         origin: allowedOrigins,

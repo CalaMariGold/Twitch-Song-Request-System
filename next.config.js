@@ -27,32 +27,6 @@ const nextConfig = {
             }
         ]
     },
-    // Add a custom route handler for socket.io
-    async headers() {
-        return [
-            {
-                source: '/socket.io/:path*',
-                headers: [
-                    {
-                        key: 'Cache-Control',
-                        value: 'no-store, no-cache, must-revalidate, proxy-revalidate',
-                    },
-                    {
-                        key: 'Connection',
-                        value: 'keep-alive',
-                    },
-                    {
-                        key: 'Proxy-Connection',
-                        value: 'keep-alive',
-                    },
-                    {
-                        key: 'Upgrade',
-                        value: 'websocket',
-                    }
-                ],
-            }
-        ]
-    }
 }
 
 module.exports = nextConfig 
