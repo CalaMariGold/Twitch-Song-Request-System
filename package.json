@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "concurrently \"next dev\" \"node server/index.js\"",
     "build": "next build",
-    "start": "concurrently \"node server/index.js\" \"next start -p $PORT\"",
+    "start": "concurrently \"node server/index.js\" \"next start -p ${PORT:-3000}\"",
     "lint": "next lint"
   },
   "dependencies": {

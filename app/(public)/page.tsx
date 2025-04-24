@@ -30,7 +30,11 @@ export default function PublicDashboard() {
 
   // Socket Connection & State Fetching
   useEffect(() => {
-    const socketInstance = io(process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3002')
+    const socketHost = process.env.NEXT_PUBLIC_SOCKET_URL || '';
+    const socketInstance = io(socketHost, {
+      transports: ['websocket', 'polling'],
+      path: '/socket.io/'
+    })
     
     socketInstance.on('connect', () => {
       setIsConnected(true)

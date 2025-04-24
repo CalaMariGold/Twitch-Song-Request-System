@@ -17,10 +17,14 @@ const nextConfig = {
         return [
             {
                 source: '/socket.io/:path*',
-                destination: 'http://127.0.0.1:3002/socket.io/:path*'
+                destination: 'http://127.0.0.1:3002/socket.io/:path*',
+                basePath: false
             }
         ]
     },
+    experimental: {
+        proxyTimeout: 120000 // 2 minutes timeout
+    }
 }
 
 module.exports = nextConfig 

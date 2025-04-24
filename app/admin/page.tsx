@@ -126,7 +126,11 @@ export default function AdminDashboard() {
 
   // Socket Connection and Event Listeners
   useEffect(() => {
-    const socketInstance: Socket<SocketEvents> = io(process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3002')
+    const socketHost = process.env.NEXT_PUBLIC_SOCKET_URL || '';
+    const socketInstance: Socket<SocketEvents> = io(socketHost, {
+      transports: ['websocket', 'polling'],
+      path: '/socket.io/'
+    });
     
     socketInstance.on('connect', () => {
       setIsConnected(true)

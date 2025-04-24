@@ -524,14 +524,16 @@ export default function SongRequestQueue() {
 
   // Socket connection management
   useEffect(() => {
-    // Construct the socket URL dynamically based on the current window location
-    const socketHost = process.env.NEXT_PUBLIC_SOCKET_URL || `http://${window.location.hostname}:3002`;
-    console.log(`Attempting to connect WebSocket to: ${socketHost}`);
+    // Use an absolute path for the socket connection
+    // This will use the current domain with the socket.io path
+    const socketHost = process.env.NEXT_PUBLIC_SOCKET_URL || '';
+    console.log(`Attempting to connect WebSocket to: ${socketHost || 'current domain'}`);
 
     const newSocket = io(socketHost, {
-      transports: ['websocket'],
+      transports: ['websocket', 'polling'],
       reconnectionAttempts: constants.SOCKET_RECONNECT_ATTEMPTS,
-      reconnectionDelay: constants.SOCKET_RECONNECT_DELAY
+      reconnectionDelay: constants.SOCKET_RECONNECT_DELAY,
+      path: '/socket.io/'
     })
 
     newSocket.on(socketEvents.CONNECT, () => {

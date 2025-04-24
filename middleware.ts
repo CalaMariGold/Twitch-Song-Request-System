@@ -8,6 +8,11 @@ const ADMIN_USERNAMES = process.env.ADMIN_USERNAMES
   : []
 
 export function middleware(request: NextRequest) {
+  // Skip middleware for Socket.IO connections
+  if (request.nextUrl.pathname.startsWith('/socket.io')) {
+    return NextResponse.next()
+  }
+
   // Only run this middleware on admin routes
   if (!request.nextUrl.pathname.startsWith('/admin')) {
     return NextResponse.next()
@@ -44,7 +49,10 @@ export function middleware(request: NextRequest) {
   }
 }
 
-// Only run middleware on admin routes
+// Only run middleware on admin routes and exclude socket.io paths
 export const config = {
-  matcher: '/admin/:path*'
+  matcher: [
+    '/admin/:path*',
+    '/((?!socket\\.io).*)' // Exclude socket.io paths from middleware
+  ]
 } 

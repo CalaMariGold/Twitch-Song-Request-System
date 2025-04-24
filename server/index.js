@@ -86,7 +86,12 @@ const io = new Server(httpServer, {
         origin: "*", // Allow any origin - simpler for proxy scenarios
         methods: ["GET", "POST"],
         credentials: true
-    }
+    },
+    // Add these parameters to properly handle proxied WebSocket connections
+    path: '/socket.io/',
+    transports: ['websocket', 'polling'],
+    pingTimeout: 60000,
+    pingInterval: 25000
 })
 
 // Socket.IO connection handling
