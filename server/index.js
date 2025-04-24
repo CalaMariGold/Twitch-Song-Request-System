@@ -33,8 +33,6 @@ const ADMIN_USERNAMES_LOWER = (process.env.ADMIN_USERNAMES || '')
 console.log(chalk.blue(`[Config] Admin Usernames (lowercase): ${ADMIN_USERNAMES_LOWER.join(', ')}`));
 // --- END NEW ---
 
-// Increase debug output
-process.env.DEBUG = 'socket.io:*';
 
 const SOCKET_PORT = process.env.SOCKET_PORT ? parseInt(process.env.SOCKET_PORT, 10) : 3002
 const httpServer = createServer()
@@ -335,11 +333,13 @@ io.on('connection', (socket) => {
         console.log(chalk.magenta(`[Admin:${socket.id}] Max Duration set to ${minutes} mins via socket.`));
     }))
 
-    // Handle active song updates
+    // Handle active song updates (Auth needed)
+    // Note: updateActiveSong can be called with null (stop) or a song object (play)
     socket.on('updateActiveSong', requireAdmin(async (song) => {
         const previousSong = state.activeSong; // Store previous song
 
         if (song) {
+            // Log previous song if it existed
             if (previousSong) { 
                  const previousSongWithTimestamp = { ...previousSong, completedAt: new Date().toISOString() };
                  const result = db.logCompletedSong(previousSongWithTimestamp); // Log previous song to DB
@@ -361,18 +361,26 @@ io.on('connection', (socket) => {
                      }
                  }
             }
-            state.activeSong = song
-            // Save the active song to the database
-            db.saveActiveSongToDB(song);
             
-            // Update queue and DB
+            // --- Reordered DB Operations --- 
+            // 1. Remove from memory queue first
             state.queue = state.queue.filter(queuedSong => queuedSong.id !== song.id);
-            
-            // THEN remove from DB queue
-            db.removeSongFromDbQueue(song.id);
-            console.log(chalk.yellow(`[Queue] Active song: "${song.title}" (Requester: ${song.requester}) - Removed from queue & DB.`));
+            // 2. Remove from DB queue *BEFORE* saving as active
+            const removed = db.removeSongFromDbQueue(song.id);
+            if (removed) {
+                 console.log(chalk.yellow(`[Queue] Removed song ID ${song.id} from DB queue before making active.`));
+            } else {
+                 console.warn(chalk.yellow(`[Queue] Attempted to remove song ID ${song.id} from DB queue before making active, but it wasn't found (might be okay if added manually bypassing queue).`));
+            }
+            // 3. Set active song in memory
+            state.activeSong = song 
+            // 4. Save the active song to the database
+            db.saveActiveSongToDB(song);
+            // --- End Reordered --- 
+
+            console.log(chalk.yellow(`[Queue] Active song: "${song.title}" (Requester: ${song.requester}) - Set as active in DB.`));
         } else {
-            // Song finished or stopped
+            // Song finished or stopped (song is null)
             if (previousSong) {
                 const previousSongWithTimestamp = { ...previousSong, completedAt: new Date().toISOString() };
                 const result = db.logCompletedSong(previousSongWithTimestamp); // Log previous song to DB
@@ -393,12 +401,10 @@ io.on('connection', (socket) => {
                          console.error(chalk.red('[Statistics] Error refreshing statistics:'), statsError);
                      }
                  }
+                 console.log(chalk.yellow(`[Queue] Song finished/removed: "${previousSong.title}"`));
             }
-            if (previousSong) {
-                console.log(chalk.yellow(`[Queue] Song finished/removed: "${previousSong.title}"`));
-            }
+            // Clear active song state
             state.activeSong = null
-            // Clear the active song from the database
             db.clearActiveSongFromDB();
         }
         
