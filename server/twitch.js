@@ -1,4 +1,3 @@
-const fetch = require('node-fetch');
 const tmi = require('tmi.js');
 const chalk = require('chalk');
 

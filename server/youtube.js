@@ -1,4 +1,3 @@
-const fetch = require('node-fetch');
 const chalk = require('chalk');
 const { formatDuration, parseIsoDuration } = require('./helpers');
 
