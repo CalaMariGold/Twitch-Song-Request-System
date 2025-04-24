@@ -93,7 +93,7 @@ module.exports = {
       boxShadow: {
         'glow-pink': '0 0 15px 3px rgba(255, 20, 147, 0.6)', // Neon Pink Glow
         'glow-purple': '0 0 15px 3px rgba(218, 112, 214, 0.6)', // Neon Purple Glow
-        'glow-pink-sm': '0 0 8px 1px rgba(255, 20, 147, 0.5)',
+        'glow-pink-sm': '0 0 10px 2px rgba(255, 20, 147, 0.7)', // Brighter/Larger small pink glow
         'glow-purple-sm': '0 0 8px 1px rgba(218, 112, 214, 0.5)',
       },
       fontFamily: {

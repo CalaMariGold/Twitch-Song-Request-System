@@ -29,6 +29,7 @@ import { getTwitchAuthUrl } from "@/lib/auth"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { DragDropContext, Draggable, Droppable, DropResult } from '@hello-pangea/dnd'
 import Image from 'next/image'
+import { cn } from "@/lib/utils"
 
 /*
  * Main queue component that displays current queue, history, and active song
@@ -271,10 +272,12 @@ export default function SongRequestQueue() {
                   {filteredPlan.map((song, index) => (
                     <Draggable key={song.id} draggableId={song.id} index={index}>
                       {(provided: any) => (
-                        <div
+                        <motion.div
                           ref={provided.innerRef}
                           {...provided.draggableProps}
-                          className="flex items-center space-x-3 p-3 rounded-md bg-brand-purple-dark/30 hover:bg-brand-purple-dark/50 transition-colors duration-200 mb-2 border border-brand-purple-neon/10 hover:border-brand-purple-neon/30"
+                          className={cn(
+                            "flex items-center space-x-3 p-3 rounded-md bg-brand-purple-dark/30 hover:bg-brand-purple-dark/50 transition-colors duration-200 mb-2 border border-brand-purple-neon/10 hover:border-brand-purple-neon/30",
+                          )}
                         >
                           <div
                             {...provided.dragHandleProps}
@@ -363,7 +366,7 @@ export default function SongRequestQueue() {
                               Added: {formatTimestamp(song.addedAt)}
                             </span>
                           </div>
-                        </div>
+                        </motion.div>
                       )}
                     </Draggable>
                   ))}
@@ -451,7 +454,7 @@ export default function SongRequestQueue() {
               <Music className="mr-2 text-brand-purple-light" size={16} />
               <h3 className="text-sm font-medium text-brand-purple-light">In Queue ({myQueueSongs.length})</h3>
             </div>
-            <SongList songs={myQueueSongs} isHistory={false} />
+            <SongList songs={myQueueSongs} isHistory={false} currentUser={currentUser} />
           </div>
         )}
         
@@ -465,7 +468,7 @@ export default function SongRequestQueue() {
               <History className="mr-2 text-brand-purple-light/70" size={16} />
               <h3 className="text-sm font-medium text-brand-purple-light/80">Previously Requested ({myHistorySongs.length})</h3>
             </div>
-            <SongList songs={myHistorySongs} isHistory={true} />
+            <SongList songs={myHistorySongs} isHistory={true} currentUser={currentUser} />
           </div>
         )}
       </div>
@@ -705,42 +708,46 @@ export default function SongRequestQueue() {
             </TabsTrigger>
           </TabsList>
           <TabsContent value="queue">
-            <ScrollArea className="h-[400px] w-full rounded-md border border-brand-purple-dark/80 p-4 bg-brand-purple-dark/30 mt-2">
-              {state.isLoading ? (
-                <LoadingState />
-              ) : state.queue.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-full text-brand-purple-light/70">
-                  <Music size={24} className="mb-2" />
-                  The queue is empty!
-                </div>
-              ) : (
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="text-sm text-brand-purple-light/80">
-                      <Clock className="inline-block mr-1 mb-0.5" size={14} /> Total: {totalQueueDurationFormatted}
-                    </div>
+            <ScrollArea className="h-[400px] w-full rounded-md border border-brand-purple-dark/80 bg-brand-purple-dark/30 mt-2">
+              <div className="p-4">
+                {state.isLoading ? (
+                  <LoadingState />
+                ) : state.queue.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-full text-brand-purple-light/70">
+                    <Music size={24} className="mb-2" />
+                    The queue is empty!
                   </div>
-                  <SongList songs={filteredQueue()} isHistory={false} />
-                </div>
-              )}
+                ) : (
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="text-sm text-brand-purple-light/80">
+                        <Clock className="inline-block mr-1 mb-0.5" size={14} /> Total: {totalQueueDurationFormatted}
+                      </div>
+                    </div>
+                    <SongList songs={filteredQueue()} isHistory={false} currentUser={currentUser} />
+                  </div>
+                )}
+              </div>
             </ScrollArea>
           </TabsContent>
           <TabsContent value="history">
-            <ScrollArea className="h-[400px] w-full rounded-md border border-brand-purple-dark/80 p-4 bg-brand-purple-dark/30 mt-2">
-              {state.isLoading ? (
-                <LoadingState />
-              ) : state.history.length === 0 ? (
-                 <div className="flex flex-col items-center justify-center h-full text-brand-purple-light/70">
-                  <History size={24} className="mb-2" />
-                  No songs played yet.
-                </div>
-              ) : (
-                <SongList songs={filteredHistory()} isHistory={true} />
-              )}
+            <ScrollArea className="h-[400px] w-full rounded-md border border-brand-purple-dark/80 bg-brand-purple-dark/30 mt-2">
+              <div className="p-4">
+                {state.isLoading ? (
+                  <LoadingState />
+                ) : state.history.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-full text-brand-purple-light/70">
+                    <History size={24} className="mb-2" />
+                    No songs played yet.
+                  </div>
+                ) : (
+                  <SongList songs={filteredHistory()} isHistory={true} currentUser={currentUser} />
+                )}
+              </div>
             </ScrollArea>
           </TabsContent>
           <TabsContent value="myrequests">
-             <ScrollArea className="h-[400px] w-full rounded-md border border-brand-purple-dark/80 p-4 bg-brand-purple-dark/30 mt-2">
+            <ScrollArea className="h-[400px] w-full rounded-md border border-brand-purple-dark/80 p-4 bg-brand-purple-dark/30 mt-2">
               {state.isLoading ? (
                 <LoadingState />
               ) : <MyRequestsTab 
@@ -752,7 +759,7 @@ export default function SongRequestQueue() {
             </ScrollArea>
           </TabsContent>
           <TabsContent value="requestplan">
-             <ScrollArea className="h-[400px] w-full rounded-md border border-brand-purple-dark/80 p-4 bg-brand-purple-dark/30 mt-2">
+            <ScrollArea className="h-[400px] w-full rounded-md border border-brand-purple-dark/80 p-4 bg-brand-purple-dark/30 mt-2">
               <RequestPlanTab 
                 currentUser={currentUser}
                 requestPlan={requestPlan}
@@ -883,7 +890,7 @@ function ActiveSong({ song, isLoading }: { song: SongRequest | null, isLoading: 
   )
 }
 
-function SongList({ songs, isHistory }: { songs: SongRequest[], isHistory: boolean }) {
+function SongList({ songs, isHistory, currentUser }: { songs: SongRequest[], isHistory: boolean, currentUser: { id?: string, login?: string } | null }) {
   // Sorting is now handled in filteredHistory callback
   const sortedSongs = isHistory ? songs : songs; // Just use the passed songs
 
@@ -892,105 +899,125 @@ function SongList({ songs, isHistory }: { songs: SongRequest[], isHistory: boole
     return null;
   }
 
+  const userLogin = currentUser?.login?.toLowerCase();
+
   return (
     <AnimatePresence>
-      {sortedSongs.map((song, index) => (
-        <motion.div
-          key={song.id}
-          layout // Animate layout changes (reordering)
-          initial={{ opacity: 0, y: 15 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, x: -20 }}
-          transition={{ duration: 0.3, delay: index * 0.05 }} // Faster stagger
-        >
-          <div className="flex items-center space-x-3 p-3 rounded-md bg-brand-purple-dark/30 hover:bg-brand-purple-dark/50 transition-colors duration-200 mb-2 border border-brand-purple-neon/10 hover:border-brand-purple-neon/30">
-            <div className={`flex-shrink-0 font-semibold w-6 text-center ${isHistory ? 'text-brand-purple-light/50' : 'text-brand-purple-light/70'}`}>
-              {index + 1}
-            </div>
-            <div className="relative w-16 h-9 rounded-md overflow-hidden flex-shrink-0 border border-brand-purple-neon/10">
-              {song.thumbnailUrl ? (
-                <img 
-                  src={song.thumbnailUrl}
-                  alt={song.title || 'Song thumbnail'}
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <Avatar className="w-full h-full rounded-md bg-brand-purple-dark/50">
-                  <AvatarFallback className="rounded-md bg-transparent flex items-center justify-center">
-                    <Music size={24} className={`text-brand-purple-light/${isHistory ? '50' : '70'}`}/>
-                  </AvatarFallback>
-                </Avatar>
+      {sortedSongs.map((song, index) => {
+        const isOwnRequest = !!userLogin && 
+                             (song.requesterLogin?.toLowerCase() === userLogin || 
+                              song.requester?.toLowerCase() === userLogin);
+                             
+        return (
+          <motion.div
+            key={song.id}
+            layout // Animate layout changes (reordering)
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            transition={{ duration: 0.3, delay: index * 0.05 }} // Faster stagger
+            className={cn(
+              "mb-2 rounded-md", // Keep margin/rounding on outer div
+              // Removed shadow from here
+            )}
+          >
+            <div 
+              className={cn(
+                "flex items-center space-x-3 p-3 rounded-md bg-brand-purple-dark/30 hover:bg-brand-purple-dark/50 transition-colors duration-200 border border-brand-purple-neon/10 hover:border-brand-purple-neon/30",
+                isOwnRequest && "shadow-glow-pink-sm" // Added shadow back here
               )}
-            </div>
-            <div className="flex-grow min-w-0">
-              <p className={`font-medium truncate flex items-center gap-1 ${isHistory ? 'text-gray-400' : 'text-white'}`}>
-                {song.title || (song.youtubeUrl ? 'Untitled YouTube Video' : 'Untitled Song')}
-              </p>
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1">
-                {song.youtubeUrl && song.channelId ? (
-                  <Link href={`https://www.youtube.com/channel/${song.channelId}`} target="_blank" rel="noopener noreferrer" className={`hover:text-brand-pink-light transition-colors group ${isHistory ? 'text-brand-purple-light/60' : 'text-brand-purple-light/80'}`}>
-                    <Badge variant="outline" className={`text-xs font-normal cursor-pointer border-brand-purple-neon/20 group-hover:border-brand-pink-neon/40 group-hover:text-brand-pink-light transition-colors ${isHistory ? 'text-brand-purple-light/60' : 'text-brand-purple-light/80'}`}>
+            >
+              <div className={cn(`flex-shrink-0 font-semibold w-6 text-center`, isHistory ? 'text-brand-purple-light/50' : 'text-brand-purple-light/70')}
+              >
+                {index + 1}
+              </div>
+              <div className="relative w-16 h-9 rounded-md overflow-hidden flex-shrink-0 border border-brand-purple-neon/10">
+                {song.thumbnailUrl ? (
+                  <img 
+                    src={song.thumbnailUrl}
+                    alt={song.title || 'Song thumbnail'}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <Avatar className="w-full h-full rounded-md bg-brand-purple-dark/50">
+                    <AvatarFallback className="rounded-md bg-transparent flex items-center justify-center">
+                      <Music size={24} className={`text-brand-purple-light/${isHistory ? '50' : '70'}`}/>
+                    </AvatarFallback>
+                  </Avatar>
+                )}
+              </div>
+              <div className="flex-grow min-w-0">
+                <p className={`font-medium truncate flex items-center gap-1 ${isHistory ? 'text-gray-400' : 'text-white'}`}>
+                  {song.title || (song.youtubeUrl ? 'Untitled YouTube Video' : 'Untitled Song')}
+                </p>
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1">
+                  {song.youtubeUrl && song.channelId ? (
+                    <Link href={`https://www.youtube.com/channel/${song.channelId}`} target="_blank" rel="noopener noreferrer" className={`hover:text-brand-pink-light transition-colors group ${isHistory ? 'text-brand-purple-light/60' : 'text-brand-purple-light/80'}`}>
+                      <Badge variant="outline" className={`text-xs font-normal cursor-pointer border-brand-purple-neon/20 group-hover:border-brand-pink-neon/40 group-hover:text-brand-pink-light transition-colors ${isHistory ? 'text-brand-purple-light/60' : 'text-brand-purple-light/80'}`}>
+                        {song.artist || 'Unknown Artist'}
+                      </Badge>
+                    </Link>
+                  ) : (
+                    <Badge variant="outline" className={`text-xs font-normal border-brand-purple-neon/20 ${isHistory ? 'text-brand-purple-light/60' : 'text-brand-purple-light/80'}`}>
                       {song.artist || 'Unknown Artist'}
                     </Badge>
-                  </Link>
-                ) : (
-                  <Badge variant="outline" className={`text-xs font-normal border-brand-purple-neon/20 ${isHistory ? 'text-brand-purple-light/60' : 'text-brand-purple-light/80'}`}>
-                    {song.artist || 'Unknown Artist'}
-                  </Badge>
-                )}
-                <span className={`text-xs flex items-center ${isHistory ? 'text-brand-purple-light/50' : 'text-brand-purple-light/70'}`}>
-                  <Clock className="inline-block mr-1" size={12} />
-                  {formatDurationFromSeconds(song.durationSeconds ?? 0)}
-                </span>
-                <div className={`text-xs flex items-center gap-1 ${isHistory ? 'text-brand-purple-light/50' : 'text-brand-purple-light/70'}`}>
-                  by:
-                  <Avatar className="w-3 h-3 rounded-full inline-block border border-brand-purple-light/20">
-                    <AvatarImage src={song.requesterAvatar ?? undefined} alt={song.requester} />
-                    <AvatarFallback className="text-[8px] bg-brand-purple-dark">{song.requester.slice(0,1)}</AvatarFallback>
-                  </Avatar>
-                  <Link href={`https://www.twitch.tv/${song.requesterLogin || song.requester.toLowerCase()}`} target="_blank" rel="noopener noreferrer" className="hover:text-brand-pink-light hover:underline transition-colors">
-                    {song.requester}
-                  </Link>
-                  
-                  {song.requestType === 'donation' && (
-                     <Badge variant="secondary" className="px-1.5 py-0.5 text-xs bg-brand-purple-neon/80 text-brand-black font-semibold border-brand-purple-neon shadow-sm">
-                      Dono
-                    </Badge>
                   )}
-                  {song.requestType === 'channelPoint' && (
-                    <Badge variant="outline" className="px-1.5 py-0.5 text-xs bg-brand-pink-neon/80 text-brand-black font-semibold border-brand-pink-neon shadow-sm">
-                      Points
-                    </Badge>
-                  )}
+                  <span className={cn(`text-xs flex items-center`, isHistory ? 'text-brand-purple-light/50' : 'text-brand-purple-light/70')}
+                  >
+                    <Clock className="inline-block mr-1" size={12} />
+                    {formatDurationFromSeconds(song.durationSeconds ?? 0)}
+                  </span>
+                  <div className={cn(`text-xs flex items-center gap-1`, isHistory ? 'text-brand-purple-light/50' : 'text-brand-purple-light/70')}
+                  >
+                    by:
+                    <Avatar className="w-3 h-3 rounded-full inline-block border border-brand-purple-light/20">
+                      <AvatarImage src={song.requesterAvatar ?? undefined} alt={song.requester} />
+                      <AvatarFallback className="text-[8px] bg-brand-purple-dark">{song.requester.slice(0,1)}</AvatarFallback>
+                    </Avatar>
+                    <Link href={`https://www.twitch.tv/${song.requesterLogin || song.requester.toLowerCase()}`} target="_blank" rel="noopener noreferrer" className="hover:text-brand-pink-light hover:underline transition-colors">
+                      {song.requester}
+                    </Link>
+                    
+                    {song.requestType === 'donation' && (
+                       <Badge variant="secondary" className="px-1.5 py-0.5 text-xs bg-brand-purple-neon/80 text-brand-black font-semibold border-brand-purple-neon shadow-sm">
+                        Dono
+                      </Badge>
+                    )}
+                    {song.requestType === 'channelPoint' && (
+                      <Badge variant="outline" className="px-1.5 py-0.5 text-xs bg-brand-pink-neon/80 text-brand-black font-semibold border-brand-pink-neon shadow-sm">
+                        Points
+                      </Badge>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
-            <div className="flex flex-col items-end space-y-1 flex-shrink-0">
-              <div className="flex space-x-1">
-                {song.youtubeUrl && (
-                  <a href={song.youtubeUrl} target="_blank" rel="noopener noreferrer" aria-label="Watch on YouTube">
-                     <Button variant="ghost" className="p-1 text-red-500 hover:text-red-400 hover:bg-red-500/10 rounded-full transition-all">
-                       <Youtube className="h-5 w-5" />
-                    </Button>
-                  </a>
-                )}
+              <div className="flex flex-col items-end space-y-1 flex-shrink-0">
+                <div className="flex space-x-1">
+                  {song.youtubeUrl && (
+                    <a href={song.youtubeUrl} target="_blank" rel="noopener noreferrer" aria-label="Watch on YouTube">
+                       <Button variant="ghost" className="p-1 text-red-500 hover:text-red-400 hover:bg-red-500/10 rounded-full transition-all">
+                         <Youtube className="h-5 w-5" />
+                      </Button>
+                    </a>
+                  )}
+                  
+                  {song.spotifyData && song.spotifyData.externalUrl && (
+                    <a href={String(song.spotifyData.externalUrl)} target="_blank" rel="noopener noreferrer" aria-label="Listen on Spotify">
+                      <Button variant="ghost" className="p-1 text-green-500 hover:text-green-400 hover:bg-green-500/10 rounded-full transition-all">
+                         <SpotifyIcon className="h-5 w-5" />
+                      </Button>
+                    </a>
+                  )}
+                </div>
                 
-                {song.spotifyData && song.spotifyData.externalUrl && (
-                  <a href={String(song.spotifyData.externalUrl)} target="_blank" rel="noopener noreferrer" aria-label="Listen on Spotify">
-                    <Button variant="ghost" className="p-1 text-green-500 hover:text-green-400 hover:bg-green-500/10 rounded-full transition-all">
-                       <SpotifyIcon className="h-5 w-5" />
-                    </Button>
-                  </a>
-                )}
+                <span className="text-xs text-brand-purple-light/50 whitespace-nowrap">
+                   {isHistory ? 'Completed:' : 'Added:'} {formatTimestamp(song.timestamp)}
+                </span>
               </div>
-              
-              <span className="text-xs text-brand-purple-light/50 whitespace-nowrap">
-                 {isHistory ? 'Completed:' : 'Added:'} {formatTimestamp(song.timestamp)}
-              </span>
             </div>
-          </div>
-        </motion.div>
-      ))}
+          </motion.div>
+        )
+      })}
     </AnimatePresence>
   )
 }
