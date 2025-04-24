@@ -81,7 +81,8 @@ const state = {
 
 const io = new Server(httpServer, {
     cors: {
-        origin: allowedOrigins, // Use the dynamic list of origins
+        // Allow connections from the frontend domain AND the internal proxy
+        origin: "*", // Allow any origin - simpler for proxy scenarios
         methods: ["GET", "POST"],
         credentials: true
     }
