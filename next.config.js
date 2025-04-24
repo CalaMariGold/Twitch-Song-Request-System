@@ -13,6 +13,14 @@ const nextConfig = {
         }
         return config
     },
+    async rewrites() {
+        return [
+            {
+                source: '/socket.io/:path*',
+                destination: 'http://localhost:3002/socket.io/:path*'
+            }
+        ]
+    },
 }
 
 module.exports = nextConfig 
