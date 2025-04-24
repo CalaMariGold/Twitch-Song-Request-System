@@ -128,8 +128,12 @@ export default function AdminDashboard() {
   useEffect(() => {
     const socketHost = process.env.NEXT_PUBLIC_SOCKET_URL || '';
     const socketInstance: Socket<SocketEvents> = io(socketHost, {
-      transports: ['websocket', 'polling'],
-      path: '/socket.io/'
+      transports: ['polling', 'websocket'],
+      path: '/socket.io/',
+      timeout: 20000,
+      forceNew: true,
+      autoConnect: true,
+      upgrade: true
     });
     
     socketInstance.on('connect', () => {

@@ -13,6 +13,11 @@ const nextConfig = {
         }
         return config
     },
+    // Increase serverComponentsExternalPackages
+    experimental: {
+        proxyTimeout: 120000, // 2 minutes timeout
+        serverComponentsExternalPackages: ['socket.io', 'socket.io-client'],
+    },
     async rewrites() {
         return [
             {
@@ -22,8 +27,10 @@ const nextConfig = {
             }
         ]
     },
-    experimental: {
-        proxyTimeout: 120000 // 2 minutes timeout
+    // Disable buffer optimization (can interfere with WebSockets)
+    output: {
+        webassemblyModuleFilename: 'static/wasm/[modulehash].wasm',
+        buffer: false
     }
 }
 

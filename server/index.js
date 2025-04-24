@@ -91,7 +91,16 @@ const io = new Server(httpServer, {
     path: '/socket.io/',
     transports: ['websocket', 'polling'],
     pingTimeout: 60000,
-    pingInterval: 25000
+    pingInterval: 25000,
+    // Allow upgrades
+    allowUpgrades: true,
+    // Handle websocket errors more gracefully
+    upgradeTimeout: 10000,
+    // Add adapter to improve socket reliability
+    adapter: {
+        pubClient: null,
+        subClient: null
+    }
 })
 
 // Socket.IO connection handling

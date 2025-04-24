@@ -530,10 +530,14 @@ export default function SongRequestQueue() {
     console.log(`Attempting to connect WebSocket to: ${socketHost || 'current domain'}`);
 
     const newSocket = io(socketHost, {
-      transports: ['websocket', 'polling'],
+      transports: ['polling', 'websocket'], // Try polling first, then upgrade to websocket
       reconnectionAttempts: constants.SOCKET_RECONNECT_ATTEMPTS,
       reconnectionDelay: constants.SOCKET_RECONNECT_DELAY,
-      path: '/socket.io/'
+      path: '/socket.io/',
+      timeout: 20000, // Increase timeout
+      forceNew: true,
+      autoConnect: true,
+      upgrade: true
     })
 
     newSocket.on(socketEvents.CONNECT, () => {

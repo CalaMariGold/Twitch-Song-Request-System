@@ -32,8 +32,12 @@ export default function PublicDashboard() {
   useEffect(() => {
     const socketHost = process.env.NEXT_PUBLIC_SOCKET_URL || '';
     const socketInstance = io(socketHost, {
-      transports: ['websocket', 'polling'],
-      path: '/socket.io/'
+      transports: ['polling', 'websocket'], // Try polling first, then upgrade to websocket
+      path: '/socket.io/',
+      timeout: 20000, // Increase timeout
+      forceNew: true,
+      autoConnect: true,
+      upgrade: true
     })
     
     socketInstance.on('connect', () => {
