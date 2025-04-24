@@ -2,12 +2,91 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --foreground-rgb: 255, 255, 255;
-  --background-rgb: 0, 0, 0;
+@layer base {
+  :root {
+    --background: 270 30% 5%; /* Dark Purple/Black */
+    --foreground: 270 10% 95%; /* Light Lavender/White */
+
+    --card: 270 20% 10%; /* Slightly lighter dark purple */
+    --card-foreground: 270 10% 95%;
+
+    --popover: 270 20% 8%;
+    --popover-foreground: 270 10% 95%;
+
+    --primary: 330 80% 60%; /* Neon Pink */
+    --primary-foreground: 330 80% 10%;
+
+    --secondary: 280 60% 65%; /* Neon Purple */
+    --secondary-foreground: 280 60% 10%;
+
+    --muted: 270 15% 25%; /* Muted Purple/Gray */
+    --muted-foreground: 270 10% 70%;
+
+    --accent: 270 15% 35%; /* Accent Purple/Gray */
+    --accent-foreground: 270 10% 98%;
+
+    --destructive: 0 70% 55%; /* Keep red for destructive actions */
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 270 15% 20%; /* Dark Purple border */
+    --input: 270 15% 15%; /* Dark Purple input */
+    --ring: 330 80% 65%; /* Neon Pink for focus rings */
+
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    /* Keep the same variables for dark mode as it's the default */
+    --background: 270 30% 5%; 
+    --foreground: 270 10% 95%;
+
+    --card: 270 20% 10%;
+    --card-foreground: 270 10% 95%;
+
+    --popover: 270 20% 8%;
+    --popover-foreground: 270 10% 95%;
+
+    --primary: 330 80% 60%;
+    --primary-foreground: 330 80% 10%;
+
+    --secondary: 280 60% 65%;
+    --secondary-foreground: 280 60% 10%;
+
+    --muted: 270 15% 25%;
+    --muted-foreground: 270 10% 70%;
+
+    --accent: 270 15% 35%;
+    --accent-foreground: 270 10% 98%;
+
+    --destructive: 0 70% 55%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 270 15% 20%;
+    --input: 270 15% 15%;
+    --ring: 330 80% 65%;
+  }
 }
 
-body {
-  color: rgb(var(--foreground-rgb));
-  background: rgb(var(--background-rgb));
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground font-sans;
+    /* Apply a base gradient background */
+    @apply bg-gradient-to-br from-brand-black via-brand-purple-deep to-brand-black;
+  }
+  h1, h2, h3 {
+    @apply font-display; /* Apply Berkshire Swash to headings */
+  }
+}
+
+/* Add custom glow utility classes */
+@layer utilities {
+  .text-glow-pink {
+    text-shadow: 0 0 8px theme('colors.brand.pink.glow / 70%');
+  }
+  .text-glow-purple {
+    text-shadow: 0 0 8px theme('colors.brand.purple.glow / 70%');
+  }
 } 

@@ -1,7 +1,23 @@
-import { Inter } from "next/font/google"
-import "./globals.css"
+import type { Metadata } from "next";
+import { Inter } from "next/font/google";
+import { Berkshire_Swash } from "next/font/google";
+import "./globals.css";
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 
-const inter = Inter({ subsets: ["latin"] })
+// Configure Inter font (fallback/body font)
+const inter = Inter({
+  subsets: ["latin"],
+  variable: '--font-inter', // CSS variable for fallback
+  display: 'swap',
+});
+
+// Configure Berkshire Swash font (heading/display font)
+const berkshireSwash = Berkshire_Swash({
+  subsets: ["latin"],
+  weight: "400", // Berkshire Swash only has regular weight
+  variable: '--font-berkshire-swash', // CSS variable
+  display: 'swap',
+});
 
 export interface Song {
   id: string
@@ -13,20 +29,30 @@ export interface Song {
   videoUrl?: string
 }
 
-export const metadata = {
-  title: 'Song Request System',
-  description: 'A Twitch-integrated song request system for drum streams',
-}
+export const metadata: Metadata = {
+  title: "CalaMariGold Song Requests", // Updated Title
+  description: "Live song request queue for CalaMariGold's Twitch stream",
+  // Add icons based on the image in the public folder
+  icons: {
+    icon: "/calamarigold promo.png", // Standard favicon
+    apple: "/calamarigold promo.png", // Apple touch icon
+  },
+};
 
 export default function RootLayout({
   children,
-}: {
-  children: React.ReactNode
-}) {
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
   return (
     <html lang="en">
-      <body className={inter.className}>{children}</body>
+      {/* Combine font variables */}
+      <body className={`${inter.variable} ${berkshireSwash.variable} font-sans`}> 
+        <ErrorBoundary>
+          {children}
+        </ErrorBoundary>
+      </body>
     </html>
-  )
+  );
 }
 

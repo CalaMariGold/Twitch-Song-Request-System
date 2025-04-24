@@ -17,6 +17,7 @@ import { ConnectionStatus } from "@/components/ConnectionStatus"
 import { useEffect, useState } from "react"
 import { useSearchParams, usePathname } from 'next/navigation'
 import Link from 'next/link'
+import Image from 'next/image'
 
 interface HeaderProps {
   isConnected: boolean
@@ -94,11 +95,20 @@ export function Header({ isConnected }: HeaderProps) {
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
-      <div className="flex items-center justify-between py-4 px-6 bg-gray-800/50 backdrop-blur-sm rounded-lg mb-6">
-        <div className="flex items-center gap-4">
-          <Link href="/" className="flex items-center gap-2 hover:text-purple-400 transition-colors">
-            <Music2 className="h-6 w-6" />
-            <h1 className="text-2xl font-bold">Song Request Queue</h1>
+      <div className="flex items-center justify-between py-3 px-4 bg-gradient-to-r from-brand-purple-dark/70 to-brand-purple-deep/70 backdrop-blur-sm rounded-lg mb-6 border border-brand-purple-neon/20 shadow-md">
+        <div className="flex items-center gap-3">
+          <Link href="/" className="flex items-center gap-2 text-brand-pink-light hover:text-white hover:text-glow-pink transition-all duration-200 group">
+            <Music2 className="h-6 w-6 group-hover:text-brand-pink-neon transition-colors" />
+            <h1 className="text-2xl font-bold">CalaMariGold Requests</h1>
+            <div className="relative w-5 h-5 -ml-1 group-hover:animate-pulse">
+              <Image 
+                src="/shiny.png" 
+                alt="Shiny emoji" 
+                fill
+                sizes="20px"
+                className="object-contain transform -rotate-12 group-hover:rotate-0 transition-transform duration-300"
+              />
+            </div>
           </Link>
           <ConnectionStatus isConnected={isConnected} />
         </div>
@@ -173,10 +183,13 @@ export function Header({ isConnected }: HeaderProps) {
               variant="outline" 
               size="sm"
               onClick={() => window.location.href = getTwitchAuthUrl()}
-              className="flex items-center gap-2 bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 border-purple-500/20"
+              className="flex items-center gap-2 bg-brand-pink-neon/10 hover:bg-brand-pink-neon/20 text-brand-pink-light border-brand-pink-neon/50 hover:border-brand-pink-neon/80 hover:shadow-glow-pink-sm transition-all duration-200 relative group"
             >
               <LogIn size={16} />
               Login with Twitch
+              <div className="absolute -top-1 -right-1 w-3 h-3 opacity-70 group-hover:opacity-100 group-hover:scale-110 transition-all duration-200">
+                  <Image src="/shiny.png" alt="" fill sizes="12px" className="object-contain"/>
+              </div>
             </Button>
           )}
         </div>

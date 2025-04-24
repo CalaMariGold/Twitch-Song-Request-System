@@ -98,13 +98,49 @@ export default function PublicDashboard() {
   // Calculate total queue duration
   const { totalSeconds: totalQueueSeconds, formatted: totalQueueDurationFormatted } = calculateTotalQueueDuration(queueState.queue)
 
+  const twitchChannel = "calamarigold"
+  
+  // --- Logic to extract hostname for Twitch parent parameter ---
+  let parentHostname = "localhost"; // Default for local development
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+  if (appUrl) {
+    try {
+      const urlObject = new URL(appUrl);
+      parentHostname = urlObject.hostname; // Extract just the hostname (e.g., "mydomain.com")
+    } catch (error) {
+      console.warn(`Invalid NEXT_PUBLIC_APP_URL ("${appUrl}"). Defaulting Twitch parent to "localhost". Error: ${error}`);
+      // Keep the default "localhost"
+    }
+  }
+  // IMPORTANT: For deployment, ensure NEXT_PUBLIC_APP_URL is set correctly in your environment variables.
+  // If deploying to multiple domains/subdomains, you might need multiple parent parameters.
+  // Example: &parent=yourdomain.com&parent=www.yourdomain.com
+  // Currently, this code only supports a single parent derived from NEXT_PUBLIC_APP_URL.
+  // --- End of hostname extraction logic ---
+  
+  const twitchEmbedSrc = `https://player.twitch.tv/?channel=${twitchChannel}&parent=${parentHostname}&autoplay=false&muted=true`;
+
   return (
-    <main className="min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 flex flex-col items-center p-8">
+    <main className="min-h-screen flex flex-col items-center p-8 pt-4"> {/* Reduced top padding slightly */}
       <AnimatedBackground />
       <div className="w-full max-w-6xl mx-auto relative z-10">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
           {/* Main Content Area (3/4 width) */}
           <div className="md:col-span-3 space-y-6">
+
+            {/* Twitch Embed */}
+            <div className="w-full aspect-video bg-black rounded-lg overflow-hidden shadow-lg border border-brand-purple-neon/20 shadow-glow-purple-sm mb-6"> 
+              <iframe
+                src={twitchEmbedSrc}
+                height="100%"
+                width="100%"
+                allowFullScreen={true}
+                title={`Twitch Player for ${twitchChannel}`}
+                className="border-0"
+              >
+              </iframe>
+            </div>
+
             {/* Song Request Queue */}
             <SongRequestQueue />
             
@@ -115,38 +151,41 @@ export default function PublicDashboard() {
               includeRequesters={true}
               title="All-Time Statistics"
               description="Overall system usage stats."
-              className="bg-gray-800/80 border-gray-700 backdrop-blur-sm"
+              // Use brand colors, add blur and subtle glow
+              className="bg-brand-purple-deep/70 border-brand-purple-neon/30 backdrop-blur-md shadow-glow-purple-sm"
               heightClass="h-[220px]"
             />
           </div>
 
           {/* Side Panel: Queue Statistics (1/4 width) */}
           <div className="md:col-span-1">
-            <Card className="bg-gray-800/80 border-gray-700 backdrop-blur-sm">
+            {/* Use brand colors, add blur and subtle glow */}
+            <Card className="bg-brand-purple-deep/70 border-brand-purple-neon/30 backdrop-blur-md shadow-glow-purple-sm">
               <CardHeader>
-                <CardTitle className="text-white flex items-center gap-2">
+                <CardTitle className="text-brand-pink-light flex items-center gap-2 text-glow-pink">
                   <BarChart2 size={18} />
                   Queue Statistics
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 {queueState.isLoading ? (
-                  <div className="text-center py-4 text-gray-400">Loading stats...</div>
+                  <div className="text-center py-4 text-brand-purple-light/80">Loading stats...</div>
                 ) : (
                   <div className="grid grid-cols-1 gap-4">
-                    <div className="bg-gray-700/70 p-4 rounded-lg text-center">
-                      <p className="text-xs text-gray-400">In Queue</p>
+                    {/* Update stat item backgrounds */}
+                    <div className="bg-brand-purple-dark/50 p-4 rounded-lg text-center border border-brand-purple-neon/20">
+                      <p className="text-xs text-brand-purple-light/80">In Queue</p>
                       <p className="text-2xl font-bold text-white">{queueState.queue.length}</p>
                     </div>
-                    <div className="bg-gray-700/70 p-4 rounded-lg text-center">
-                      <p className="text-xs text-gray-400">Total Duration</p>
+                    <div className="bg-brand-purple-dark/50 p-4 rounded-lg text-center border border-brand-purple-neon/20">
+                      <p className="text-xs text-brand-purple-light/80">Total Duration</p>
                       <p className="text-2xl font-bold text-white flex items-center justify-center">
                         <Clock className="inline-block mr-2" size={20} />
                         {totalQueueDurationFormatted}
                       </p>
                     </div>
-                    <div className="bg-gray-700/70 p-4 rounded-lg text-center">
-                      <p className="text-xs text-gray-400">Songs Played</p>
+                    <div className="bg-brand-purple-dark/50 p-4 rounded-lg text-center border border-brand-purple-neon/20">
+                      <p className="text-xs text-brand-purple-light/80">Songs Played</p>
                       <p className="text-2xl font-bold text-white">{queueState.history.length}</p>
                     </div>
                   </div>

@@ -28,6 +28,7 @@ import {
 import { getTwitchAuthUrl } from "@/lib/auth"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { DragDropContext, Draggable, Droppable, DropResult } from '@hello-pangea/dnd'
+import Image from 'next/image'
 
 /*
  * Main queue component that displays current queue, history, and active song
@@ -151,7 +152,6 @@ export default function SongRequestQueue() {
           console.error('Error requesting song:', error);
           return;
         }
-        
         // Remove from plan after successful request
         onRemove(song.id);
       });
@@ -164,13 +164,13 @@ export default function SongRequestQueue() {
     if (!currentUser) {
       return (
         <div className="flex flex-col items-center justify-center h-full gap-3">
-          <ListPlus size={24} className="text-gray-400" />
-          <p className="text-gray-400">Please login with Twitch to use your Request Plan</p>
+          <ListPlus size={24} className="text-brand-purple-light/70" />
+          <p className="text-brand-purple-light/70">Please login with Twitch to use your Request Plan</p>
           <Button 
             variant="outline" 
             size="sm"
             onClick={() => window.location.href = getTwitchAuthUrl()}
-            className="flex items-center gap-2 bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 border-purple-500/20"
+            className="flex items-center gap-2 bg-brand-purple-neon/10 hover:bg-brand-purple-neon/20 text-brand-purple-light border-brand-purple-neon/40 hover:shadow-glow-purple-sm transition-shadow"
           >
             Login with Twitch
           </Button>
@@ -185,7 +185,7 @@ export default function SongRequestQueue() {
             <DialogTrigger asChild>
               <Button 
                 variant="outline" 
-                className="flex gap-2 bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 border-purple-500/20"
+                className="flex gap-2 bg-brand-pink-neon/10 hover:bg-brand-pink-neon/20 text-brand-pink-light border-brand-pink-neon/40 hover:shadow-glow-pink-sm transition-shadow"
                 onClick={() => {
                   setAddUrlError(null);
                   setYoutubeUrl('');
@@ -195,10 +195,10 @@ export default function SongRequestQueue() {
                 Add to Plan
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-md bg-gray-800 border-gray-700 text-white" onPointerDownOutside={(e) => e.preventDefault()}>
+            <DialogContent className="sm:max-w-md bg-brand-purple-deep border-brand-purple-neon/30 text-white shadow-glow-purple" onPointerDownOutside={(e) => e.preventDefault()}>
               <DialogHeader>
-                <DialogTitle>Add to Request Plan</DialogTitle>
-                <DialogDescription className="text-gray-400">
+                <DialogTitle className="text-brand-pink-light">Add to Request Plan</DialogTitle>
+                <DialogDescription className="text-brand-purple-light/80">
                   Paste a YouTube URL to add it to your request plan.
                 </DialogDescription>
               </DialogHeader>
@@ -206,25 +206,20 @@ export default function SongRequestQueue() {
                 <div className="grid flex-1 gap-2">
                   <div className="flex">
                     <Input
-                      className="bg-gray-700 border-gray-600 text-white flex-1 rounded-r-none"
+                      className="bg-brand-purple-dark/50 border-brand-purple-neon/20 text-white flex-1 rounded-r-none focus:ring-brand-pink-neon focus:border-brand-pink-neon"
                       placeholder="YouTube URL (e.g. https://www.youtube.com/watch?v=...)"
                       value={youtubeUrl}
                       onChange={(e) => setYoutubeUrl(e.target.value)}
                       onPaste={(e) => {
-                        // Prevent default action and handle paste manually
                         e.preventDefault();
                         const pastedText = e.clipboardData.getData('text');
                         setYoutubeUrl(pastedText);
                       }}
                       onKeyDown={(e) => {
-                        // Handle keyboard shortcuts
                         if (e.key === 'Enter') {
                           handleAddToRequestPlan();
                         }
-                        // Handle Ctrl+V or Command+V
                         if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
-                          // The onPaste handler will take care of this
-                          // This is just to prevent the dialog from closing
                           e.stopPropagation();
                         }
                       }}
@@ -240,7 +235,7 @@ export default function SongRequestQueue() {
               <DialogFooter>
                 <Button
                   type="submit"
-                  className="bg-purple-600 hover:bg-purple-700"
+                  className="bg-brand-pink-neon hover:bg-brand-pink-dark text-brand-black font-semibold hover:shadow-glow-pink transition-all"
                   onClick={handleAddToRequestPlan}
                   disabled={isAddingToRequestPlan || !youtubeUrl}
                 >
@@ -251,7 +246,7 @@ export default function SongRequestQueue() {
             </DialogContent>
           </Dialog>
           
-          <p className="text-sm text-gray-400 flex-1">
+          <p className="text-sm text-brand-purple-light/80 flex-1">
             {filteredPlan.length === 0 
               ? "Add songs to your plan for easy requesting later."
               : `${filteredPlan.length} song${filteredPlan.length !== 1 ? 's' : ''} in your plan.`}
@@ -259,9 +254,9 @@ export default function SongRequestQueue() {
         </div>
         
         {filteredPlan.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-[300px] border border-dashed border-gray-700 rounded-md">
-            <ListPlus size={24} className="text-gray-400 mb-2" />
-            <p className="text-gray-400">Your request plan is empty</p>
+          <div className="flex flex-col items-center justify-center h-[300px] border border-dashed border-brand-purple-dark rounded-md">
+            <ListPlus size={24} className="text-brand-purple-light/70 mb-2" />
+            <p className="text-brand-purple-light/70">Your request plan is empty</p>
             <p className="text-gray-500 text-sm mt-1">Add songs to request them later</p>
           </div>
         ) : (
@@ -279,20 +274,20 @@ export default function SongRequestQueue() {
                         <div
                           ref={provided.innerRef}
                           {...provided.draggableProps}
-                          className="flex items-center space-x-3 p-3 rounded-md bg-gray-800 hover:bg-gray-700 transition mb-2 border border-gray-700"
+                          className="flex items-center space-x-3 p-3 rounded-md bg-brand-purple-dark/30 hover:bg-brand-purple-dark/50 transition-colors duration-200 mb-2 border border-brand-purple-neon/10 hover:border-brand-purple-neon/30"
                         >
                           <div
                             {...provided.dragHandleProps}
-                            className="flex-shrink-0 cursor-move text-gray-500 hover:text-gray-300"
+                            className="flex-shrink-0 cursor-move text-brand-purple-light/50 hover:text-brand-purple-light/80 transition-colors"
                           >
                             <GripVertical size={20} />
                           </div>
                           
-                          <div className="flex-shrink-0 font-semibold text-gray-400 w-6 text-center">
+                          <div className="flex-shrink-0 font-semibold text-brand-purple-light/60 w-6 text-center">
                             {index + 1}
                           </div>
                           
-                          <div className="relative w-16 h-9 rounded-md overflow-hidden flex-shrink-0">
+                          <div className="relative w-16 h-9 rounded-md overflow-hidden flex-shrink-0 border border-brand-purple-neon/10">
                             {song.thumbnailUrl ? (
                               <img 
                                 src={song.thumbnailUrl} 
@@ -300,9 +295,9 @@ export default function SongRequestQueue() {
                                 className="w-full h-full object-cover"
                               />
                             ) : (
-                              <Avatar className="w-full h-full rounded-md bg-gray-700">
+                              <Avatar className="w-full h-full rounded-md bg-brand-purple-dark/50">
                                 <AvatarFallback className="rounded-md bg-transparent flex items-center justify-center">
-                                  <Music size={24} className="text-gray-400"/>
+                                  <Music size={24} className="text-brand-purple-light/70"/>
                                 </AvatarFallback>
                               </Avatar>
                             )}
@@ -314,18 +309,18 @@ export default function SongRequestQueue() {
                             </p>
                             <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1">
                               {song.channelId ? (
-                                <Link href={`https://www.youtube.com/channel/${song.channelId}`} target="_blank" rel="noopener noreferrer" className="hover:text-purple-300 transition-colors group">
-                                  <Badge variant="outline" className="text-xs font-normal cursor-pointer group-hover:border-purple-400 group-hover:text-purple-300 transition-colors">
+                                <Link href={`https://www.youtube.com/channel/${song.channelId}`} target="_blank" rel="noopener noreferrer" className="hover:text-brand-pink-light transition-colors group">
+                                  <Badge variant="outline" className="text-xs font-normal cursor-pointer border-brand-purple-neon/20 text-brand-purple-light/80 group-hover:border-brand-pink-neon/40 group-hover:text-brand-pink-light transition-colors">
                                     {song.artist || 'Unknown Artist'}
                                   </Badge>
                                 </Link>
                               ) : (
-                                <Badge variant="outline" className="text-xs font-normal">
+                                <Badge variant="outline" className="text-xs font-normal border-brand-purple-neon/20 text-brand-purple-light/80">
                                   {song.artist || 'Unknown Artist'}
                                 </Badge>
                               )}
                               {song.durationSeconds !== undefined && (
-                                <span className="text-xs text-gray-400 flex items-center">
+                                <span className="text-xs text-brand-purple-light/70 flex items-center">
                                   <Clock className="inline-block mr-1" size={12} />
                                   {formatDurationFromSeconds(song.durationSeconds ?? 0)}
                                 </span>
@@ -337,16 +332,16 @@ export default function SongRequestQueue() {
                             <div className="flex space-x-1">
                               {/* Youtube button */}
                               <a href={song.youtubeUrl} target="_blank" rel="noopener noreferrer" aria-label="Watch on YouTube">
-                                <Button variant="ghost" className="p-1">
-                                  <Youtube className="h-5 w-5 text-red-600" />
+                                <Button variant="ghost" className="p-1 text-red-500 hover:text-red-400">
+                                  <Youtube className="h-5 w-5" />
                                 </Button>
                               </a>
                               
                               {/* Spotify Link Button - Only show if Spotify data exists */}
                               {song.spotifyData && song.spotifyData.externalUrl && (
                                 <a href={String(song.spotifyData.externalUrl)} target="_blank" rel="noopener noreferrer" aria-label="Listen on Spotify">
-                                  <Button variant="ghost" className="p-1">
-                                    <SpotifyIcon className="h-5 w-5 text-green-500" />
+                                  <Button variant="ghost" className="p-1 text-green-500 hover:text-green-400">
+                                    <SpotifyIcon className="h-5 w-5" />
                                   </Button>
                                 </a>
                               )}
@@ -355,7 +350,7 @@ export default function SongRequestQueue() {
                               <Button 
                                 variant="ghost" 
                                 size="sm" 
-                                className="p-1 text-red-500 hover:text-red-400 hover:bg-red-900/20"
+                                className="p-1 text-brand-pink-neon/70 hover:text-brand-pink-neon hover:bg-brand-pink-neon/10 rounded-full transition-all"
                                 onClick={() => onRemove(song.id)}
                                 title="Remove from plan"
                               >
@@ -364,7 +359,7 @@ export default function SongRequestQueue() {
                             </div>
                             
                             {/* Timestamp below buttons */}
-                            <span className="text-xs text-gray-500 whitespace-nowrap">
+                            <span className="text-xs text-brand-purple-light/50 whitespace-nowrap">
                               Added: {formatTimestamp(song.addedAt)}
                             </span>
                           </div>
@@ -425,13 +420,13 @@ export default function SongRequestQueue() {
     if (!currentUser) {
       return (
         <div className="flex flex-col items-center justify-center h-full gap-3">
-          <User size={24} className="text-gray-400" />
-          <p className="text-gray-400">Please login with Twitch to see your requests</p>
+          <User size={24} className="text-brand-purple-light/70" />
+          <p className="text-brand-purple-light/70">Please login with Twitch to see your requests</p>
           <Button 
             variant="outline" 
             size="sm"
             onClick={() => window.location.href = getTwitchAuthUrl()}
-            className="flex items-center gap-2 bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 border-purple-500/20"
+            className="flex items-center gap-2 bg-brand-purple-neon/10 hover:bg-brand-purple-neon/20 text-brand-purple-light border-brand-purple-neon/40 hover:shadow-glow-purple-sm transition-shadow"
           >
             Login with Twitch
           </Button>
@@ -442,8 +437,8 @@ export default function SongRequestQueue() {
     if (hasNoRequests) {
       return (
         <div className="flex flex-col items-center justify-center h-full">
-          <User size={24} className="text-gray-400 mb-2" />
-          <p className="text-gray-400">You haven't made any song requests yet</p>
+          <User size={24} className="text-brand-purple-light/70 mb-2" />
+          <p className="text-brand-purple-light/70">You haven't made any song requests yet</p>
         </div>
       )
     }
@@ -452,25 +447,25 @@ export default function SongRequestQueue() {
       <div className="space-y-4">
         {myQueueSongs.length > 0 && (
           <div>
-            <div className="bg-purple-900/30 rounded-md px-3 py-2 mb-2 flex items-center">
-              <Music className="mr-2 text-purple-400" size={16} />
-              <h3 className="text-sm font-medium text-purple-300">In Queue ({myQueueSongs.length})</h3>
+            <div className="bg-brand-purple-neon/10 rounded-md px-3 py-2 mb-2 flex items-center border border-brand-purple-neon/30">
+              <Music className="mr-2 text-brand-purple-light" size={16} />
+              <h3 className="text-sm font-medium text-brand-purple-light">In Queue ({myQueueSongs.length})</h3>
             </div>
-            <SongList songs={myQueueSongs} />
+            <SongList songs={myQueueSongs} isHistory={false} />
           </div>
         )}
         
         {myQueueSongs.length > 0 && myHistorySongs.length > 0 && (
-          <div className="border-t border-gray-700 my-4"></div>
+          <div className="border-t border-brand-purple-dark my-4"></div>
         )}
         
         {myHistorySongs.length > 0 && (
           <div>
-            <div className="bg-gray-700/40 rounded-md px-3 py-2 mb-2 flex items-center">
-              <History className="mr-2 text-gray-400" size={16} />
-              <h3 className="text-sm font-medium text-gray-300">Previously Requested By Me ({myHistorySongs.length})</h3>
+            <div className="bg-brand-purple-dark/20 rounded-md px-3 py-2 mb-2 flex items-center border border-brand-purple-dark/50">
+              <History className="mr-2 text-brand-purple-light/70" size={16} />
+              <h3 className="text-sm font-medium text-brand-purple-light/80">Previously Requested ({myHistorySongs.length})</h3>
             </div>
-            <SongList songs={myHistorySongs} />
+            <SongList songs={myHistorySongs} isHistory={true} />
           </div>
         )}
       </div>
@@ -500,7 +495,12 @@ export default function SongRequestQueue() {
           }
         } catch (e) {
           console.error('Failed to parse user cookie:', e)
+          setCurrentUser(null); // Clear user if cookie is invalid
+          setRequestPlan([]); // Clear plan if user is logged out/invalid
         }
+      } else {
+          setCurrentUser(null); // Ensure user is null if no cookie
+          setRequestPlan([]); // Clear plan if no cookie
       }
     }
 
@@ -519,7 +519,11 @@ export default function SongRequestQueue() {
 
   // Socket connection management
   useEffect(() => {
-    const newSocket = io('http://localhost:3002', {
+    // Construct the socket URL dynamically based on the current window location
+    const socketHost = process.env.NEXT_PUBLIC_SOCKET_URL || `http://${window.location.hostname}:3002`;
+    console.log(`Attempting to connect WebSocket to: ${socketHost}`);
+
+    const newSocket = io(socketHost, {
       transports: ['websocket'],
       reconnectionAttempts: constants.SOCKET_RECONNECT_ATTEMPTS,
       reconnectionDelay: constants.SOCKET_RECONNECT_DELAY
@@ -528,31 +532,35 @@ export default function SongRequestQueue() {
     newSocket.on(socketEvents.CONNECT, () => {
       console.log('Connected to WebSocket server')
       setIsConnected(true)
+      // Request initial state only after connection is established
+      newSocket.emit('getState');
     })
 
     newSocket.on(socketEvents.DISCONNECT, (reason) => {
       console.log('Disconnected from WebSocket server:', reason)
       setIsConnected(false)
-      setState((prev: AppState) => ({ ...prev, error: new Error('Connection lost') }))
+      // Optionally reset state or show persistent disconnected message
+      // setState((prev: AppState) => ({ ...prev, isLoading: true, error: new Error('Connection lost') }))
     })
 
     newSocket.on(socketEvents.ERROR, (error) => {
       console.error('Socket error:', error)
-      setState((prev: AppState) => ({ ...prev, error: new Error('Connection error') }))
+      setState((prev: AppState) => ({ ...prev, error: new Error(`Socket connection error: ${error.message || 'Unknown error'}`) }))
     })
 
     // Handle initial state from server
-    newSocket.on('initialState', (serverState: AppState) => {
-      console.log('Received initial state:', serverState)
+    newSocket.on('initialState', (serverState: Partial<AppState>) => {
+      console.log('Received initial state:', serverState);
       setState((prev: AppState) => ({
         ...prev,
         queue: serverState.queue || [],
         history: serverState.history || [],
-        activeSong: serverState.activeSong,
+        activeSong: serverState.activeSong || null,
         settings: serverState.settings || {},
         blacklist: serverState.blacklist || [],
         blockedUsers: serverState.blockedUsers || [],
-        isLoading: false
+        isLoading: false,
+        error: null // Clear error on successful state received
       }))
     })
 
@@ -561,7 +569,7 @@ export default function SongRequestQueue() {
       console.log('Received new song request:', song)
       setState((prev: AppState) => ({
         ...prev,
-        queue: [...prev.queue, song].slice(0, constants.MAX_QUEUE_SIZE)
+        queue: [...prev.queue, song].slice(-constants.MAX_QUEUE_SIZE) // Add to end, ensure max size
       }))
     })
 
@@ -570,15 +578,14 @@ export default function SongRequestQueue() {
       setState((prev: AppState) => ({ ...prev, queue: updatedQueue }))
     })
 
-    // *** Add History Update Listener ***
     newSocket.on('historyUpdate', (updatedHistory: SongRequest[]) => {
+      console.log('History updated:', updatedHistory)
       setState((prev: AppState) => ({ ...prev, history: updatedHistory }));
     })
     
-    // Add listener for song finished event
     newSocket.on('songFinished', (finishedSong: SongRequest) => {
-      console.log('Song finished:', finishedSong); 
-      // The server will also send historyUpdate so we don't need to update history directly here
+      console.log('Song finished event received:', finishedSong); 
+      // State update relies on 'historyUpdate' and 'activeSong' events from server
     })
 
     newSocket.on(socketEvents.ACTIVE_SONG, (song: SongRequest | null) => {
@@ -591,10 +598,15 @@ export default function SongRequestQueue() {
 
     setSocket(newSocket)
 
+    // Request initial state on mount (will emit again on connect)
+    // newSocket.emit('getState'); // Moved to on(connect)
+
     return () => {
-      newSocket.disconnect()
+      console.log('Disconnecting socket...');
+      newSocket.disconnect();
     }
-  }, [])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []) // Empty dependency array ensures this runs only once on mount
 
   // Filter handlers
   const filteredQueue = useCallback(() => 
@@ -611,7 +623,7 @@ export default function SongRequestQueue() {
       song.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       song.artist?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       song.requester.toLowerCase().includes(searchTerm.toLowerCase())
-    ),
+    ).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()), // Sort by timestamp (numeric comparison)
     [state.history, searchTerm]
   )
   
@@ -619,15 +631,16 @@ export default function SongRequestQueue() {
   const myRequests = useCallback(() => {
     if (!currentUser?.login) return 0
     
+    const lowerCaseLogin = currentUser.login.toLowerCase();
     // Count queue and history requests for the current user
     const queueCount = state.queue.filter((song: SongRequest) => 
-      (song.requesterLogin?.toLowerCase() === currentUser.login?.toLowerCase()) ||
-      (song.requester.toLowerCase() === currentUser.login?.toLowerCase())
+      (song.requesterLogin?.toLowerCase() === lowerCaseLogin) ||
+      (song.requester.toLowerCase() === lowerCaseLogin)
     ).length
     
     const historyCount = state.history.filter((song: SongRequest) => 
-      (song.requesterLogin?.toLowerCase() === currentUser.login?.toLowerCase()) ||
-      (song.requester.toLowerCase() === currentUser.login?.toLowerCase())
+      (song.requesterLogin?.toLowerCase() === lowerCaseLogin) ||
+      (song.requester.toLowerCase() === lowerCaseLogin)
     ).length
     
     return queueCount + historyCount
@@ -640,7 +653,7 @@ export default function SongRequestQueue() {
 
   return (
     <ErrorBoundary>
-      <div className="w-full max-w-4xl mx-auto p-6 bg-gray-900 text-white rounded-lg shadow-xl">
+      <div className="w-full max-w-4xl mx-auto p-6 bg-brand-purple-deep/70 text-white rounded-lg shadow-xl border border-brand-purple-neon/20 backdrop-blur-md shadow-glow-purple">
         <Header isConnected={isConnected} />
         <ActiveSong song={state.activeSong} isLoading={state.isLoading} />
 
@@ -650,72 +663,86 @@ export default function SongRequestQueue() {
             placeholder="Search songs, artists, or requesters..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10 bg-gray-800 border-gray-700 text-white"
+            className="pl-10 bg-brand-purple-dark/50 border-brand-purple-neon/30 text-white focus:ring-brand-pink-neon focus:border-brand-pink-neon placeholder:text-brand-purple-light/50"
           />
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-brand-purple-light/60" size={20} />
         </div>
 
         <Tabs defaultValue="queue" className="w-full">
-          <TabsList className="grid w-full grid-cols-4 bg-gray-800">
-            <TabsTrigger value="queue" className="data-[state=active]:bg-gray-700">
-              <Music className="mr-2" size={18} />
+          {/* Update Tabs Style */}
+          <TabsList className="grid w-full grid-cols-4 bg-brand-purple-dark/50 border border-brand-purple-neon/10 p-1 h-auto rounded-lg">
+            <TabsTrigger value="queue" className="data-[state=active]:bg-brand-purple-dark data-[state=active]:text-brand-pink-light data-[state=active]:shadow-md data-[state=active]:shadow-brand-black/30 text-brand-purple-light/80 hover:bg-brand-purple-dark/70 hover:text-white transition-all rounded-md data-[state=active]:border data-[state=active]:border-brand-pink-neon/50 data-[state=active]:text-glow-pink relative group">
+              {/* Add shiny icon to active state */}
+              <div className="absolute -top-1 -right-1 w-3 h-3 opacity-0 group-data-[state=active]:opacity-100 transition-opacity duration-300">
+                <Image src="/shiny.png" alt="" fill sizes="12px" className="object-contain"/>
+              </div>
+              <Music className="mr-1.5" size={16} />
               Queue ({state.queue.length})
             </TabsTrigger>
-            <TabsTrigger value="history" className="data-[state=active]:bg-gray-700">
-              <History className="mr-2" size={18} />
+            <TabsTrigger value="history" className="data-[state=active]:bg-brand-purple-dark data-[state=active]:text-brand-pink-light data-[state=active]:shadow-md data-[state=active]:shadow-brand-black/30 text-brand-purple-light/80 hover:bg-brand-purple-dark/70 hover:text-white transition-all rounded-md data-[state=active]:border data-[state=active]:border-brand-pink-neon/50 data-[state=active]:text-glow-pink relative group">
+              {/* Add shiny icon to active state */}
+              <div className="absolute -top-1 -right-1 w-3 h-3 opacity-0 group-data-[state=active]:opacity-100 transition-opacity duration-300">
+                <Image src="/shiny.png" alt="" fill sizes="12px" className="object-contain"/>
+              </div>
+              <History className="mr-1.5" size={16} />
               History ({state.history.length})
             </TabsTrigger>
-            <TabsTrigger value="myrequests" className="data-[state=active]:bg-gray-700" disabled={!currentUser}>
-              <User className="mr-2" size={18} />
+            <TabsTrigger value="myrequests" className="data-[state=active]:bg-brand-purple-dark data-[state=active]:text-brand-pink-light data-[state=active]:shadow-md data-[state=active]:shadow-brand-black/30 text-brand-purple-light/80 hover:bg-brand-purple-dark/70 hover:text-white transition-all rounded-md data-[state=active]:border data-[state=active]:border-brand-pink-neon/50 data-[state=active]:text-glow-pink disabled:opacity-50 disabled:pointer-events-none relative group" disabled={!currentUser}>
+              {/* Add shiny icon to active state */}
+              <div className="absolute -top-1 -right-1 w-3 h-3 opacity-0 group-data-[state=active]:opacity-100 transition-opacity duration-300">
+                <Image src="/shiny.png" alt="" fill sizes="12px" className="object-contain"/>
+              </div>
+              <User className="mr-1.5" size={16} />
               My Requests {currentUser ? `(${myRequestsCount})` : ''}
             </TabsTrigger>
-            <TabsTrigger value="requestplan" className="data-[state=active]:bg-gray-700" disabled={!currentUser}>
-              <ListPlus className="mr-2" size={18} />
+            <TabsTrigger value="requestplan" className="data-[state=active]:bg-brand-purple-dark data-[state=active]:text-brand-pink-light data-[state=active]:shadow-md data-[state=active]:shadow-brand-black/30 text-brand-purple-light/80 hover:bg-brand-purple-dark/70 hover:text-white transition-all rounded-md data-[state=active]:border data-[state=active]:border-brand-pink-neon/50 data-[state=active]:text-glow-pink disabled:opacity-50 disabled:pointer-events-none relative group" disabled={!currentUser}>
+              {/* Add shiny icon to active state */}
+              <div className="absolute -top-1 -right-1 w-3 h-3 opacity-0 group-data-[state=active]:opacity-100 transition-opacity duration-300">
+                <Image src="/shiny.png" alt="" fill sizes="12px" className="object-contain"/>
+              </div>
+              <ListPlus className="mr-1.5" size={16} />
               Request Plan {currentUser ? `(${requestPlan.length})` : ''}
             </TabsTrigger>
           </TabsList>
           <TabsContent value="queue">
-            <ScrollArea className="h-[400px] w-full rounded-md border border-gray-700 p-4 bg-gray-800">
+            <ScrollArea className="h-[400px] w-full rounded-md border border-brand-purple-dark/80 p-4 bg-brand-purple-dark/30 mt-2">
               {state.isLoading ? (
                 <LoadingState />
+              ) : state.queue.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full text-brand-purple-light/70">
+                  <Music size={24} className="mb-2" />
+                  The queue is empty!
+                </div>
               ) : (
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <div className="text-sm text-gray-400">
+                    <div className="text-sm text-brand-purple-light/80">
                       <Clock className="inline-block mr-1 mb-0.5" size={14} /> Total: {totalQueueDurationFormatted}
                     </div>
                   </div>
-                  <SongList songs={filteredQueue()} />
+                  <SongList songs={filteredQueue()} isHistory={false} />
                 </div>
               )}
             </ScrollArea>
           </TabsContent>
           <TabsContent value="history">
-            <ScrollArea className="h-[400px] w-full rounded-md border border-gray-700 p-4 bg-gray-800">
+            <ScrollArea className="h-[400px] w-full rounded-md border border-brand-purple-dark/80 p-4 bg-brand-purple-dark/30 mt-2">
               {state.isLoading ? (
                 <LoadingState />
+              ) : state.history.length === 0 ? (
+                 <div className="flex flex-col items-center justify-center h-full text-brand-purple-light/70">
+                  <History size={24} className="mb-2" />
+                  No songs played yet.
+                </div>
               ) : (
-                <SongList songs={filteredHistory()} />
+                <SongList songs={filteredHistory()} isHistory={true} />
               )}
             </ScrollArea>
           </TabsContent>
           <TabsContent value="myrequests">
-            <ScrollArea className="h-[400px] w-full rounded-md border border-gray-700 p-4 bg-gray-800">
+             <ScrollArea className="h-[400px] w-full rounded-md border border-brand-purple-dark/80 p-4 bg-brand-purple-dark/30 mt-2">
               {state.isLoading ? (
                 <LoadingState />
-              ) : !currentUser ? (
-                <div className="flex flex-col items-center justify-center h-full gap-3">
-                  <User size={24} className="text-gray-400" />
-                  <p className="text-gray-400">Please login with Twitch to see your requests</p>
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={() => window.location.href = getTwitchAuthUrl()}
-                    className="flex items-center gap-2 bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 border-purple-500/20"
-                  >
-                    Login with Twitch
-                  </Button>
-                </div>
               ) : <MyRequestsTab 
                 currentUser={currentUser} 
                 state={state} 
@@ -725,7 +752,7 @@ export default function SongRequestQueue() {
             </ScrollArea>
           </TabsContent>
           <TabsContent value="requestplan">
-            <ScrollArea className="h-[400px] w-full rounded-md border border-gray-700 p-4 bg-gray-800">
+             <ScrollArea className="h-[400px] w-full rounded-md border border-brand-purple-dark/80 p-4 bg-brand-purple-dark/30 mt-2">
               <RequestPlanTab 
                 currentUser={currentUser}
                 requestPlan={requestPlan}
@@ -746,15 +773,36 @@ export default function SongRequestQueue() {
 function LoadingState() {
   return (
     <div className="flex items-center justify-center h-full">
-      <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+      <Loader2 className="w-8 h-8 animate-spin text-brand-pink-neon" />
     </div>
   )
 }
 
 function ActiveSong({ song, isLoading }: { song: SongRequest | null, isLoading: boolean }) {
   return (
-    <div className="mb-6 p-4 bg-gray-800 rounded-lg shadow-md">
-      <h2 className="text-xl font-semibold mb-2 flex items-center">
+    <div className="mb-6 p-4 bg-gradient-to-r from-brand-purple-dark/80 to-brand-purple-deep/80 rounded-lg shadow-md border border-brand-pink-neon/30 shadow-glow-pink-sm relative overflow-hidden">
+      <motion.div 
+        className="absolute -top-2 -right-2 w-12 h-12 opacity-50 pointer-events-none" 
+        animate={{ 
+          y: [0, -4, 0, 4, 0], 
+          rotate: [0, 5, -5, 5, 0],
+        }}
+        transition={{ 
+          duration: 4, 
+          repeat: Infinity, 
+          ease: "easeInOut" 
+        }}
+      >
+        <Image 
+          src="/shiny.png" 
+          alt="" 
+          fill
+          sizes="48px"
+          className="object-contain drop-shadow-lg"
+        />
+      </motion.div>
+      
+      <h2 className="text-xl font-semibold mb-3 flex items-center text-brand-pink-light text-glow-pink">
         <Music className="mr-2" size={24} />
         Current Active Song
       </h2>
@@ -762,47 +810,47 @@ function ActiveSong({ song, isLoading }: { song: SongRequest | null, isLoading: 
         <LoadingState />
       ) : song ? (
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
+          transition={{ duration: 0.4 }}
           className="flex items-center justify-between w-full"
         >
           <div className="flex items-center space-x-4">
-            <Avatar className="w-24 h-16 rounded-md">
+            <Avatar className="w-24 h-16 rounded-md border border-brand-pink-neon/20">
               <AvatarImage src={song.thumbnailUrl ?? undefined} alt={`${song.title} thumbnail`} className="object-cover" />
-              <AvatarFallback className="rounded-md"><Music size={32} /></AvatarFallback>
+              <AvatarFallback className="rounded-md bg-brand-purple-dark/50"><Music size={32} className="text-brand-pink-light/70" /></AvatarFallback>
             </Avatar>
-            <div>
-              <h3 className="text-lg font-medium">{song.title}</h3>
-              <div className="flex items-center space-x-2">
+            <div className="flex flex-col justify-center">
+              <h3 className="text-lg font-medium text-white leading-tight">{song.title}</h3>
+              <div className="flex items-center space-x-2 mt-1">
                 {song.youtubeUrl && song.channelId ? (
-                  <Link href={`https://www.youtube.com/channel/${song.channelId}`} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-gray-300 underline transition-colors">
+                  <Link href={`https://www.youtube.com/channel/${song.channelId}`} target="_blank" rel="noopener noreferrer" className="text-brand-purple-light hover:text-brand-pink-light hover:underline transition-colors text-sm">
                     {song.artist || 'Unknown Artist'}
                   </Link>
                 ) : (
-                  <p className="text-gray-400">{song.artist || 'Unknown Artist'}</p>
+                  <p className="text-brand-purple-light text-sm">{song.artist || 'Unknown Artist'}</p>
                 )}
-                <span className="text-sm text-gray-400 flex items-center">
+                <span className="text-sm text-brand-purple-light/80 flex items-center">
                   <Clock className="inline-block mr-1 -mt-0.5" size={14} />
                   {formatDurationFromSeconds(song.durationSeconds ?? 0)}
                 </span>
               </div>
-              <div className="text-sm text-gray-500 flex items-center flex-wrap gap-x-2 gap-y-1 mt-1">
-                Requested by:{' '}
-                <Avatar className="w-4 h-4 rounded-full inline-block">
+              <div className="text-sm text-brand-purple-light/70 flex items-center flex-wrap gap-x-2 gap-y-1 mt-1.5">
+                Requested by:
+                <Avatar className="w-4 h-4 rounded-full inline-block border border-brand-purple-light/30">
                   <AvatarImage src={song.requesterAvatar ?? undefined} alt={song.requester} />
-                  <AvatarFallback className="text-xs">{song.requester.slice(0, 1)}</AvatarFallback>
+                  <AvatarFallback className="text-xs bg-brand-purple-dark">{song.requester.slice(0, 1)}</AvatarFallback>
                 </Avatar>
-                <Link href={`https://www.twitch.tv/${song.requesterLogin || song.requester.toLowerCase()}`} target="_blank" rel="noopener noreferrer" className="hover:text-gray-300 underline transition-colors">
+                <Link href={`https://www.twitch.tv/${song.requesterLogin || song.requester.toLowerCase()}`} target="_blank" rel="noopener noreferrer" className="hover:text-brand-pink-light hover:underline transition-colors">
                   <span>{song.requester}</span>
                 </Link>
                 {song.requestType === 'donation' && (
-                  <Badge variant="secondary" className="px-1.5 py-0.5 text-xs bg-green-800 text-green-200 border-green-700">
+                  <Badge variant="secondary" className="px-1.5 py-0.5 text-xs bg-brand-purple-neon/80 text-brand-black font-semibold border-brand-purple-neon shadow-sm">
                     Dono
                   </Badge>
                 )}
                 {song.requestType === 'channelPoint' && (
-                  <Badge variant="outline" className="px-1.5 py-0.5 text-xs bg-purple-800 text-purple-200 border-purple-700">
+                  <Badge variant="outline" className="px-1.5 py-0.5 text-xs bg-brand-pink-neon/80 text-brand-black font-semibold border-brand-pink-neon shadow-sm">
                     Points
                   </Badge>
                 )}
@@ -813,45 +861,53 @@ function ActiveSong({ song, isLoading }: { song: SongRequest | null, isLoading: 
           <div className="flex space-x-1">
             {song.youtubeUrl && (
               <a href={song.youtubeUrl} target="_blank" rel="noopener noreferrer" aria-label="Watch on YouTube">
-                <Button variant="ghost" className="p-2">
-                  <Youtube className="h-12 w-12 text-red-600" />
+                <Button variant="ghost" className="p-2 text-red-500 hover:text-red-400 hover:bg-red-500/10 rounded-full transition-all">
+                  <Youtube className="h-6 w-6" />
                 </Button>
               </a>
             )}
             
-            {/* Only check for spotifyData property since we've standardized the naming */}
             {song.spotifyData && song.spotifyData.externalUrl && (
               <a href={String(song.spotifyData.externalUrl)} target="_blank" rel="noopener noreferrer" aria-label="Listen on Spotify">
-                <Button variant="ghost" className="p-2">
-                  <SpotifyIcon className="h-10 w-10 text-green-500" />
+                <Button variant="ghost" className="p-2 text-green-500 hover:text-green-400 hover:bg-green-500/10 rounded-full transition-all">
+                  <SpotifyIcon className="h-5 w-5" />
                 </Button>
               </a>
             )}
           </div>
         </motion.div>
       ) : (
-        <p className="text-gray-400">No active song.</p>
+        <p className="text-brand-purple-light/70 italic">No active song playing.</p>
       )}
     </div>
   )
 }
 
-function SongList({ songs }: { songs: SongRequest[] }) {
+function SongList({ songs, isHistory }: { songs: SongRequest[], isHistory: boolean }) {
+  // Sorting is now handled in filteredHistory callback
+  const sortedSongs = isHistory ? songs : songs; // Just use the passed songs
+
+  if (sortedSongs.length === 0) {
+    // Message is handled in the parent TabsContent now
+    return null;
+  }
+
   return (
     <AnimatePresence>
-      {songs.map((song, index) => (
+      {sortedSongs.map((song, index) => (
         <motion.div
           key={song.id}
-          initial={{ opacity: 0, y: 20 }}
+          layout // Animate layout changes (reordering)
+          initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -20 }}
-          transition={{ duration: 0.3, delay: index * 0.1 }}
+          exit={{ opacity: 0, x: -20 }}
+          transition={{ duration: 0.3, delay: index * 0.05 }} // Faster stagger
         >
-          <div className="flex items-center space-x-3 p-3 rounded-md bg-gray-800 hover:bg-gray-700 transition mb-2">
-            <div className="flex-shrink-0 font-semibold text-gray-400 w-6 text-center">
+          <div className="flex items-center space-x-3 p-3 rounded-md bg-brand-purple-dark/30 hover:bg-brand-purple-dark/50 transition-colors duration-200 mb-2 border border-brand-purple-neon/10 hover:border-brand-purple-neon/30">
+            <div className={`flex-shrink-0 font-semibold w-6 text-center ${isHistory ? 'text-brand-purple-light/50' : 'text-brand-purple-light/70'}`}>
               {index + 1}
             </div>
-            <div className="relative w-16 h-9 rounded-md overflow-hidden flex-shrink-0">
+            <div className="relative w-16 h-9 rounded-md overflow-hidden flex-shrink-0 border border-brand-purple-neon/10">
               {song.thumbnailUrl ? (
                 <img 
                   src={song.thumbnailUrl}
@@ -859,50 +915,50 @@ function SongList({ songs }: { songs: SongRequest[] }) {
                   className="w-full h-full object-cover"
                 />
               ) : (
-                <Avatar className="w-full h-full rounded-md bg-gray-700">
+                <Avatar className="w-full h-full rounded-md bg-brand-purple-dark/50">
                   <AvatarFallback className="rounded-md bg-transparent flex items-center justify-center">
-                    <Music size={24} className="text-gray-400"/>
+                    <Music size={24} className={`text-brand-purple-light/${isHistory ? '50' : '70'}`}/>
                   </AvatarFallback>
                 </Avatar>
               )}
             </div>
             <div className="flex-grow min-w-0">
-              <p className="font-medium text-white truncate flex items-center gap-1">
+              <p className={`font-medium truncate flex items-center gap-1 ${isHistory ? 'text-gray-400' : 'text-white'}`}>
                 {song.title || (song.youtubeUrl ? 'Untitled YouTube Video' : 'Untitled Song')}
               </p>
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1">
                 {song.youtubeUrl && song.channelId ? (
-                  <Link href={`https://www.youtube.com/channel/${song.channelId}`} target="_blank" rel="noopener noreferrer" className="hover:text-purple-300 transition-colors group">
-                    <Badge variant="outline" className="text-xs font-normal cursor-pointer group-hover:border-purple-400 group-hover:text-purple-300 transition-colors">
+                  <Link href={`https://www.youtube.com/channel/${song.channelId}`} target="_blank" rel="noopener noreferrer" className={`hover:text-brand-pink-light transition-colors group ${isHistory ? 'text-brand-purple-light/60' : 'text-brand-purple-light/80'}`}>
+                    <Badge variant="outline" className={`text-xs font-normal cursor-pointer border-brand-purple-neon/20 group-hover:border-brand-pink-neon/40 group-hover:text-brand-pink-light transition-colors ${isHistory ? 'text-brand-purple-light/60' : 'text-brand-purple-light/80'}`}>
                       {song.artist || 'Unknown Artist'}
                     </Badge>
                   </Link>
                 ) : (
-                  <Badge variant="outline" className="text-xs font-normal">
+                  <Badge variant="outline" className={`text-xs font-normal border-brand-purple-neon/20 ${isHistory ? 'text-brand-purple-light/60' : 'text-brand-purple-light/80'}`}>
                     {song.artist || 'Unknown Artist'}
                   </Badge>
                 )}
-                <span className="text-xs text-gray-400 flex items-center">
+                <span className={`text-xs flex items-center ${isHistory ? 'text-brand-purple-light/50' : 'text-brand-purple-light/70'}`}>
                   <Clock className="inline-block mr-1" size={12} />
                   {formatDurationFromSeconds(song.durationSeconds ?? 0)}
                 </span>
-                <div className="text-xs text-gray-400 flex items-center gap-1">
-                  by:{' '}
-                  <Avatar className="w-3 h-3 rounded-full inline-block">
+                <div className={`text-xs flex items-center gap-1 ${isHistory ? 'text-brand-purple-light/50' : 'text-brand-purple-light/70'}`}>
+                  by:
+                  <Avatar className="w-3 h-3 rounded-full inline-block border border-brand-purple-light/20">
                     <AvatarImage src={song.requesterAvatar ?? undefined} alt={song.requester} />
-                    <AvatarFallback className="text-[8px]">{song.requester.slice(0,1)}</AvatarFallback>
+                    <AvatarFallback className="text-[8px] bg-brand-purple-dark">{song.requester.slice(0,1)}</AvatarFallback>
                   </Avatar>
-                  <Link href={`https://www.twitch.tv/${song.requesterLogin || song.requester.toLowerCase()}`} target="_blank" rel="noopener noreferrer" className="hover:text-gray-300 underline transition-colors">
+                  <Link href={`https://www.twitch.tv/${song.requesterLogin || song.requester.toLowerCase()}`} target="_blank" rel="noopener noreferrer" className="hover:text-brand-pink-light hover:underline transition-colors">
                     {song.requester}
                   </Link>
                   
                   {song.requestType === 'donation' && (
-                    <Badge variant="secondary" className="px-1.5 py-0.5 text-xs bg-green-800 text-green-200 border-green-700">
+                     <Badge variant="secondary" className="px-1.5 py-0.5 text-xs bg-brand-purple-neon/80 text-brand-black font-semibold border-brand-purple-neon shadow-sm">
                       Dono
                     </Badge>
                   )}
                   {song.requestType === 'channelPoint' && (
-                    <Badge variant="outline" className="px-1.5 py-0.5 text-xs bg-purple-800 text-purple-200 border-purple-700">
+                    <Badge variant="outline" className="px-1.5 py-0.5 text-xs bg-brand-pink-neon/80 text-brand-black font-semibold border-brand-pink-neon shadow-sm">
                       Points
                     </Badge>
                   )}
@@ -913,31 +969,24 @@ function SongList({ songs }: { songs: SongRequest[] }) {
               <div className="flex space-x-1">
                 {song.youtubeUrl && (
                   <a href={song.youtubeUrl} target="_blank" rel="noopener noreferrer" aria-label="Watch on YouTube">
-                    <Button variant="ghost" className="p-1">
-                      <Youtube className="h-5 w-5 text-red-600" />
+                     <Button variant="ghost" className="p-1 text-red-500 hover:text-red-400 hover:bg-red-500/10 rounded-full transition-all">
+                       <Youtube className="h-5 w-5" />
                     </Button>
                   </a>
                 )}
                 
-                {/* Only check for spotifyData property since we've standardized the naming */}
                 {song.spotifyData && song.spotifyData.externalUrl && (
                   <a href={String(song.spotifyData.externalUrl)} target="_blank" rel="noopener noreferrer" aria-label="Listen on Spotify">
-                    <Button variant="ghost" className="p-1">
-                      <SpotifyIcon className="h-5 w-5 text-green-500" />
+                    <Button variant="ghost" className="p-1 text-green-500 hover:text-green-400 hover:bg-green-500/10 rounded-full transition-all">
+                       <SpotifyIcon className="h-5 w-5" />
                     </Button>
                   </a>
                 )}
               </div>
               
-              {(song.source === 'database_history' || song.requestType === 'history_requeue') ? (
-                <span className="text-xs text-gray-500 whitespace-nowrap">
-                  Completed: {formatTimestamp(song.timestamp)}
-                </span>
-              ) : (
-                <span className="text-xs text-gray-500 whitespace-nowrap">
-                  Added: {formatTimestamp(song.timestamp)}
-                </span>
-              )}
+              <span className="text-xs text-brand-purple-light/50 whitespace-nowrap">
+                 {isHistory ? 'Completed:' : 'Added:'} {formatTimestamp(song.timestamp)}
+              </span>
             </div>
           </div>
         </motion.div>

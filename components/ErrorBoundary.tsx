@@ -1,3 +1,5 @@
+'use client' // Mark as a Client Component
+
 import React from 'react'
 import { AppError } from '@/lib/types'
 

@@ -945,7 +945,7 @@ async function validateAndAddSong(request, bypassRestrictions = false) {
       donationInfo: request.donationInfo, // Include if it was a donation
       timestamp: request.timestamp || new Date().toISOString(),
       addedAt: new Date().toISOString(),
-      spotifyData: spotifyMatch ? JSON.stringify(spotifyMatch) : null // Store Spotify match data if found
+      spotifyData: spotifyMatch // Store Spotify match data if found
   };
 
 
