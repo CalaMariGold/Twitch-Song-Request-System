@@ -172,6 +172,7 @@ export default function PublicDashboard() {
                       layout="fill" 
                       objectFit="cover" 
                       priority // Load image sooner
+                      quality={90} // Increase image quality
                     />
                   </div>
                   <p className="text-sm font-semibold text-white text-glow-white-xs leading-snug">
