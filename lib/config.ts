@@ -50,5 +50,12 @@ export const socketEvents = {
   ACTIVE_SONG: 'activeSong',
   CONNECT: 'connect',
   DISCONNECT: 'disconnect',
-  ERROR: 'error'
+  ERROR: 'error',
+  UPDATE_BLOCKED_USERS: 'updateBlockedUsers',
+  GET_ALL_TIME_STATS: 'getAllTimeStats',
+  ALL_TIME_STATS_UPDATE: 'allTimeStatsUpdate',
+  ALL_TIME_STATS_ERROR: 'allTimeStatsError',
+  CLEAR_HISTORY: 'clearHistory',
+  DELETE_HISTORY_ITEM: 'deleteHistoryItem',
+  DELETE_MY_REQUEST: 'deleteMyRequest'
 } as const 

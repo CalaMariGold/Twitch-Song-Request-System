@@ -332,7 +332,7 @@ export default function SongRequestQueue() {
                           </div>
                           
                           <div className="flex flex-col items-end space-y-1 flex-shrink-0">            
-                            <div className="flex space-x-1">
+                            <div className="flex space-x-1 items-center">
                               {/* Youtube button */}
                               <a href={song.youtubeUrl} target="_blank" rel="noopener noreferrer" aria-label="Watch on YouTube">
                                 <Button variant="ghost" className="p-1 text-red-500 hover:text-red-400">
@@ -380,17 +380,19 @@ export default function SongRequestQueue() {
     )
   }
 
-  // Function to render My Requests tab content
+  // Component to render the "My Requests" tab
   function MyRequestsTab({ 
     currentUser, 
     state, 
     searchTerm,
-    isLoading 
+    isLoading,
+    socket
   }: { 
     currentUser: { id?: string, login?: string } | null,
     state: AppState,
     searchTerm: string,
-    isLoading: boolean
+    isLoading: boolean,
+    socket: Socket | null
   }) {
     // Filter for user's queue songs
     const myQueueSongs = currentUser?.login
@@ -449,12 +451,12 @@ export default function SongRequestQueue() {
     return (
       <div className="space-y-4">
         {myQueueSongs.length > 0 && (
-          <div>
-            <div className="bg-brand-purple-neon/10 rounded-md px-3 py-2 mb-2 flex items-center border border-brand-purple-neon/30">
-              <Music className="mr-2 text-brand-purple-light" size={16} />
+          <div className="mt-6">
+            <div className="flex items-center gap-2 mb-2">
+              <Music size={16} className="text-brand-purple-light" />
               <h3 className="text-sm font-medium text-brand-purple-light">In Queue ({myQueueSongs.length})</h3>
             </div>
-            <SongList songs={myQueueSongs} isHistory={false} currentUser={currentUser} />
+            <SongList songs={myQueueSongs} isHistory={false} currentUser={currentUser} socket={socket} />
           </div>
         )}
         
@@ -463,12 +465,12 @@ export default function SongRequestQueue() {
         )}
         
         {myHistorySongs.length > 0 && (
-          <div>
-            <div className="bg-brand-purple-dark/20 rounded-md px-3 py-2 mb-2 flex items-center border border-brand-purple-dark/50">
-              <History className="mr-2 text-brand-purple-light/70" size={16} />
+          <div className="mt-6 pt-6 border-t border-brand-purple-dark/30">
+            <div className="flex items-center gap-2 mb-2">
+              <History size={16} className="text-brand-purple-light/80" />
               <h3 className="text-sm font-medium text-brand-purple-light/80">Previously Requested ({myHistorySongs.length})</h3>
             </div>
-            <SongList songs={myHistorySongs} isHistory={true} currentUser={currentUser} />
+            <SongList songs={myHistorySongs} isHistory={true} currentUser={currentUser} socket={socket} />
           </div>
         )}
       </div>
@@ -707,59 +709,39 @@ export default function SongRequestQueue() {
               Request Plan {currentUser ? `(${requestPlan.length})` : ''}
             </TabsTrigger>
           </TabsList>
-          <TabsContent value="queue">
-            <ScrollArea className="h-[400px] w-full rounded-md border border-brand-purple-dark/80 bg-brand-purple-dark/30 mt-2">
-              <div className="p-4">
-                {state.isLoading ? (
-                  <LoadingState />
-                ) : state.queue.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center h-full text-brand-purple-light/70">
-                    <Music size={24} className="mb-2" />
-                    The queue is empty!
-                  </div>
-                ) : (
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="text-sm text-brand-purple-light/80">
-                        <Clock className="inline-block mr-1 mb-0.5" size={14} /> Total: {totalQueueDurationFormatted}
-                      </div>
-                    </div>
-                    <SongList songs={filteredQueue()} isHistory={false} currentUser={currentUser} />
-                  </div>
-                )}
-              </div>
-            </ScrollArea>
+          <TabsContent value="queue" className="mt-4">
+            <ErrorBoundary>
+              <SongList 
+                songs={filteredQueue()} 
+                isHistory={false} 
+                currentUser={currentUser}
+                socket={socket}
+              />
+            </ErrorBoundary>
           </TabsContent>
-          <TabsContent value="history">
-            <ScrollArea className="h-[400px] w-full rounded-md border border-brand-purple-dark/80 bg-brand-purple-dark/30 mt-2">
-              <div className="p-4">
-                {state.isLoading ? (
-                  <LoadingState />
-                ) : state.history.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center h-full text-brand-purple-light/70">
-                    <History size={24} className="mb-2" />
-                    No songs played yet.
-                  </div>
-                ) : (
-                  <SongList songs={filteredHistory()} isHistory={true} currentUser={currentUser} />
-                )}
-              </div>
-            </ScrollArea>
+          <TabsContent value="history" className="mt-4">
+            <ErrorBoundary>
+              <SongList 
+                songs={filteredHistory()} 
+                isHistory={true} 
+                currentUser={currentUser} 
+                socket={socket}
+              />
+            </ErrorBoundary>
           </TabsContent>
-          <TabsContent value="myrequests">
-            <ScrollArea className="h-[400px] w-full rounded-md border border-brand-purple-dark/80 p-4 bg-brand-purple-dark/30 mt-2">
-              {state.isLoading ? (
-                <LoadingState />
-              ) : <MyRequestsTab 
+          <TabsContent value="myrequests" className="mt-4">
+            <ErrorBoundary>
+              <MyRequestsTab 
                 currentUser={currentUser} 
                 state={state} 
-                searchTerm={searchTerm}
-                isLoading={state.isLoading}
-              />}
-            </ScrollArea>
+                searchTerm={searchTerm} 
+                isLoading={state.isLoading} 
+                socket={socket}
+              />
+            </ErrorBoundary>
           </TabsContent>
-          <TabsContent value="requestplan">
-            <ScrollArea className="h-[400px] w-full rounded-md border border-brand-purple-dark/80 p-4 bg-brand-purple-dark/30 mt-2">
+          <TabsContent value="requestplan" className="mt-4">
+            <ErrorBoundary>
               <RequestPlanTab 
                 currentUser={currentUser}
                 requestPlan={requestPlan}
@@ -769,7 +751,7 @@ export default function SongRequestQueue() {
                 onRemove={handleRemoveFromRequestPlan}
                 socket={socket}
               />
-            </ScrollArea>
+            </ErrorBoundary>
           </TabsContent>
         </Tabs>
       </div>
@@ -890,7 +872,7 @@ function ActiveSong({ song, isLoading }: { song: SongRequest | null, isLoading: 
   )
 }
 
-function SongList({ songs, isHistory, currentUser }: { songs: SongRequest[], isHistory: boolean, currentUser: { id?: string, login?: string } | null }) {
+function SongList({ songs, isHistory, currentUser, socket }: { songs: SongRequest[], isHistory: boolean, currentUser: { id?: string, login?: string } | null, socket: Socket | null }) {
   // Sorting is now handled in filteredHistory callback
   const sortedSongs = isHistory ? songs : songs; // Just use the passed songs
 
@@ -992,7 +974,7 @@ function SongList({ songs, isHistory, currentUser }: { songs: SongRequest[], isH
                 </div>
               </div>
               <div className="flex flex-col items-end space-y-1 flex-shrink-0">
-                <div className="flex space-x-1">
+                <div className="flex space-x-1 items-center">
                   {song.youtubeUrl && (
                     <a href={song.youtubeUrl} target="_blank" rel="noopener noreferrer" aria-label="Watch on YouTube">
                        <Button variant="ghost" className="p-1 text-red-500 hover:text-red-400 hover:bg-red-500/10 rounded-full transition-all">
@@ -1007,6 +989,25 @@ function SongList({ songs, isHistory, currentUser }: { songs: SongRequest[], isH
                          <SpotifyIcon className="h-5 w-5" />
                       </Button>
                     </a>
+                  )}
+                  {/* Add Delete button */} 
+                  {!isHistory && currentUser && song.requesterLogin && currentUser.login && song.requesterLogin.toLowerCase() === currentUser.login.toLowerCase() && socket && (
+                     <Button
+                        variant="ghost"
+                        size="icon"
+                        className="text-brand-purple-light/60 hover:text-red-500 hover:bg-red-500/10 rounded-full transition-all"
+                        onClick={() => {
+                          if (socket) {
+                            socket.emit(socketEvents.DELETE_MY_REQUEST, { 
+                              requestId: song.id,
+                              userLogin: currentUser.login 
+                            });
+                          }
+                        }}
+                        title="Delete my request"
+                      >
+                        <Trash2 size={18} />
+                     </Button>
                   )}
                 </div>
                 

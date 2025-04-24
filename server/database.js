@@ -405,8 +405,8 @@ function addSongToDbQueue(song) {
         
         // Serialize Spotify data if present
         const spotifyData = song.spotifyData ? JSON.stringify(song.spotifyData) : null;
-        // Ensure addedAt exists on the song object, default if not (should exist)
-        const addedAt = song.addedAt || new Date().toISOString(); 
+        // Ensure timestamp exists on the song object, default if not (should exist)
+        const addedAt = song.timestamp || new Date().toISOString();
         
         // Use the prepared statement defined earlier
         insertQueueStmt.run({
@@ -421,7 +421,7 @@ function addSongToDbQueue(song) {
             thumbnailUrl: song.thumbnailUrl || null,
             requestType: song.requestType,
             priority: priority,
-            addedAt: addedAt, // Pass the addedAt timestamp
+            addedAt: addedAt,
             spotifyData: spotifyData
         });
         console.log(chalk.grey(`[DB Write] Added song to active_queue: ${song.title}`));

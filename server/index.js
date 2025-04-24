@@ -142,12 +142,15 @@ io.on('connection', (socket) => {
     // Handle addSong event
     socket.on('addSong', async (songRequestData) => {
         // Ensure the incoming data has necessary fields before validating
-        if (!songRequestData || !songRequestData.youtubeUrl || !songRequestData.requester) {
+        if (!songRequestData || (!songRequestData.youtubeUrl && !songRequestData.message) || !songRequestData.requester) { // Allow message for Spotify-only
              console.error(chalk.red('[Socket.IO] Received invalid song request data via socket:'), songRequestData);
              return;
         }
-        // Call the centralized validation and adding function
-        await validateAndAddSong({ ...songRequestData, source: 'socket' });
+        // Extract bypass flag, default to false if not provided
+        const bypass = songRequestData.bypassRestrictions === true;
+
+        // Call the centralized validation and adding function, passing the bypass flag
+        await validateAndAddSong({ ...songRequestData, source: 'socket' }, bypass);
     })
 
     // Handle remove song
@@ -189,6 +192,40 @@ io.on('connection', (socket) => {
         io.emit('historyUpdate', state.history)
         console.log(chalk.magenta('[Admin] System reset via socket.'));
     })
+
+    // Handle user deleting their own request
+    socket.on('deleteMyRequest', (data) => {
+        const { requestId, userLogin } = data;
+        if (!requestId || !userLogin) {
+            console.warn(chalk.yellow('[Socket.IO] Received invalid deleteMyRequest data:'), data);
+            // Optionally emit an error back to the client
+            // socket.emit('deleteRequestError', { message: 'Invalid request data' });
+            return;
+        }
+
+        const songIndex = state.queue.findIndex(song => song.id === requestId);
+        if (songIndex !== -1) {
+            const songToDelete = state.queue[songIndex];
+            // Verify ownership
+            if (songToDelete.requesterLogin && songToDelete.requesterLogin.toLowerCase() === userLogin.toLowerCase()) {
+                // Remove from in-memory queue
+                state.queue.splice(songIndex, 1);
+                // Remove from DB queue
+                db.removeSongFromDbQueue(requestId);
+                // Broadcast updated queue
+                io.emit('queueUpdate', state.queue);
+                console.log(chalk.cyan(`[User] Song removed by requester ${userLogin}: ${requestId}`));
+            } else {
+                console.warn(chalk.yellow(`[Security] User ${userLogin} attempted to delete song ${requestId} owned by ${songToDelete.requesterLogin}`));
+                // Optionally emit an error back to the client
+                // socket.emit('deleteRequestError', { message: 'Permission denied' });
+            }
+        } else {
+            console.warn(chalk.yellow(`[User] Attempted to delete non-existent song ID: ${requestId}`));
+            // Optionally emit an error back to the client
+            // socket.emit('deleteRequestError', { message: 'Song not found in queue' });
+        }
+    });
 
     // Handle getAllTimeStats request
     socket.on('getAllTimeStats', () => {
@@ -939,8 +976,8 @@ async function validateAndAddSong(request, bypassRestrictions = false) {
       durationSeconds: durationSeconds,
       thumbnailUrl: spotifyMatch?.album?.images?.[0]?.url || videoDetails?.thumbnailUrl || null, // Prefer Spotify image
       requester: userName,
-      requesterLogin: requesterInfo.login || userName.toLowerCase(), // Use fetched login or lowercase username
-      requesterAvatar: requesterInfo.profile_image_url || null,
+      requesterLogin: requesterInfo?.login || userName.toLowerCase(), 
+      requesterAvatar: requesterInfo?.profile_image_url || null,
       requestType: request.requestType,
       donationInfo: request.donationInfo, // Include if it was a donation
       timestamp: request.timestamp || new Date().toISOString(),
@@ -1039,6 +1076,8 @@ async function createSpotifyBasedRequest(spotifyTrack, request) {
       // Add Spotify-specific fields
       spotifyData: {
         id: spotifyTrack.id,
+        name: spotifyTrack.name,
+        artists: spotifyTrack.artists,
         uri: spotifyTrack.uri,
         externalUrl: spotifyTrack.externalUrl,
         previewUrl: spotifyTrack.previewUrl,

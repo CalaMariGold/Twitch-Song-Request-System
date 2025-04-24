@@ -772,6 +772,16 @@ export default function AdminDashboard() {
                                            </Badge>
                                          )}
                                         </div>
+                                        {/* START: Added Spotify Details */}
+                                        {song.spotifyData && (
+                                            <div className="mt-1 text-xs flex items-center text-gray-400 gap-1.5" title={`Spotify: ${song.spotifyData.name} by ${song.spotifyData.artists?.map(a => a.name).join(', ')}`}>
+                                                <SpotifyIcon className="h-3 w-3 text-green-500 flex-shrink-0" />
+                                                <span className="truncate">
+                                                    {song.spotifyData.name} - {song.spotifyData.artists?.map((a: { name: string }) => a.name).join(', ')}
+                                                </span>
+                                            </div>
+                                        )}
+                                        {/* END: Added Spotify Details */}
                                      </div>
                                      <div className="flex-shrink-0 flex flex-col items-end">
                                         <div className="flex space-x-1">
@@ -892,6 +902,16 @@ export default function AdminDashboard() {
                                      </Badge>
                                    )}
                                 </div>
+                                {/* START: Added Spotify Details */}
+                                {song.spotifyData && (
+                                    <div className="mt-1 text-xs flex items-center text-gray-400 gap-1.5" title={`Spotify: ${song.spotifyData.name} by ${song.spotifyData.artists?.map(a => a.name).join(', ')}`}>
+                                        <SpotifyIcon className="h-3 w-3 text-green-500 flex-shrink-0" />
+                                        <span className="truncate">
+                                            {song.spotifyData.name} - {song.spotifyData.artists?.map((a: { name: string }) => a.name).join(', ')}
+                                        </span>
+                                    </div>
+                                )}
+                                {/* END: Added Spotify Details */}
                             </div>
                             <div className="flex-shrink-0 flex flex-col items-end">
                               <div className="flex space-x-1">
