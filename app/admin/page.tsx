@@ -252,15 +252,9 @@ export default function AdminDashboard() {
   const handleSkipSong = () => {
     if (!socket || !appState.activeSong) return
     const skippedSong = appState.activeSong
-    console.log(`Admin: Skipping song ${skippedSong.id}`)
-    const nextSong = appState.queue.length > 0 ? appState.queue[0] : null
-    socket.emit('updateActiveSong', nextSong) 
-    toast({ title: "Song Skipped", description: `Skipped: ${skippedSong.title}` })
-    if (nextSong) {
-       toast({ title: "New Song Active", description: `Now showing: ${nextSong.title}` })
-    } else {
-       toast({ title: "Queue Empty", description: "No active song." })
-    }
+    console.log(`Admin: Skipping song ${skippedSong.id} - ${skippedSong.title}`)
+    socket.emit('skipSong')
+    toast({ title: "Song Skipped", description: `Attempting to skip: ${skippedSong.title}` })
   }
   
   const handleMarkAsFinished = () => {
@@ -577,7 +571,7 @@ export default function AdminDashboard() {
                       <div className="text-xs text-gray-500 flex items-center flex-wrap gap-x-2 gap-y-1 mt-1">
                           Requested by: 
                           <Avatar className="w-4 h-4 rounded-full inline-block">
-                            <AvatarImage src={appState.activeSong.requesterAvatar} alt={appState.activeSong.requester} />
+                            <AvatarImage src={appState.activeSong.requesterAvatar ?? undefined} alt={appState.activeSong.requester} />
                             <AvatarFallback className="text-[8px]">{appState.activeSong.requester.slice(0,1)}</AvatarFallback>
                           </Avatar>
                            <Link href={`https://www.twitch.tv/${appState.activeSong.requesterLogin || appState.activeSong.requester.toLowerCase()}`} target="_blank" rel="noopener noreferrer" className="hover:text-gray-300 underline transition-colors">
@@ -606,13 +600,15 @@ export default function AdminDashboard() {
                         <Clock className="inline-block mr-1 -mt-0.5" size={16} />
                         {formatDuration(appState.activeSong.durationSeconds)}
                         <div className="flex ml-2">
-                          <a href={appState.activeSong.youtubeUrl} target="_blank" rel="noopener noreferrer" aria-label="Watch on YouTube" className="mr-1">
-                            <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
-                              <Youtube className="h-5 w-5 text-red-600 hover:text-red-500 transition-colors" />
-                            </Button>
-                          </a>
-                          {appState.activeSong.spotify && (
-                            <a href={appState.activeSong.spotify.uri} target="_blank" rel="noopener noreferrer" aria-label="Listen on Spotify">
+                          {appState.activeSong.youtubeUrl && (
+                            <a href={appState.activeSong.youtubeUrl} target="_blank" rel="noopener noreferrer" aria-label="Watch on YouTube" className="mr-1">
+                              <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+                                <Youtube className="h-5 w-5 text-red-600 hover:text-red-500 transition-colors" />
+                              </Button>
+                            </a>
+                          )}
+                          {appState.activeSong.spotifyData && appState.activeSong.spotifyData.externalUrl && (
+                            <a href={appState.activeSong.spotifyData.externalUrl} target="_blank" rel="noopener noreferrer" aria-label="Listen on Spotify">
                               <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
                                 <SpotifyIcon className="h-5 w-5 text-green-500 hover:text-green-400 transition-colors" />
                               </Button>
@@ -634,36 +630,39 @@ export default function AdminDashboard() {
                     </div>
                   </div>
                   
-                  {/* Spotify Integration - replaced embedded player with direct links */}
-                  {appState.activeSong.spotify && (
+                  {appState.activeSong.spotifyData && (
                     <div className="mt-2 pt-2 border-t border-gray-700">
                       <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 bg-[#1DB954]/10 rounded-md p-3">
                         <div className="flex items-center">
                           <SpotifyIcon className="h-6 w-6 text-[#1DB954] mr-2" />
                           <div>
-                            <div className="text-white font-medium">{appState.activeSong.spotify.name}</div>
+                            <div className="text-white font-medium">{appState.activeSong.spotifyData.name}</div>
                             <div className="text-gray-400 text-sm">
-                              {appState.activeSong.spotify.artists?.map(a => a.name).join(', ')}
+                              {appState.activeSong.spotifyData.artists?.map((a: { name: string }) => a.name).join(', ')}
                             </div>
                           </div>
                         </div>
                         <div className="flex items-center gap-2 ml-auto">
-                          <a 
-                            href={appState.activeSong.spotify.uri} 
-                            target="_blank" 
-                            rel="noopener noreferrer" 
-                            className="bg-[#1DB954] text-black font-medium px-4 py-2 rounded-full hover:bg-[#1DB954]/90 transition-colors flex items-center"
-                          >
-                            <SpotifyIcon className="h-4 w-4 mr-2" /> Play on Spotify
-                          </a>
-                          <a 
-                            href={appState.activeSong.spotify.externalUrl || `https://open.spotify.com/track/${appState.activeSong.spotify.id}`} 
-                            target="_blank" 
-                            rel="noopener noreferrer" 
-                            className="bg-gray-700 text-white px-3 py-2 rounded-full hover:bg-gray-600 transition-colors flex items-center text-sm"
-                          >
-                            <LinkIcon className="h-3 w-3 mr-1" /> Web Player
-                          </a>
+                          {appState.activeSong.spotifyData.uri && (
+                            <a 
+                              href={appState.activeSong.spotifyData.uri} 
+                              target="_blank" 
+                              rel="noopener noreferrer" 
+                              className="bg-[#1DB954] text-black font-medium px-4 py-2 rounded-full hover:bg-[#1DB954]/90 transition-colors flex items-center"
+                            >
+                              <SpotifyIcon className="h-4 w-4 mr-2" /> Play on Spotify
+                            </a>
+                          )}
+                          {appState.activeSong.spotifyData.externalUrl && (
+                            <a 
+                              href={appState.activeSong.spotifyData.externalUrl || `https://open.spotify.com/track/${appState.activeSong.spotifyData.id}`}
+                              target="_blank" 
+                              rel="noopener noreferrer" 
+                              className="bg-gray-700 text-white px-3 py-2 rounded-full hover:bg-gray-600 transition-colors flex items-center text-sm"
+                            >
+                              <LinkIcon className="h-3 w-3 mr-1" /> Web Player
+                            </a>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -754,7 +753,7 @@ export default function AdminDashboard() {
                                          <div className="text-xs text-gray-400 flex items-center gap-1">
                                            by{' '}
                                            <Avatar className="w-3 h-3 rounded-full inline-block">
-                                             <AvatarImage src={song.requesterAvatar} alt={song.requester} />
+                                             <AvatarImage src={song.requesterAvatar ?? undefined} alt={song.requester} />
                                              <AvatarFallback className="text-[8px]">{song.requester.slice(0,1)}</AvatarFallback>
                                            </Avatar>
                                            <Link href={`https://www.twitch.tv/${song.requesterLogin || song.requester.toLowerCase()}`} target="_blank" rel="noopener noreferrer" className="hover:text-gray-300 underline transition-colors">
@@ -782,13 +781,15 @@ export default function AdminDashboard() {
                                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handleRemoveSong(song.id)}>
                                              <Trash2 className="h-4 w-4 text-red-500 hover:text-red-400" />
                                            </Button>
-                                           <a href={song.youtubeUrl} target="_blank" rel="noopener noreferrer" aria-label="Watch on YouTube">
-                                                <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                                                  <Youtube className="h-4 w-4 text-red-600 hover:text-red-500" />
-                                                </Button>
-                                           </a>
-                                           {song.spotify && (
-                                             <a href={song.spotify.uri} target="_blank" rel="noopener noreferrer" aria-label="Listen on Spotify">
+                                           {song.youtubeUrl && (
+                                            <a href={song.youtubeUrl} target="_blank" rel="noopener noreferrer" aria-label="Watch on YouTube">
+                                                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                                                    <Youtube className="h-4 w-4 text-red-600 hover:text-red-500" />
+                                                  </Button>
+                                             </a>
+                                           )}
+                                           {song.spotifyData && song.spotifyData.externalUrl && (
+                                             <a href={song.spotifyData.externalUrl} target="_blank" rel="noopener noreferrer" aria-label="Listen on Spotify">
                                                <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
                                                  <SpotifyIcon className="h-4 w-4 text-green-500 hover:text-green-400" />
                                                </Button>
@@ -872,7 +873,7 @@ export default function AdminDashboard() {
                                   <div className="text-xs text-gray-400 flex items-center gap-1">
                                     by{' '}
                                     <Avatar className="w-3 h-3 rounded-full inline-block">
-                                      <AvatarImage src={song.requesterAvatar} alt={song.requester} />
+                                      <AvatarImage src={song.requesterAvatar ?? undefined} alt={song.requester} />
                                       <AvatarFallback className="text-[8px]">{song.requester.slice(0,1)}</AvatarFallback>
                                     </Avatar>
                                     <Link href={`https://www.twitch.tv/${song.requesterLogin || song.requester.toLowerCase()}`} target="_blank" rel="noopener noreferrer" className="hover:text-gray-300 underline transition-colors">
@@ -900,13 +901,15 @@ export default function AdminDashboard() {
                                 <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handleRemoveFromHistory(song.id)}>
                                   <Trash2 className="h-4 w-4 text-red-500 hover:text-red-400" />
                                 </Button>
-                                <a href={song.youtubeUrl} target="_blank" rel="noopener noreferrer" aria-label="Watch on YouTube">
+                                {song.youtubeUrl && (
+                                 <a href={song.youtubeUrl} target="_blank" rel="noopener noreferrer" aria-label="Watch on YouTube">
                                   <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
                                     <Youtube className="h-4 w-4 text-red-600 hover:text-red-500" />
                                   </Button>
-                                </a>
-                                {song.spotify && (
-                                  <a href={song.spotify.uri} target="_blank" rel="noopener noreferrer" aria-label="Listen on Spotify">
+                                 </a>
+                                )}
+                                {song.spotifyData && song.spotifyData.externalUrl && (
+                                  <a href={song.spotifyData.externalUrl} target="_blank" rel="noopener noreferrer" aria-label="Listen on Spotify">
                                     <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
                                       <SpotifyIcon className="h-4 w-4 text-green-500 hover:text-green-400" />
                                     </Button>

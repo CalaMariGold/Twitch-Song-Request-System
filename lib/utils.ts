@@ -81,6 +81,29 @@ export function formatDuration(totalSeconds?: number): string {
 }
 
 /**
+ * Formats a duration in seconds to a human-readable string (MM:SS or HH:MM:SS)
+ * @param {number} totalSeconds - The duration in seconds
+ * @returns {string} Formatted duration string
+ */
+export function formatDurationFromSeconds(totalSeconds: number): string {
+    if (totalSeconds === null || totalSeconds === undefined || totalSeconds < 0 || isNaN(totalSeconds)) {
+        return '0:00';
+    }
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = Math.floor(totalSeconds % 60); // Use Math.floor for display consistency
+
+    const paddedSeconds = seconds.toString().padStart(2, '0');
+
+    if (hours > 0) {
+        const paddedMinutes = minutes.toString().padStart(2, '0');
+        return `${hours}:${paddedMinutes}:${paddedSeconds}`;
+    } else {
+        return `${minutes}:${paddedSeconds}`;
+    }
+}
+
+/**
  * Calculate total duration of songs in a queue
  */
 export function calculateTotalQueueDuration(songs: SongRequest[]): { 
@@ -91,9 +114,10 @@ export function calculateTotalQueueDuration(songs: SongRequest[]): {
     return sum + (song.durationSeconds || 0) 
   }, 0)
   
+  const formatted = formatDurationFromSeconds(totalSeconds)
   return {
     totalSeconds,
-    formatted: formatDuration(totalSeconds)
+    formatted
   }
 }
 
@@ -189,7 +213,7 @@ export function addToRequestPlan(userId: string, song: Partial<PlannedRequest> &
     durationSeconds: song.durationSeconds,
     thumbnailUrl: song.thumbnailUrl,
     addedAt: new Date().toISOString(),
-    spotify: song.spotify
+    spotifyData: song.spotifyData
   }
   
   // Add to plan and save

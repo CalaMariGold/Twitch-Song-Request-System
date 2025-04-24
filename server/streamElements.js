@@ -59,66 +59,89 @@ function connectToStreamElements(config, onTipCallback, onRedemptionCallback) {
 
     // Listen for events (tips/donations)
     seSocket.on('event', async (event) => {
-        // Handle Channel Point Redemption events from StreamElements
-        if (event.type === 'channelPointsRedemption') {
-            const receivedTitle = event.data?.redemption;
-
-            // Check if the received title matches the one configured in .env
-            if (!receivedTitle || !TARGET_REWARD_TITLE || receivedTitle !== TARGET_REWARD_TITLE) {
-                console.log(chalk.grey(`[StreamElements] Ignored redemption: Title "${receivedTitle || 'N/A'}" does not match TARGET_REWARD_TITLE "${TARGET_REWARD_TITLE || 'Not Set'}".`));
-                return; // Ignore this redemption
-            }
-            
-            if (onRedemptionCallback && typeof onRedemptionCallback === 'function') {
-                try {
-                    const userName = event.data.username || 'Anonymous';
-                    const userInput = event.data.message || ''; // Get user input (URL) from message field
-                    console.log(chalk.magenta(`[StreamElements] Received channel point redemption: ${userName} - Reward: "${receivedTitle}" - Input: "${userInput}"`));
+        // Process the event based on its type
+        try {
+            switch (event.type) {
+                case 'channelPointsRedemption':
+                    await processRedemptionEvent(event, TARGET_REWARD_TITLE, onRedemptionCallback);
+                    break;
                     
-                    // Call the callback with the redemption data
-                    await onRedemptionCallback({
-                        id: event.data._id || event._id || Date.now().toString(),
-                        username: userName,
-                        message: userInput,
-                        timestamp: event.createdAt || new Date().toISOString(),
-                        rewardTitle: receivedTitle
-                    });
-                } catch (error) {
-                    console.error(chalk.red('[StreamElements] Error processing channel point redemption:'), error);
-                }
-            }
-            return;
-        }
-
-        // Check if it's a tip/donation event
-        if (event.type === 'tip') {
-            if (onTipCallback && typeof onTipCallback === 'function') {
-                try {
-                    // Extract donation information
-                    const userName = event.data.username || 'Anonymous';
-                    const amount = event.data.amount || 0;
-                    const currency = event.data.currency || 'USD';
-                    const message = event.data.message || '';
-
-                    console.log(chalk.magenta(`[StreamElements] Received donation: ${userName} - ${amount} ${currency} - Msg: "${message}"`));
+                case 'tip':
+                    await processTipEvent(event, onTipCallback);
+                    break;
                     
-                    // Call the callback with the donation data
-                    await onTipCallback({
-                        id: event.data._id || Date.now().toString(),
-                        username: userName,
-                        amount,
-                        currency,
-                        message,
-                        timestamp: event.createdAt || new Date().toISOString()
-                    });
-                } catch (error) {
-                    console.error(chalk.red('[StreamElements] Error processing donation:'), error);
-                }
+                default:
+                    // Ignore other event types
+                    break;
             }
+        } catch (error) {
+            console.error(chalk.red(`[StreamElements] Error processing ${event.type} event:`), error);
         }
     });
 
     return seSocket;
+}
+
+/**
+ * Process channel point redemption events
+ * @param {Object} event - The StreamElements event object
+ * @param {string} targetRewardTitle - The configured reward title to match
+ * @param {Function} callback - The callback function to execute
+ */
+async function processRedemptionEvent(event, targetRewardTitle, callback) {
+    const receivedTitle = event.data?.redemption;
+
+    // Check if the received title matches the one configured in .env
+    if (!receivedTitle || !targetRewardTitle || receivedTitle !== targetRewardTitle) {
+        console.log(chalk.grey(`[StreamElements] Ignored redemption: Title "${receivedTitle || 'N/A'}" does not match target "${targetRewardTitle || 'Not Set'}".`));
+        return; // Ignore this redemption
+    }
+    
+    if (!callback || typeof callback !== 'function') {
+        return; // No callback to execute
+    }
+    
+    const userName = event.data.username || 'Anonymous';
+    const userInput = event.data.message || ''; // Get user input (URL) from message field
+    console.log(chalk.magenta(`[StreamElements] Received channel point redemption: ${userName} - Reward: "${receivedTitle}" - Input: "${userInput}"`));
+    
+    // Call the callback with the redemption data
+    await callback({
+        id: event.data._id || event._id || Date.now().toString(),
+        username: userName,
+        message: userInput,
+        timestamp: event.createdAt || new Date().toISOString(),
+        rewardTitle: receivedTitle
+    });
+}
+
+/**
+ * Process tip/donation events
+ * @param {Object} event - The StreamElements event object
+ * @param {Function} callback - The callback function to execute
+ */
+async function processTipEvent(event, callback) {
+    if (!callback || typeof callback !== 'function') {
+        return; // No callback to execute
+    }
+    
+    // Extract donation information
+    const userName = event.data.username || 'Anonymous';
+    const amount = event.data.amount || 0;
+    const currency = event.data.currency || 'USD';
+    const message = event.data.message || '';
+
+    console.log(chalk.magenta(`[StreamElements] Received donation: ${userName} - ${amount} ${currency} - Msg: "${message}"`));
+    
+    // Call the callback with the donation data
+    await callback({
+        id: event.data._id || Date.now().toString(),
+        username: userName,
+        amount,
+        currency,
+        message,
+        timestamp: event.createdAt || new Date().toISOString()
+    });
 }
 
 /**

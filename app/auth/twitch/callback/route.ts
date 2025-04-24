@@ -5,7 +5,7 @@ import { writeFile } from 'fs/promises'
 import path from 'path'
 
 // Define path for storing the token (relative to project root)
-const tokenFilePath = path.join(process.cwd(), 'queue', 'user_token.json');
+const tokenFilePath = path.join(process.cwd(), 'auth', 'auth_tokens.json');
 
 export async function GET(request: Request) {
   try {

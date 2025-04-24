@@ -11,31 +11,31 @@ export interface SongRequest {
   /** Unique identifier for the request */
   id: string
   /** Full YouTube URL of the requested song */
-  youtubeUrl: string
+  youtubeUrl?: string | null
   /** Username of the person who requested the song */
   requester: string
   /** Login name of the requester (for Twitch URL) */
   requesterLogin?: string
   /** Avatar URL of the requester */
-  requesterAvatar: string
+  requesterAvatar?: string | null
   /** ISO timestamp - for queue items: when requested, for history items: completedAt */
   timestamp: string
   /** Title of the song (from YouTube) */
-  title?: string
+  title: string
   /** Artist/channel name (from YouTube) */
-  artist?: string
+  artist: string
   /** YouTube Channel ID (for linking) */
-  channelId?: string
+  channelId?: string | null
   /** Formatted duration (e.g., "3:45") */
   duration?: string
   /** Duration in seconds */
-  durationSeconds?: number
+  durationSeconds: number
   /** Thumbnail URL of the song */
-  thumbnailUrl?: string
+  thumbnailUrl?: string | null
   /** Source of the song (youtube, spotify, etc.) */
-  source?: string // Be more flexible than just 'youtube' | 'spotify'
+  source: 'youtube' | 'spotify_search' | 'database' | 'database_history' | 'database_active' | string
   /** Type of request (determines priority and limits) */
-  requestType: 'channelPoint' | 'donation' | string // Allow for other types potentially
+  requestType: 'channelPoint' | 'donation' | 'manual' | 'history_requeue' | 'socket' | string
   /** Donation details (if requestType is 'donation') */
   donationInfo?: {
     amount: number;
@@ -50,29 +50,7 @@ export interface SongRequest {
   /** Origin of the data (database, socket event, etc.) */
   origin?: string;
   /** Spotify track information if available */
-  spotify?: {
-    id: string;
-    name: string;
-    artists: {
-      id: string;
-      name: string;
-    }[];
-    album: {
-      id: string;
-      name: string;
-      releaseDate: string;
-      images: {
-        url: string;
-        height: number;
-        width: number;
-      }[];
-    };
-    durationMs: number;
-    previewUrl: string | null;
-    externalUrl: string;
-    uri: string;
-    matchScore?: number;
-  };
+  spotifyData?: SpotifyTrackData | null
 }
 
 /**
@@ -170,7 +148,7 @@ export interface SocketEvents {
     addSong: (songRequestData: Partial<SongRequest> & { youtubeUrl: string; requester: string }) => void; // Manual add
     removeSong: (songId: string) => void;
     clearQueue: () => void;
-    resetSystem: () => void; // Consider removing if clearQueue/stop is enough
+    resetSystem: () => void;
     setMaxDuration: (minutes: number) => void; // Or seconds, match backend
     updateActiveSong: (song: SongRequest | null) => void; // When admin forces next song or stops
     updateBlacklist: (newBlacklist: BlacklistItem[]) => void;
@@ -180,6 +158,7 @@ export interface SocketEvents {
     deleteHistoryItem: (id: string) => void; // Delete a single history item
     markSongAsFinished: (song: SongRequest) => void; // Mark the current song as finished and move to history
     returnToQueue: (song: SongRequest) => void; // Return a song from history to the top of the queue
+    skipSong: () => void; // Added for admin skipping song
 }
 
 /**
@@ -192,7 +171,7 @@ export interface EnvConfig {
   NEXT_PUBLIC_TWITCH_CLIENT_ID: string
   TWITCH_CLIENT_SECRET: string
   NEXT_PUBLIC_TWITCH_REDIRECT_URI: string
-  NEXT_PUBLIC_SOCKET_URL?: string; // Added optional socket URL
+  NEXT_PUBLIC_SOCKET_URL?: string;
 }
 
 /**
@@ -225,14 +204,28 @@ export interface PlannedRequest {
   thumbnailUrl?: string
   /** Timestamp when this was added to the plan */
   addedAt: string
-  /** Optional Spotify information */
-  spotify?: {
-    uri: string;
+  /** Alternative property name for Spotify data, used in some parts of code */
+  spotifyData?: SpotifyTrackData | null
+}
+
+// Interface for Spotify track data (as received from backend)
+export interface SpotifyTrackData {
+  id: string;
+  name: string;
+  artists: { id: string; name: string }[];
+  album: {
     id: string;
     name: string;
-    artists: { id: string; name: string }[];
-    album?: { id: string; name: string; images?: { url: string; height: number; width: number }[] };
-  }
+    releaseDate: string;
+    images: { url: string; height: number; width: number }[];
+  };
+  durationMs: number;
+  previewUrl?: string | null;
+  externalUrl: string;
+  uri: string;
+  matchScore?: number; // Score from YouTube matching
+  albumName?: string; 
+  albumImages?: { url: string; height: number; width: number }[];
 }
 
 export {} 

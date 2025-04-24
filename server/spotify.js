@@ -7,7 +7,6 @@ let tokenExpiryTime = null;
 
 // --- Configuration ---
 const MIN_MATCH_SCORE_THRESHOLD = 0.5; // Minimum overall score to consider a match
-const HIGH_MATCH_SCORE_THRESHOLD = 0.8; // Score above which we stop searching early
 const MAX_SEARCH_RESULTS_PER_QUERY = 5; // Max Spotify results per search query
 
 /**
@@ -90,8 +89,7 @@ async function searchSpotifyTrack(query, limit = MAX_SEARCH_RESULTS_PER_QUERY) {
     if (data.tracks && data.tracks.items && data.tracks.items.length > 0) {
       return data.tracks.items;
     } else {
-      // It's normal for some queries not to find tracks, so only log if needed for debug
-      // console.log(chalk.yellow(`[Spotify] No tracks found for query: "${query}"`));
+      console.log(chalk.yellow(`[Spotify] No tracks found for query: "${query}"`));
       return null;
     }
   } catch (error) {
@@ -401,23 +399,15 @@ async function getSpotifyEquivalent(song) {
         if (!track || !track.name || !track.artists || track.artists.length === 0) continue; // Skip invalid tracks
         
         const overallScore = scoreTrackMatch(track, song, extractedData);
-        const artistName = track.artists.map(a => a.name).join(', '); // For logging
+        // Use only the first artist name for display
+        const artistName = track.artists.length > 0 ? track.artists[0].name : 'Unknown Artist';
         console.log(chalk.blue(`  -> Scoring "${track.name}" by ${artistName}: Overall Score = ${overallScore.toFixed(3)}`));
         
         // Only consider tracks meeting the minimum threshold
         if (overallScore >= MIN_MATCH_SCORE_THRESHOLD) {
             potentialMatches.push({ track, score: overallScore });
         }
-        
-        // Optimization: If we find a very high scoring match early, we can potentially stop.
-        // This might miss the *absolute* best match if found later, but speeds things up.
-        // Let's keep it disabled for now to ensure we evaluate all candidates for the best possible match.
-        // if (overallScore >= HIGH_MATCH_SCORE_THRESHOLD) {
-        //   console.log(chalk.cyan(`[Spotify] High score match found (${overallScore.toFixed(3)}), potentially stopping search early.`));
-        //   // break; // Uncomment to enable early exit
-        // }
       }
-      // if (potentialMatches.some(m => m.score >= HIGH_MATCH_SCORE_THRESHOLD)) break; // Exit outer loop too if high score found
     }
 
     // --- Step 2: Analyze collected candidates ---
@@ -438,7 +428,11 @@ async function getSpotifyEquivalent(song) {
     if (bestScoringMatches.length === 1) {
       // Only one best match, easy choice
       finalMatch = bestScoringMatches[0].track;
-      console.log(chalk.green(`[Spotify] Selected unique best match: "${finalMatch.name}" (Score: ${maxScore.toFixed(3)})`));
+      // Display only the first artist name
+      const firstArtistName = finalMatch.artists && finalMatch.artists.length > 0 
+        ? finalMatch.artists[0].name 
+        : 'Unknown Artist';
+      console.log(chalk.green(`[Spotify] Selected unique best match: "${finalMatch.name}" by ${firstArtistName} (Score: ${maxScore.toFixed(3)})`));
     } else {
       // Tie-breaker needed! Use artist similarity.
       console.log(chalk.yellow(`[Spotify] Tie detected with score ${maxScore.toFixed(3)} among ${bestScoringMatches.length} tracks. Applying artist similarity tie-breaker...`));
@@ -447,14 +441,22 @@ async function getSpotifyEquivalent(song) {
       for (const match of bestScoringMatches) {
          const artistSimilarity = calculateArtistSimilarity(match.track, song, extractedData);
          tieBreakerMatches.push({ track: match.track, artistScore: artistSimilarity });
-         console.log(chalk.yellow(`  -> Tie-breaker score for "${match.track.name}": Artist Similarity = ${artistSimilarity.toFixed(3)}`));
+         // Display only the first artist name for each tie-breaker candidate
+         const firstArtistName = match.track.artists && match.track.artists.length > 0 
+           ? match.track.artists[0].name 
+           : 'Unknown Artist';
+         console.log(chalk.yellow(`  -> Tie-breaker score for "${match.track.name}" by ${firstArtistName}: Artist Similarity = ${artistSimilarity.toFixed(3)}`));
       }
 
       // Sort tied matches by artist similarity (descending)
       tieBreakerMatches.sort((a, b) => b.artistScore - a.artistScore);
       
       finalMatch = tieBreakerMatches[0].track; // Pick the one with the highest artist similarity
-      console.log(chalk.green(`[Spotify] Selected best match via tie-breaker: "${finalMatch.name}" (Artist Sim: ${tieBreakerMatches[0].artistScore.toFixed(3)})`));
+      // Display only the first artist name for the selected match
+      const firstArtistName = finalMatch.artists && finalMatch.artists.length > 0 
+        ? finalMatch.artists[0].name 
+        : 'Unknown Artist';
+      console.log(chalk.green(`[Spotify] Selected best match via tie-breaker: "${finalMatch.name}" by ${firstArtistName} (Artist Sim: ${tieBreakerMatches[0].artistScore.toFixed(3)})`));
     }
 
     // --- Step 4: Format and return the result ---
@@ -492,8 +494,131 @@ async function getSpotifyEquivalent(song) {
   }
 }
 
+/**
+ * Find a Spotify track by direct search query (for text-based requests without YouTube URL)
+ * @param {string} query - The search query text (e.g., "State Champs Secrets")
+ * @returns {Promise<Object|null>} Best matching Spotify track info or null if none found
+ */
+async function findSpotifyTrackBySearchQuery(query) {
+  if (!query) {
+    console.warn(chalk.yellow('[Spotify] Empty search query provided'));
+    return null;
+  }
+
+  console.log(chalk.blue(`[Spotify] Searching directly for track: "${query}"`));
+
+  try {
+    // Clean the query to improve matching
+    const cleanedQuery = cleanYouTubeTitle(query); // Reuse the cleaning function
+    
+    // Generate search variations
+    const searchQueries = [
+      query, // Original query
+      cleanedQuery, // Cleaned query
+      `track:${cleanedQuery}` // Spotify API specific syntax for better results
+    ];
+    
+    // Try to extract artist and title using separator extraction
+    const extracted = extractArtistAndTitle(query, '');
+    if (extracted.potentialArtist && extracted.potentialTitle) {
+      searchQueries.push(`${extracted.potentialArtist} ${extracted.potentialTitle}`);
+      searchQueries.push(`track:${extracted.potentialTitle} artist:${extracted.potentialArtist}`);
+      
+      // If we have a potential swap (Title - Artist format)
+      if (extracted.swappedArtist && extracted.swappedTitle) {
+        searchQueries.push(`${extracted.swappedArtist} ${extracted.swappedTitle}`);
+        searchQueries.push(`track:${extracted.swappedTitle} artist:${extracted.swappedArtist}`);
+      }
+    }
+    
+    console.log(chalk.blue(`[Spotify] Generated ${searchQueries.length} search queries: ${JSON.stringify([...new Set(searchQueries)])}`));
+    
+    // Search for tracks using each query variation
+    let allTracks = [];
+    
+    for (const searchQuery of [...new Set(searchQueries)]) { // Remove duplicates
+      const spotifyTracks = await searchSpotifyTrack(searchQuery, MAX_SEARCH_RESULTS_PER_QUERY);
+      if (spotifyTracks) {
+        allTracks = [...allTracks, ...spotifyTracks];
+      }
+    }
+    
+    // If no tracks found, return null
+    if (allTracks.length === 0) {
+      console.log(chalk.yellow(`[Spotify] No tracks found for query: "${query}"`));
+      return null;
+    }
+    
+    // Get unique tracks based on ID
+    const uniqueTracks = [];
+    const trackIds = new Set();
+    
+    for (const track of allTracks) {
+      if (!trackIds.has(track.id)) {
+        trackIds.add(track.id);
+        uniqueTracks.push(track);
+      }
+    }
+    
+    // For direct search without YouTube data, we'll use a simpler scoring method
+    // Score based on track popularity and how well it matches the query
+    const scoredTracks = uniqueTracks.map(track => {
+      // Simple text similarity between track details and query
+      const trackFullText = `${track.name} ${track.artists.map(a => a.name).join(' ')}`.toLowerCase();
+      const queryLower = query.toLowerCase();
+      
+      // Basic matching score - weighted with popularity
+      let score = similarityScore(trackFullText, queryLower);
+      
+      // Add a small boost for popular tracks
+      const popularityBoost = track.popularity ? (track.popularity / 1000) : 0; // Max 0.1 boost
+      
+      // Combine scores
+      const finalScore = Math.min(1, score + popularityBoost);
+      
+      return { track, score: finalScore };
+    });
+    
+    // Sort by score (highest first)
+    scoredTracks.sort((a, b) => b.score - a.score);
+    
+    // Get the top result
+    const bestMatch = scoredTracks[0].track;
+    // Display only the first artist name
+    const firstArtistName = bestMatch.artists && bestMatch.artists.length > 0 
+      ? bestMatch.artists[0].name 
+      : 'Unknown Artist';
+    console.log(chalk.green(`[Spotify] Best match for "${query}": "${bestMatch.name}" by ${firstArtistName} (Score: ${scoredTracks[0].score.toFixed(3)})`));
+    
+    // Format the result the same way as getSpotifyEquivalent
+    return {
+      id: bestMatch.id,
+      name: bestMatch.name,
+      artists: bestMatch.artists.map(artist => ({
+        id: artist.id,
+        name: artist.name
+      })),
+      album: {
+        id: bestMatch.album.id,
+        name: bestMatch.album.name,
+        releaseDate: bestMatch.album.release_date,
+        images: bestMatch.album.images
+      },
+      durationMs: bestMatch.duration_ms,
+      previewUrl: bestMatch.preview_url,
+      externalUrl: bestMatch.external_urls.spotify,
+      uri: bestMatch.uri,
+      matchScore: scoredTracks[0].score
+    };
+  } catch (error) {
+    console.error(chalk.red(`[Spotify] Error finding track by query "${query}"`), error);
+    return null;
+  }
+}
+
 module.exports = {
   getSpotifyToken,
   searchSpotifyTrack,
-  getSpotifyEquivalent
+  getSpotifyEquivalent,
+  findSpotifyTrackBySearchQuery
 }; 

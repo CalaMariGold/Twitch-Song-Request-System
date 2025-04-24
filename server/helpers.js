@@ -109,10 +109,104 @@ function extractYouTubeUrlFromText(text) {
     return match ? match[0] : null; // Return the full matched URL
 }
 
+/**
+ * Check if text is a YouTube URL or a search query
+ * @param {string} text - Text to analyze
+ * @returns {Object} { isYouTubeUrl: boolean, youtubeUrl: string|null, searchQuery: string|null }
+ */
+function analyzeRequestText(text) {
+    if (!text) {
+        return { isYouTubeUrl: false, youtubeUrl: null, searchQuery: null };
+    }
+    
+    // Check if the text contains a YouTube URL
+    const youtubeUrl = extractYouTubeUrlFromText(text);
+    
+    if (youtubeUrl) {
+        return { isYouTubeUrl: true, youtubeUrl, searchQuery: null };
+    } else {
+        // If no YouTube URL found, treat the entire text as a search query
+        return { isYouTubeUrl: false, youtubeUrl: null, searchQuery: text.trim() };
+    }
+}
+
+/**
+ * Checks if a song request is blacklisted based on title, artist, or keywords.
+ * @param {string} title - The song title.
+ * @param {string} artist - The song artist.
+ * @param {Array<Object>} blacklist - The blacklist array from the application state.
+ * @returns {Object|null} The matching blacklist item if found, otherwise null.
+ */
+function checkBlacklist(title, artist, blacklist) {
+    if (!blacklist || blacklist.length === 0) {
+        return null; // No blacklist to check against
+    }
+
+    const songTitleLower = title.toLowerCase();
+    const artistNameLower = artist.toLowerCase();
+
+    for (const item of blacklist) {
+        const termLower = item.term.toLowerCase();
+        switch (item.type) {
+            case 'song':
+                if (songTitleLower.includes(termLower)) {
+                    return item; // Found blacklisted song title
+                }
+                break;
+            case 'artist':
+                if (artistNameLower.includes(termLower)) {
+                    return item; // Found blacklisted artist
+                }
+                break;
+            case 'keyword':
+                if (songTitleLower.includes(termLower) || artistNameLower.includes(termLower)) {
+                    return item; // Found blacklisted keyword in title or artist
+                }
+                break;
+            default:
+                console.warn(`[Blacklist] Unknown blacklist type: ${item.type}`);
+                break;
+        }
+    }
+
+    return null; // No blacklist match found
+}
+
+/**
+ * Validates the duration of a song request based on its type.
+ * @param {number} durationSeconds - The duration of the song in seconds.
+ * @param {string} requestType - The type of request ('donation' or 'channelPoint').
+ * @param {number} maxDonationSeconds - The maximum duration for donations.
+ * @param {number} maxChannelPointSeconds - The maximum duration for channel points.
+ * @returns {Object|null} An error object { limit, message } if invalid, otherwise null.
+ */
+function validateDuration(durationSeconds, requestType, maxDonationSeconds, maxChannelPointSeconds) {
+    // const { MAX_DONATION_DURATION_SECONDS, MAX_CHANNEL_POINT_DURATION_SECONDS } = limits;
+
+    if (requestType === 'donation' && durationSeconds > maxDonationSeconds) {
+        return {
+            limit: maxDonationSeconds,
+            message: `Sorry, donation songs cannot be longer than ${maxDonationSeconds / 60} minutes.`
+        };
+    }
+
+    if (requestType === 'channelPoint' && durationSeconds > maxChannelPointSeconds) {
+        return {
+            limit: maxChannelPointSeconds,
+            message: `Sorry, channel point songs cannot be longer than ${maxChannelPointSeconds / 60} minutes. Donate for priority and up to ${maxDonationSeconds / 60} minute songs.`
+        };
+    }
+
+    return null; // Duration is valid
+}
+
 module.exports = {
     formatDurationFromSeconds,
     parseIsoDuration,
     formatDuration,
     extractVideoId,
-    extractYouTubeUrlFromText
+    extractYouTubeUrlFromText,
+    analyzeRequestText,
+    checkBlacklist,
+    validateDuration
 }; 

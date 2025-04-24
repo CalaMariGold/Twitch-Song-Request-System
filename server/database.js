@@ -2,19 +2,32 @@ const chalk = require('chalk');
 const path = require('path');
 const Database = require('better-sqlite3');
 const { formatDurationFromSeconds } = require('./helpers');
+const fs = require('fs');
 
-let db;
+let db = null;
 let insertHistoryStmt, insertQueueStmt, deleteQueueStmt, clearQueueStmt;
 let saveSettingStmt, addBlacklistStmt, removeBlacklistStmt, addBlockedUserStmt, removeBlockedUserStmt;
 let saveActiveSongStmt, clearActiveSongStmt;
 
-// Initialize the database connection and create tables if they don't exist
-function initDatabase() {
-    const dbPath = path.join(__dirname, '..', 'data', 'songRequestSystem.db');
-    
+/**
+ * Initializes the SQLite database with required tables
+ * @param {string} [dbPath] - Optional custom path to the database file
+ */
+function initDatabase(dbPath) {
     try {
-        db = new Database(dbPath, { /* verbose: console.log */ }); // Connect to DB
-        console.log(chalk.blue(`[Database] Connected to SQLite database at ${dbPath}`));
+        // Use provided dbPath or default
+        const defaultPath = path.join(__dirname, '..', 'data', 'songRequestSystem.db');
+        const finalDbPath = dbPath || defaultPath;
+        
+        // Ensure directory exists
+        const dbDir = path.dirname(finalDbPath);
+        if (!fs.existsSync(dbDir)) {
+            fs.mkdirSync(dbDir, { recursive: true });
+        }
+        
+        console.log(chalk.blue(`[Database] Initializing database at: ${finalDbPath}`));
+        db = new Database(finalDbPath);
+        console.log(chalk.blue(`[Database] Connected to SQLite database at ${finalDbPath}`));
 
         // Enable WAL mode for better concurrency
         db.pragma('journal_mode = WAL');
@@ -26,7 +39,7 @@ function initDatabase() {
         const createHistoryTableStmt = `
             CREATE TABLE IF NOT EXISTS song_history (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                youtubeUrl TEXT NOT NULL,
+                youtubeUrl TEXT, -- Not required
                 title TEXT,
                 artist TEXT,
                 channelId TEXT,
@@ -45,7 +58,7 @@ function initDatabase() {
         const createActiveSongTableStmt = `
             CREATE TABLE IF NOT EXISTS active_song (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                youtubeUrl TEXT NOT NULL,
+                youtubeUrl TEXT, -- Not required
                 title TEXT,
                 artist TEXT,
                 channelId TEXT,
@@ -64,7 +77,7 @@ function initDatabase() {
         const createActiveQueueTableStmt = `
             CREATE TABLE IF NOT EXISTS active_queue (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                youtubeUrl TEXT NOT NULL UNIQUE,
+                youtubeUrl TEXT, -- Not required anymore
                 title TEXT,
                 artist TEXT,
                 channelId TEXT,
@@ -135,25 +148,137 @@ function initDatabase() {
     }
 }
 
-// Function to ensure Spotify columns exist in existing tables
+// Function to ensure Spotify columns exist and youtubeUrl is NULLable
 function ensureSpotifyColumnsExist() {
     try {
-        // Check if the spotifyData column exists in each table, if not add it
-        const tables = ['song_history', 'active_song', 'active_queue'];
+        // First, let's check the current schema of each table
+        const historyColumns = db.prepare("PRAGMA table_info(song_history)").all();
+        const queueColumns = db.prepare("PRAGMA table_info(active_queue)").all();
+        const activeSongColumns = db.prepare("PRAGMA table_info(active_song)").all();
         
-        for (const table of tables) {
-            // Get current column info
-            const columns = db.prepare(`PRAGMA table_info(${table})`).all();
-            const hasSpotifyColumn = columns.some(col => col.name === 'spotifyData');
-            
-            // Add column if it doesn't exist
-            if (!hasSpotifyColumn) {
-                db.exec(`ALTER TABLE ${table} ADD COLUMN spotifyData TEXT`);
-                console.log(chalk.blue(`[Database] Added spotifyData column to ${table} table`));
-            }
+        // Check if the spotifyData column exists in each table
+        const historySpotifyColExists = historyColumns.some(col => col.name === 'spotifyData');
+        const queueSpotifyColExists = queueColumns.some(col => col.name === 'spotifyData');
+        const activeSongSpotifyColExists = activeSongColumns.some(col => col.name === 'spotifyData');
+        
+        // Add spotifyData column to each table if it doesn't exist
+        if (!historySpotifyColExists) {
+            console.log(chalk.blue('[Database] Adding spotifyData column to song_history table'));
+            db.exec('ALTER TABLE song_history ADD COLUMN spotifyData TEXT');
         }
-    } catch (err) {
-        console.error(chalk.red('[Database] Error ensuring Spotify columns exist:'), err);
+        
+        if (!queueSpotifyColExists) {
+            console.log(chalk.blue('[Database] Adding spotifyData column to active_queue table'));
+            db.exec('ALTER TABLE active_queue ADD COLUMN spotifyData TEXT');
+        }
+        
+        if (!activeSongSpotifyColExists) {
+            console.log(chalk.blue('[Database] Adding spotifyData column to active_song table'));
+            db.exec('ALTER TABLE active_song ADD COLUMN spotifyData TEXT');
+        }
+        
+        // Now let's check if youtubeUrl already allows NULL
+        const historyYoutubeIsNotNull = historyColumns.find(col => col.name === 'youtubeUrl')?.notnull === 1;
+        const queueYoutubeIsNotNull = queueColumns.find(col => col.name === 'youtubeUrl')?.notnull === 1;
+        const activeSongYoutubeIsNotNull = activeSongColumns.find(col => col.name === 'youtubeUrl')?.notnull === 1;
+        
+        // Make youtubeUrl nullable in each table if it's currently NOT NULL
+        if (historyYoutubeIsNotNull) {
+            console.log(chalk.blue('[Database] Making youtubeUrl nullable in song_history table'));
+            
+            // Generate column definitions, skipping the id column (we'll add it separately)
+            let columnDefs = historyColumns
+                .filter(col => col.name !== 'id') // Skip the id column
+                .map(col => {
+                    // For the youtubeUrl column, don't include NOT NULL
+                    if (col.name === 'youtubeUrl') {
+                        return `${col.name} ${col.type}`;
+                    }
+                    // For other columns, preserve their original definition
+                    return `${col.name} ${col.type}${col.notnull ? ' NOT NULL' : ''}${col.dflt_value ? ` DEFAULT ${col.dflt_value}` : ''}`;
+                }).join(', ');
+            
+            db.exec(`
+                BEGIN TRANSACTION;
+                CREATE TABLE song_history_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ${columnDefs}
+                );
+                INSERT INTO song_history_new SELECT * FROM song_history;
+                DROP TABLE song_history;
+                ALTER TABLE song_history_new RENAME TO song_history;
+                COMMIT;
+            `);
+        }
+        
+        if (queueYoutubeIsNotNull) {
+            console.log(chalk.blue('[Database] Making youtubeUrl nullable in active_queue table'));
+            
+            // Generate column definitions, skipping the id column
+            let columnDefs = queueColumns
+                .filter(col => col.name !== 'id') // Skip the id column
+                .map(col => {
+                    // Remove both NOT NULL and UNIQUE constraints from youtubeUrl
+                    if (col.name === 'youtubeUrl') {
+                        return `${col.name} ${col.type}`;
+                    }
+                    // For other columns, preserve their original definition
+                    return `${col.name} ${col.type}${col.notnull ? ' NOT NULL' : ''}${col.dflt_value ? ` DEFAULT ${col.dflt_value}` : ''}`;
+                }).join(', ');
+            
+            db.exec(`
+                BEGIN TRANSACTION;
+                CREATE TABLE active_queue_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ${columnDefs}
+                );
+                INSERT INTO active_queue_new SELECT * FROM active_queue;
+                DROP TABLE active_queue;
+                ALTER TABLE active_queue_new RENAME TO active_queue;
+                COMMIT;
+            `);
+            
+            // We need to recreate the index for the queue order
+            db.exec('CREATE INDEX IF NOT EXISTS idx_queue_order ON active_queue (priority DESC, addedAt ASC)');
+        }
+        
+        if (activeSongYoutubeIsNotNull) {
+            console.log(chalk.blue('[Database] Making youtubeUrl nullable in active_song table'));
+            
+            // Generate column definitions, skipping the id column
+            let columnDefs = activeSongColumns
+                .filter(col => col.name !== 'id') // Skip the id column
+                .map(col => {
+                    // For the youtubeUrl column, don't include NOT NULL
+                    if (col.name === 'youtubeUrl') {
+                        return `${col.name} ${col.type}`;
+                    }
+                    // For other columns, preserve their original definition
+                    return `${col.name} ${col.type}${col.notnull ? ' NOT NULL' : ''}${col.dflt_value ? ` DEFAULT ${col.dflt_value}` : ''}`;
+                }).join(', ');
+            
+            db.exec(`
+                BEGIN TRANSACTION;
+                CREATE TABLE active_song_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ${columnDefs}
+                );
+                INSERT INTO active_song_new SELECT * FROM active_song;
+                DROP TABLE active_song;
+                ALTER TABLE active_song_new RENAME TO active_song;
+                COMMIT;
+            `);
+        }
+        
+        console.log(chalk.green('[Database] Schema updated to support Spotify-only requests'));
+    } catch (error) {
+        console.error(chalk.red('[Database] Error updating database schema:'), error);
+        // Attempt to rollback any in-progress transaction
+        try {
+            db.exec('ROLLBACK;');
+        } catch (rollbackError) {
+            console.error(chalk.red('[Database] Error rolling back transaction:'), rollbackError);
+        }
     }
 }
 
@@ -178,7 +303,7 @@ function prepareStatements() {
                 @requester, @requesterLogin, @requesterAvatar, @thumbnailUrl, @requestType, @priority, @spotifyData
             )
         `);
-        deleteQueueStmt = db.prepare('DELETE FROM active_queue WHERE youtubeUrl = ?');
+        deleteQueueStmt = db.prepare('DELETE FROM active_queue WHERE id = ?');
         clearQueueStmt = db.prepare('DELETE FROM active_queue');
 
         // Active Song
@@ -277,11 +402,11 @@ function addSongToDbQueue(song) {
         const priority = song.requestType === 'donation' ? 1 : 0;
         
         // Serialize Spotify data if present
-        const spotifyData = song.spotify ? JSON.stringify(song.spotify) : null;
+        const spotifyData = song.spotifyData ? JSON.stringify(song.spotifyData) : null;
         
         // Use the prepared statement defined earlier
         insertQueueStmt.run({
-            youtubeUrl: song.youtubeUrl,
+            youtubeUrl: song.youtubeUrl || null,
             title: song.title || null,
             artist: song.artist || null,
             channelId: song.channelId || null,
@@ -316,11 +441,11 @@ function saveActiveSongToDB(song) {
         clearActiveSongFromDB();
         
         // Serialize Spotify data if present
-        const spotifyData = song.spotify ? JSON.stringify(song.spotify) : null;
+        const spotifyData = song.spotifyData ? JSON.stringify(song.spotifyData) : null;
         
         // Add the new song
         saveActiveSongStmt.run({
-            youtubeUrl: song.youtubeUrl,
+            youtubeUrl: song.youtubeUrl || null,
             title: song.title || null,
             artist: song.artist || null,
             channelId: song.channelId || null,
@@ -355,9 +480,10 @@ function loadActiveSongFromDB() {
         }
         
         // Parse Spotify data if present
+        let spotifyData = null;
         if (activeSong.spotifyData) {
             try {
-                activeSong.spotify = JSON.parse(activeSong.spotifyData);
+                spotifyData = JSON.parse(activeSong.spotifyData);
             } catch (e) {
                 console.error(chalk.red('[Database] Failed to parse Spotify data for active song:'), e);
             }
@@ -380,7 +506,7 @@ function loadActiveSongFromDB() {
             thumbnailUrl: activeSong.thumbnailUrl,
             requestType: activeSong.requestType,
             source: 'database_active',
-            spotify: activeSong.spotify // Include the parsed Spotify data
+            spotifyData: spotifyData // Use consistent property name
         };
     } catch (err) {
         console.error(chalk.red('[Database] Failed to load active song:'), err);
@@ -388,19 +514,20 @@ function loadActiveSongFromDB() {
     }
 }
 
-function removeSongFromDbQueue(youtubeUrl) {
-    if (!youtubeUrl) {
-        console.warn(chalk.yellow('[DB Write] removeSongFromDbQueue called with null/undefined youtubeUrl'));
+function removeSongFromDbQueue(songId) {
+    if (!songId) {
+        console.warn(chalk.yellow('[DB Write] removeSongFromDbQueue called with null/undefined songId'));
         return;
     }
     try {
-        // Use the prepared statement defined earlier
-        const result = deleteQueueStmt.run(youtubeUrl);
+        // Update to use song ID instead of youtubeUrl
+        const deleteByIdStmt = db.prepare('DELETE FROM active_queue WHERE id = ?');
+        const result = deleteByIdStmt.run(songId);
         if (result.changes > 0) {
-            console.log(chalk.grey(`[DB Write] Removed song from active_queue: ${youtubeUrl}`));
+            console.log(chalk.grey(`[DB Write] Removed song from active_queue with ID: ${songId}`));
         }
     } catch (err) {
-        console.error(chalk.red(`[Database] Failed to remove song from active_queue (${youtubeUrl}):`), err);
+        console.error(chalk.red(`[Database] Failed to remove song from active_queue (ID: ${songId}):`), err);
     }
 }
 
@@ -418,30 +545,17 @@ function clearDbQueue() {
 
 function logCompletedSong(song) {
     if (!song) {
-        console.warn(chalk.yellow('[Database] Cannot log null song as completed'));
-        return false;
+        console.warn(chalk.yellow('[DB Write] logCompletedSong called with null/undefined song'));
+        return false; // Return false if song is invalid
     }
 
     try {
         // Serialize Spotify data if present
-        const spotifyData = song.spotify ? JSON.stringify(song.spotify) : null;
-        
-        // Ensure we use ISO string for timestamp
-        const now = new Date().toISOString();
-        
-        // Create a statement that explicitly sets the completedAt value
-        const insertWithTimestampStmt = db.prepare(`
-            INSERT INTO song_history (
-                youtubeUrl, title, artist, channelId, durationSeconds,
-                requester, requesterLogin, requesterAvatar, thumbnailUrl, requestType, completedAt, spotifyData
-            ) VALUES (
-                @youtubeUrl, @title, @artist, @channelId, @durationSeconds,
-                @requester, @requesterLogin, @requesterAvatar, @thumbnailUrl, @requestType, @completedAt, @spotifyData
-            )
-        `);
-        
-        insertWithTimestampStmt.run({
-            youtubeUrl: song.youtubeUrl,
+        const spotifyData = song.spotifyData ? JSON.stringify(song.spotifyData) : null;
+
+        // Use the prepared statement defined earlier
+        insertHistoryStmt.run({
+            youtubeUrl: song.youtubeUrl || null,
             title: song.title || null,
             artist: song.artist || null,
             channelId: song.channelId || null,
@@ -451,18 +565,13 @@ function logCompletedSong(song) {
             requesterAvatar: song.requesterAvatar || null,
             thumbnailUrl: song.thumbnailUrl || null,
             requestType: song.requestType,
-            completedAt: now,
             spotifyData: spotifyData
         });
-        
-        console.log(chalk.grey(`[DB Write] Logged completed song in history: ${song.title}`));
-        
-        // Get the updated history to return
-        const recentHistory = getRecentHistory();
-        return { history: recentHistory };
+        console.log(chalk.grey(`[DB Write] Logged completed song to history: ${song.title}`));
+        return true; // Return true on success
     } catch (err) {
-        console.error(chalk.red('[Database] Failed to log completed song:'), err);
-        return false;
+        console.error(chalk.red('[Database] Failed to log completed song to history:'), err);
+        return false; // Return false on failure
     }
 }
 
@@ -508,13 +617,13 @@ function getRecentHistory(limit = 50) {
         
         return historyItems.map(item => {
             // Parse Spotify data if present
+            let spotifyData = null;
             if (item.spotifyData) {
                 try {
-                    item.spotify = JSON.parse(item.spotifyData);
+                    spotifyData = JSON.parse(item.spotifyData);
                 } catch (e) {
                     console.error(chalk.red('[Database] Failed to parse Spotify data for history item:'), e);
                 }
-                delete item.spotifyData; // Remove raw JSON string after parsing
             }
             
             // Ensure the timestamp is properly converted to an ISO string
@@ -547,7 +656,7 @@ function getRecentHistory(limit = 50) {
                 thumbnailUrl: item.thumbnailUrl,
                 requestType: item.requestType,
                 source: 'database_history',
-                spotify: item.spotify // Include the parsed Spotify data
+                spotifyData: spotifyData // Use consistent property name for Spotify data
             };
         });
     } catch (err) {
@@ -571,10 +680,10 @@ function loadInitialState() {
         // Map DB columns to state.queue song format (adjust if necessary)
         loadedState.queue = queueRows.map(row => {
             // Parse Spotify data if present
-            let spotify = null;
+            let spotifyData = null;
             if (row.spotifyData) {
                 try {
-                    spotify = JSON.parse(row.spotifyData);
+                    spotifyData = JSON.parse(row.spotifyData);
                 } catch (e) {
                     console.error(chalk.red('[Database] Failed to parse Spotify data for queue item:'), e);
                 }
@@ -595,7 +704,7 @@ function loadInitialState() {
                 timestamp: row.addedAt, // Use addedAt as timestamp
                 requestType: row.requestType,
                 source: 'database',
-                spotify: spotify // Include the parsed Spotify data
+                spotifyData: spotifyData // Use consistent property name for Spotify data
             };
         });
         console.log(chalk.blue(`[Database] Loaded ${loadedState.queue.length} songs into the active queue.`));
@@ -646,11 +755,40 @@ function loadInitialState() {
     return loadedState;
 }
 
-// Close database connection when needed
+/**
+ * Closes the database connection and cleans up prepared statements
+ * @returns {boolean} True if closed successfully, false otherwise
+ */
 function closeDatabase() {
-    if (db && db.open) {
-        console.log(chalk.blue('[Database] Closing SQLite connection.'));
+    if (!db) {
+        console.warn(chalk.yellow('[Database] No database connection to close.'));
+        return false;
+    }
+    
+    try {
+        console.log(chalk.blue('[Database] Closing database connection...'));
+        
+        // Clean up prepared statements
+        insertHistoryStmt = null;
+        insertQueueStmt = null;
+        deleteQueueStmt = null;
+        clearQueueStmt = null;
+        saveSettingStmt = null;
+        addBlacklistStmt = null;
+        removeBlacklistStmt = null;
+        addBlockedUserStmt = null;
+        removeBlockedUserStmt = null;
+        saveActiveSongStmt = null;
+        clearActiveSongStmt = null;
+        
+        // Close database
         db.close();
+        db = null;
+        console.log(chalk.blue('[Database] Database connection closed successfully.'));
+        return true;
+    } catch (err) {
+        console.error(chalk.red('[Database] Error closing database:'), err);
+        return false;
     }
 }
 

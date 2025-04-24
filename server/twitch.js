@@ -167,8 +167,31 @@ async function getTwitchUser(username) {
     }
 }
 
+/**
+ * Disconnects from Twitch chat
+ * @returns {boolean} True if disconnected successfully, false otherwise
+ */
+function disconnectFromTwitch() {
+    if (!tmiClient) {
+        console.warn(chalk.yellow('[Twitch Chat] No active Twitch connection to disconnect.'));
+        return false;
+    }
+    
+    try {
+        tmiClient.disconnect()
+            .then(() => console.log(chalk.blue('[Twitch Chat] Disconnected successfully.')))
+            .catch(err => console.error(chalk.red('[Twitch Chat] Error during disconnect:'), err));
+        
+        return true;
+    } catch (error) {
+        console.error(chalk.red('[Twitch Chat] Error disconnecting:'), error);
+        return false;
+    }
+}
+
 module.exports = {
     initTwitchChat,
     sendChatMessage,
-    getTwitchUser
+    getTwitchUser,
+    disconnectFromTwitch
 }; 
