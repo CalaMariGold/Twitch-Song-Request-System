@@ -112,6 +112,11 @@ function similarityScore(str1, str2) {
   const s2 = str2.toLowerCase().trim();
   
   if (s1 === s2) return 1; // Exact match
+
+  // ** NEW: Check for match ignoring spaces **
+  const s1NoSpace = s1.replace(/\s+/g, '');
+  const s2NoSpace = s2.replace(/\s+/g, '');
+  if (s1NoSpace === s2NoSpace && s1NoSpace.length > 0) return 0.95; // High score for space difference only
   
   // Basic word overlap as a simple heuristic
   const words1 = new Set(s1.split(/\s+/).filter(w => w.length > 1));
@@ -124,7 +129,8 @@ function similarityScore(str1, str2) {
   const jaccardIndex = intersection.size / union.size;
   
   // Boost score slightly if one string contains the other (useful for artist names)
-  const containmentScore = (s1.includes(s2) || s2.includes(s1)) ? 0.1 : 0;
+  // Refined containment check using the no-space versions too
+  const containmentScore = (s1.includes(s2) || s2.includes(s1) || (s1NoSpace.length > 2 && s2NoSpace.length > 2 && (s1NoSpace.includes(s2NoSpace) || s2NoSpace.includes(s1NoSpace)))) ? 0.1 : 0;
 
   return Math.min(1, jaccardIndex + containmentScore); // Combine scores, cap at 1
 }
@@ -137,17 +143,34 @@ function similarityScore(str1, str2) {
 function cleanYouTubeTitle(title) {
   if (!title) return '';
   
-  return title
-    .replace(/\([^)]*\)|【[^】]*】|\[[^\]]*\]/g, '') // Remove content in parentheses, brackets, etc.
-    .replace(/official\s*(music)?\s*video/gi, '') // Remove "official music video"
-    .replace(/lyrics?(\s*video)?/gi, '') // Remove "lyrics", "lyric video"
-    .replace(/\b(ft\.?|feat\.?|featuring)\b/gi, 'feat') // Normalize featuring
-    .replace(/\b(original|hd|4k|audio|track|version|extended)\b/gi, '') // Remove common filler words
-    .replace(/["']/g, '') // Remove double and single quotes
-    .replace(/\s*-\s*topic$/i, '') // Remove "- Topic" from channel-generated titles
-    .replace(/\s*[|＊・:\-–—]\s*/g, ' ') // Replace common separators with space
-    .replace(/\s+/g, ' ') // Replace multiple spaces with a single space
-    .trim(); // Remove leading/trailing spaces
+  let cleaned = title;
+
+  // Remove specific common patterns within parentheses/brackets first
+  cleaned = cleaned.replace(/\((official|lyric|audio|visualizer|music|hq|hd|4k|explicit|original|extended|radio edit|video|live|session)\b[^)]*\)/gi, '');
+  cleaned = cleaned.replace(/\[(official|lyric|audio|visualizer|music|hq|hd|4k|explicit|original|extended|radio edit|video|live|session)\b[^]]*\]/gi, '');
+  cleaned = cleaned.replace(/【(official|lyric|audio|visualizer|music|hq|hd|4k|explicit|original|extended|radio edit|video|live|session)\b[^】]*】/gi, '');
+  
+  // Now remove other common patterns NOT necessarily in parentheses
+  cleaned = cleaned.replace(/official\s*(music)?\s*video/gi, '') 
+                   .replace(/lyrics?(\s*video)?/gi, '') 
+                   .replace(/\b(audio|track|version)\b/gi, '') 
+                   .replace(/\b(hd|hq|4k)\b/gi, '');
+
+  // Normalize featuring and remove quotes AFTER potentially useful parenthetical info is kept
+  cleaned = cleaned.replace(/\b(ft\.?|feat\.?|featuring)\b/gi, 'feat') 
+                   .replace(/["']/g, '');
+
+  // Remove "- Topic" from channel-generated titles
+  cleaned = cleaned.replace(/\s*-\s*topic$/i, '');
+
+  // Replace common separators with space AFTER cleaning, to handle cases like "Artist - Song (feat. X)"
+  cleaned = cleaned.replace(/\s*[|＊・:\-–—]\s*/g, ' ');
+
+  // Final cleanup
+  cleaned = cleaned.replace(/\s+/g, ' ') 
+                   .trim();
+                   
+  return cleaned;
 }
 
 /**
@@ -158,68 +181,101 @@ function cleanYouTubeTitle(title) {
  * @returns {Object} Extracted { potentialArtist, potentialTitle, swappedArtist, swappedTitle }
  */
 function extractArtistAndTitle(youtubeTitle, channelTitle) {
-  const originalCleanedTitle = cleanYouTubeTitle(youtubeTitle); // Basic cleaning first
-
   let potentialArtist = '';
-  let potentialTitle = originalCleanedTitle;
+  let potentialTitle = '';
   let swappedArtist = ''; // For cases like Title - Artist
   let swappedTitle = '';
+  let extractedWithQuotePattern = false;
 
-  // Prioritize dash separators ('-','–','—')
-  const dashPattern = /^(.*?)\s*[-–—]\s*(.*)$/;
-  const dashMatch = youtubeTitle.match(dashPattern); // Match on original title to preserve structure
+  // ** MODIFIED **: Check for 'Artist "Title"' on ORIGINAL title first
+  const quotePattern = /^([\w\s]+?)\s+"([^"]+)"/; // Allow any non-" chars inside quotes
+  const quoteMatch = youtubeTitle.match(quotePattern); // Match on ORIGINAL title
 
-  if (dashMatch) {
-    potentialArtist = dashMatch[1].trim();
-    potentialTitle = cleanYouTubeTitle(dashMatch[2].trim()); // Clean the extracted title part
-    potentialArtist = cleanYouTubeTitle(potentialArtist); // Clean artist part too
-    swappedArtist = potentialTitle; // Assume Title - Artist is possible
-    swappedTitle = potentialArtist;
-  } else {
-    // If no dash, try pipe separators ('|') - less reliable
-    const pipePattern = /^(.*?)\s*[|]\s*(.*)$/;
-    const pipeMatch = youtubeTitle.match(pipePattern);
-    if (pipeMatch) {
-      potentialArtist = pipeMatch[1].trim();
-      potentialTitle = cleanYouTubeTitle(pipeMatch[2].trim());
-      potentialArtist = cleanYouTubeTitle(potentialArtist);
-       swappedArtist = potentialTitle; // Assume Title | Artist is possible
-       swappedTitle = potentialArtist;
-    }
-  }
-
-  // Handle "Topic" channels - often means format is "Title - Artist"
-  if (channelTitle && channelTitle.toLowerCase().includes('topic')) {
-    // If we didn't find a separator, the whole cleaned title might be the song title
-    // and the channel name (minus ' - Topic') might be the artist.
-    if (!dashMatch && !youtubeTitle.match(pipePattern)) {
-        potentialArtist = channelTitle.replace(/ - Topic$/i, '').trim();
-        potentialTitle = originalCleanedTitle;
-    } else if (dashMatch || youtubeTitle.match(pipePattern)) {
-      // If we DID find a separator, assume the *second* part is the artist for Topic channels
-      const parts = youtubeTitle.split(/[-–—|]/);
-      if (parts.length >= 2) {
-         potentialTitle = cleanYouTubeTitle(parts[0].trim());
-         potentialArtist = cleanYouTubeTitle(parts[1].trim());
-         // No swapped logic needed here, Topic channels are usually consistent
-         swappedArtist = ''; 
-         swappedTitle = '';
-      }
-    }
-  }
-
-  // If no artist found yet, use channel title if it's not generic
-  if (!potentialArtist) {
-    const genericChannels = ['vevo', 'official', 'music', 'records', 'channel', 'records', 'label', 'audio', 'video'];
-    const isGenericChannel = !channelTitle || genericChannels.some(word => channelTitle.toLowerCase().includes(word));
-    if (!isGenericChannel) {
-      potentialArtist = channelTitle.replace(/official/i, '').trim();
-    }
+  if (quoteMatch) {
+    potentialArtist = cleanYouTubeTitle(quoteMatch[1].trim()); // Clean extracted artist
+    potentialTitle = cleanYouTubeTitle(quoteMatch[2].trim()); // Clean extracted title
+    // No swapped logic needed for this specific pattern usually
+    swappedArtist = ''; 
+    swappedTitle = '';
+    extractedWithQuotePattern = true;
+    console.log(chalk.blue(`[Spotify] Extracted using Quote Pattern (Original Title): Artist='${potentialArtist}', Title='${potentialTitle}'`));
   }
   
-  // Final check to ensure we have some title
-  if (!potentialTitle) potentialTitle = originalCleanedTitle;
+  // If quote pattern didn't match, proceed with cleaning and other separators
+  if (!extractedWithQuotePattern) {
+      const originalCleanedTitle = cleanYouTubeTitle(youtubeTitle); // Clean title now
+      potentialTitle = originalCleanedTitle; // Default title if no separators found
 
+      // Prioritize dash separators ('-','–','—')
+      const dashPattern = /^(.*?)\s*[-–—]\s*(.*)$/;
+      // Match on original title for structure, but clean the parts
+      const dashMatch = youtubeTitle.match(dashPattern); 
+
+      if (dashMatch) {
+        potentialArtist = cleanYouTubeTitle(dashMatch[1].trim()); // Clean the extracted artist part
+        potentialTitle = cleanYouTubeTitle(dashMatch[2].trim()); // Clean the extracted title part
+        swappedArtist = potentialTitle; // Assume Title - Artist is possible
+        swappedTitle = potentialArtist;
+      } else {
+        // If no dash, try pipe separators ('|') - less reliable
+        const pipePattern = /^(.*?)\s*[|]\s*(.*)$/;
+        const pipeMatch = youtubeTitle.match(pipePattern);
+        if (pipeMatch) {
+          potentialArtist = cleanYouTubeTitle(pipeMatch[1].trim());
+          potentialTitle = cleanYouTubeTitle(pipeMatch[2].trim());
+          swappedArtist = potentialTitle; // Assume Title | Artist is possible
+          swappedTitle = potentialArtist;
+        } else {
+           // ** Check for 'Title by Artist' pattern if no dash/pipe found **
+           const byPattern = /^(.*?)\s+by\s+(.*?)$/i; // Matches 'Something by Someone' case-insensitively
+           const byMatch = originalCleanedTitle.match(byPattern); // Match on the cleaned title here
+           if (byMatch) {
+               potentialTitle = byMatch[1].trim(); // First part is title (already cleaned)
+               potentialArtist = byMatch[2].trim(); // Second part is artist (already cleaned)
+               // Clear swapped logic as this format is usually specific
+               swappedArtist = ''; 
+               swappedTitle = '';
+               console.log(chalk.blue(`[Spotify] Extracted using 'by' Pattern: Artist='${potentialArtist}', Title='${potentialTitle}'`));
+           }
+        }
+      }
+      
+      // Handle "Topic" channels - logic might need adjustment if artist/title already found
+      if (!potentialArtist && channelTitle && channelTitle.toLowerCase().includes('topic')) {
+        // If we didn't find ANY separator ('-', '|', 'by'), whole cleaned title might be song title
+        // and channel name (minus ' - Topic') might be the artist.
+        if (!dashMatch && !youtubeTitle.match(pipePattern) && !originalCleanedTitle.match(/\s+by\s+/i)) { 
+            potentialArtist = channelTitle.replace(/ - Topic$/i, '').trim();
+            potentialTitle = originalCleanedTitle;
+        } else if (dashMatch || youtubeTitle.match(pipePattern)) {
+          // If we DID find dash/pipe, assume *second* part is the artist for Topic channels
+          // This overrides previous dash/pipe extraction for Topic channels
+          const parts = youtubeTitle.split(/[-–—|]/);
+          if (parts.length >= 2) {
+             potentialTitle = cleanYouTubeTitle(parts[0].trim());
+             potentialArtist = cleanYouTubeTitle(parts[1].trim());
+             // No swapped logic needed here, Topic channels are usually consistent
+             swappedArtist = ''; 
+             swappedTitle = '';
+          }
+        }
+        // Note: We don't explicitly handle 'by' pattern combined with Topic channels, assumes dash/pipe take precedence if present.
+      }
+    
+      // If no artist found yet by any structural pattern, use channel title if it's not generic
+      if (!potentialArtist) {
+        const genericChannels = ['vevo', 'official', 'music', 'records', 'channel', 'label', 'audio', 'video']; // Simplified list
+        const lowerChannelTitle = channelTitle ? channelTitle.toLowerCase() : '';
+        const isGenericChannel = !channelTitle || genericChannels.some(word => lowerChannelTitle.includes(word));
+        if (!isGenericChannel) {
+          potentialArtist = channelTitle.replace(/official/i, '').trim();
+          potentialTitle = originalCleanedTitle; // If using channel as artist, assume cleaned title is the song title
+        }
+      }
+  } // End of (!extractedWithQuotePattern) block
+
+  // Final check to ensure we have some title (defaults to cleaned original if somehow lost)
+  if (!potentialTitle) potentialTitle = cleanYouTubeTitle(youtubeTitle); 
 
   return {
     potentialArtist: potentialArtist || '', // Ensure empty string if null/undefined
@@ -295,19 +351,19 @@ function calculateArtistSimilarity(spotifyTrack, song, extracted) {
         return 0;
     }
 
+    const spotifyArtist = spotifyTrack.artists[0]; // ** Use only the first artist **
+    if (!spotifyArtist || !spotifyArtist.name) return 0; 
+
     let maxArtistScore = 0;
     const youtubeArtist = song.artist || ''; // Channel name
     const potentialArtist = extracted.potentialArtist || '';
 
-    for (const spotifyArtist of spotifyTrack.artists) {
-        if (!spotifyArtist.name) continue;
-        // Compare Spotify artist name against both YT channel name and extracted potential artist
-        const scoreVsChannel = similarityScore(spotifyArtist.name, youtubeArtist);
-        const scoreVsPotential = potentialArtist ? similarityScore(spotifyArtist.name, potentialArtist) : 0;
-        
-        // Take the highest score for this Spotify artist against the YT sources
-        maxArtistScore = Math.max(maxArtistScore, scoreVsChannel, scoreVsPotential);
-    }
+    // Compare Spotify artist name against both YT channel name and extracted potential artist
+    const scoreVsChannel = similarityScore(spotifyArtist.name, youtubeArtist);
+    const scoreVsPotential = potentialArtist ? similarityScore(spotifyArtist.name, potentialArtist) : 0;
+    
+    // Take the highest score for this Spotify artist against the YT sources
+    maxArtistScore = Math.max(scoreVsChannel, scoreVsPotential);
     
     return maxArtistScore;
 }
@@ -461,13 +517,14 @@ async function getSpotifyEquivalent(song) {
     // --- Step 4: Format and return the result ---
     if (finalMatch) {
        const finalSelectedScore = bestScoringMatches.find(m => m.track.id === finalMatch.id)?.score || 0; // Get the original overall score
+       const firstArtist = finalMatch.artists && finalMatch.artists.length > 0 ? finalMatch.artists[0] : null;
        return {
          id: finalMatch.id,
          name: finalMatch.name,
-         artists: finalMatch.artists.map(artist => ({
-           id: artist.id,
-           name: artist.name
-         })),
+         artists: firstArtist ? [{ // ** Return only the first artist **
+           id: firstArtist.id,
+           name: firstArtist.name
+         }] : [], // Return empty array if no artists
          album: {
            id: finalMatch.album.id,
            name: finalMatch.album.name,
@@ -563,7 +620,8 @@ async function findSpotifyTrackBySearchQuery(query) {
     // Score based on track popularity and how well it matches the query
     const scoredTracks = uniqueTracks.map(track => {
       // Simple text similarity between track details and query
-      const trackFullText = `${track.name} ${track.artists.map(a => a.name).join(' ')}`.toLowerCase();
+      const firstArtistName = track.artists && track.artists.length > 0 ? track.artists[0].name : '';
+      const trackFullText = `${track.name} ${firstArtistName}`.toLowerCase(); // ** Use only first artist **
       const queryLower = query.toLowerCase();
       
       // Basic matching score - weighted with popularity
@@ -590,13 +648,14 @@ async function findSpotifyTrackBySearchQuery(query) {
     console.log(chalk.green(`[Spotify] Best match for "${query}": "${bestMatch.name}" by ${firstArtistName} (Score: ${scoredTracks[0].score.toFixed(3)})`));
     
     // Format the result the same way as getSpotifyEquivalent
+    const firstArtist = bestMatch.artists && bestMatch.artists.length > 0 ? bestMatch.artists[0] : null;
     return {
       id: bestMatch.id,
       name: bestMatch.name,
-      artists: bestMatch.artists.map(artist => ({
-        id: artist.id,
-        name: artist.name
-      })),
+      artists: firstArtist ? [{ // ** Return only the first artist **
+        id: firstArtist.id,
+        name: firstArtist.name
+      }] : [],
       album: {
         id: bestMatch.album.id,
         name: bestMatch.album.name,
