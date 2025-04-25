@@ -1,6 +1,7 @@
 const chalk = require('chalk');
 
 let seSocket = null;
+let wasAuthFailure = false; // Flag to track authentication failures
 
 /**
  * Connects to the StreamElements Socket API for real-time events
@@ -39,22 +40,51 @@ function connectToStreamElements(config, onTipCallback, onRedemptionCallback) {
 
     seSocket.on('authenticated', () => {
         console.log(chalk.green('✅ [StreamElements] Connected and Authenticated. Listening for donations and channel point redemptions.'));
+        wasAuthFailure = false; // Reset flag on successful authentication
     });
 
     // Handle connection errors
     seSocket.on('unauthorized', (reason) => {
         console.error(chalk.red('[StreamElements] Authentication failed:'), reason);
+        wasAuthFailure = true; // Set flag indicating auth failure
         if(seSocket) seSocket.disconnect();
     });
 
-    seSocket.on('disconnect', () => {
-        console.warn(chalk.yellow('[StreamElements] Disconnected. Will attempt reconnect...'));
-        // Attempt to reconnect after a delay
-        setTimeout(() => connectToStreamElements(config, onTipCallback, onRedemptionCallback), 5000);
+    seSocket.on('disconnect', (reason) => {
+        // Check if disconnection was due to auth failure
+        if (wasAuthFailure) {
+            console.error(chalk.red.bold('[StreamElements] Authentication failed. Automatic reconnection disabled. Please check your JWT token and restart the server.'));
+            seSocket = null; // Clear the socket reference
+            // Do NOT attempt to reconnect automatically
+        } else {
+            // Handle regular disconnections (network issues, etc.)
+            console.warn(chalk.yellow(`[StreamElements] Disconnected (Reason: ${reason || 'N/A'}). Will attempt reconnect...`));
+            
+            // Attempt to reconnect only if not manually disconnected and not an auth failure
+            if (seSocket) { // Check if socket still exists (might be null if disconnectFromStreamElements was called)
+                // Use a timeout for reconnection attempt
+                setTimeout(() => {
+                    // Check again inside timeout in case it was disconnected in the meantime
+                    if (seSocket && !wasAuthFailure) { // Double-check flag and socket status
+                         console.log(chalk.blue('[StreamElements] Attempting reconnection...'));
+                         // Re-establish connection - this will create a new socket instance
+                         connectToStreamElements(config, onTipCallback, onRedemptionCallback);
+                    } else if (wasAuthFailure) {
+                        console.log(chalk.yellow('[StreamElements] Reconnection attempt aborted due to previous authentication failure.'));
+                    } else {
+                        console.log(chalk.blue('[StreamElements] Disconnected, socket reference became null before reconnection attempt.'));
+                    }
+                }, 5000); // 5-second delay
+            } else {
+                 console.log(chalk.blue('[StreamElements] Disconnected, but socket reference already null. No automatic reconnection attempt.'));
+            }
+        }
     });
 
     seSocket.on('connect_error', (error) => {
         console.error(chalk.red('[StreamElements] Connection error:'), error);
+        // Optionally handle connection errors differently, e.g., exponential backoff
+        // For now, rely on disconnect event for retries unless it's an auth failure
     });
 
     // Listen for events (tips/donations)
@@ -150,6 +180,7 @@ async function processTipEvent(event, callback) {
 function disconnectFromStreamElements() {
     if (seSocket) {
         console.log(chalk.blue('[StreamElements] Disconnecting from StreamElements...'));
+        wasAuthFailure = false; // Reset flag on manual disconnect
         seSocket.disconnect();
         seSocket = null;
     }
