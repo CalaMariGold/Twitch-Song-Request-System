@@ -15,15 +15,21 @@ let saveActiveSongStmt, clearActiveSongStmt;
  */
 function initDatabase(dbPath) {
     try {
-        // Determine the base directory for data
-        const persistentPath = process.env.PERSISTENT_DATA_PATH; // Path provided by Railway Volume mount
-        const baseDataDir = persistentPath || path.join(__dirname, '..'); // Use volume path or project root
+        // Determine the final path for the database file
+        const dbFileName = 'songRequestSystem.db';
+        let finalDbPath;
+        if (process.env.PERSISTENT_DATA_PATH) {
+             // Use the persistent volume path directly
+            finalDbPath = path.join(process.env.PERSISTENT_DATA_PATH, dbFileName);
+        } else if (dbPath) {
+            // Use the custom path if provided
+            finalDbPath = dbPath;
+        } else {
+            // Default to project's data directory if no persistent path or custom path is set
+            finalDbPath = path.join(__dirname, '..', 'data', dbFileName);
+        }
 
-        // Define the specific file path within the base directory
-        const dbFileName = 'data/songRequestSystem.db'; // Keep the subdirectory structure if desired
-        const finalDbPath = dbPath || path.join(baseDataDir, dbFileName);
-
-        // Ensure directory exists (whether it's PERSISTENT_DATA_PATH/data or ../data)
+        // Ensure directory exists (whether it's PERSISTENT_DATA_PATH or ../data)
         const dbDir = path.dirname(finalDbPath);
         if (!fs.existsSync(dbDir)) {
             fs.mkdirSync(dbDir, { recursive: true });
