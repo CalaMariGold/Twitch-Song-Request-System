@@ -13,6 +13,7 @@ import { SongRequest, QueueState, AllTimeStats } from "@/lib/types"
 import { StatisticsCard } from "@/components/StatisticsCard"
 import { formatDuration, calculateTotalQueueDuration } from "@/lib/utils"
 import React from "react"
+import Footer from "@/components/Footer"
 
 export default function PublicDashboard() {
   const [queueState, setQueueState] = useState<QueueState>({
@@ -187,20 +188,20 @@ export default function PublicDashboard() {
           <div className="md:col-span-1 space-y-6">
 
             {/* ShinyFest Poster Card */}
-            <Card className="bg-gradient-to-br from-brand-pink-light/80 to-brand-pink-dark/80 border-brand-pink-neon/40 backdrop-blur-md shadow-glow-pink-md hover:shadow-glow-pink-lg transition-shadow duration-300 overflow-hidden">
+            <Card className="bg-gradient-to-br from-brand-pink-light/80 to-brand-pink-dark/80 border-brand-pink-neon/40 backdrop-blur-md shadow-glow-pink-md hover:shadow-glow-pink-lg transition-all duration-300 ease-in-out hover:scale-[1.01]">
               <a href="https://calamarigold-shop.fourthwall.com/products/shinyfest-2025-concert-poster" target="_blank" rel="noopener noreferrer" className="block hover:opacity-90 transition-opacity">
-                <CardContent className="p-4 flex flex-col items-center text-center">
-                  <div className="relative w-full aspect-[5/7] mb-3 border-2 border-brand-pink-neon/30 rounded-md overflow-hidden shadow-inner shadow-brand-black/30">
+                <CardContent className="p-1 flex flex-col items-center text-center">
+                  <div className="relative w-full aspect-[5/7] mb-0 border-2 border-brand-pink-neon/30 rounded-md overflow-hidden shadow-inner shadow-brand-black/30">
                     <Image 
                       src="/shinyfest 2025 poster.png" 
                       alt="ShinyFest 2025 Poster" 
                       fill
                       className="object-cover"
                       priority
-                      quality={90}
+                      quality={100}
                     />
                   </div>
-                  <p className="text-sm font-semibold text-white text-glow-white-xs leading-snug">
+                  <p className="text-[11px] font-semibold text-white leading-snug pt-1 [text-shadow:1px_1px_3px_black]">
                     ShinyFest 2025 poster now available for sale!
                   </p>
                 </CardContent>
@@ -223,7 +224,7 @@ export default function PublicDashboard() {
                     <DollarSign size={16} className="text-green-400"/> Priority Request (Donation)
                   </h4>
                   <p className="text-brand-purple-light/90 text-xs">
-                    Include the YouTube link OR Artist & Song Title in your donation message.
+                    IMPORTANT: Include the YouTube link, Spotify link, OR Artist & Song Title in your donation message.
                   </p>
                   {/* Add margin top/bottom to the link/button wrapper */}
                   <a 
@@ -235,7 +236,7 @@ export default function PublicDashboard() {
                     <Button 
                       variant="default" 
                       size="sm" 
-                      className="w-full bg-gradient-to-r from-brand-pink-light to-brand-pink-neon text-brand-black font-bold hover:opacity-90 transition-opacity shadow-md hover:shadow-lg text-glow-white-xs"
+                      className="w-full bg-gradient-to-r from-brand-pink-light to-brand-pink-neon text-brand-black font-bold hover:opacity-90 transition-opacity shadow-md hover:shadow-glow-pink-lg text-glow-white-xs transition-transform duration-200 hover:scale-[1.02]"
                     >
                       Tip Here to Request <ExternalLink size={14} className="ml-1.5" />
                     </Button>
@@ -245,7 +246,6 @@ export default function PublicDashboard() {
                     <li>$1 USD per minute</li>
                     <li>Minimum $3 USD</li>
                     <li>Max 10 min duration</li>
-                    <li>Back-to-back requests need a 1 song gap</li>
                   </ul>
                 </div>
 
@@ -314,6 +314,7 @@ export default function PublicDashboard() {
           </div>
         </div>
       </div>
+      <Footer />
     </main>
   )
 }

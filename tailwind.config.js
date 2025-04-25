@@ -93,8 +93,15 @@ module.exports = {
       boxShadow: {
         'glow-pink': '0 0 15px 3px rgba(255, 20, 147, 0.6)', // Neon Pink Glow
         'glow-purple': '0 0 15px 3px rgba(218, 112, 214, 0.6)', // Neon Purple Glow
-        'glow-pink-sm': '0 0 10px 2px rgba(255, 20, 147, 0.7)', // Brighter/Larger small pink glow
+        'glow-pink-lg': '0 0 25px 6px rgba(255, 20, 147, 0.7)', // Larger hover glow
+        'glow-purple-lg': '0 0 25px 6px rgba(218, 112, 214, 0.7)', // Larger hover glow
+        'glow-pink-md': '0 0 20px 5px rgba(255, 20, 147, 0.6)', // Increased blur/spread for more obvious non-hover glow
+        'glow-purple-md': '0 0 20px 5px rgba(218, 112, 214, 0.6)', // Increased blur/spread for more obvious non-hover glow
+        'glow-pink-sm': '0 0 10px 2px rgba(255, 20, 147, 0.7)',
         'glow-purple-sm': '0 0 8px 1px rgba(218, 112, 214, 0.5)',
+        // Subtle glows for text
+        'text-glow-white-xs': '0 0 5px rgba(255, 255, 255, 0.5)',
+        'text-glow-pink-xs': '0 0 5px rgba(255, 20, 147, 0.7)',
       },
       fontFamily: {
         sans: ['var(--font-inter)', 'sans-serif'], // Keep Inter as base sans-serif
