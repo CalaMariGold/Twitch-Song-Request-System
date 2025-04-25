@@ -733,8 +733,8 @@ export default function AdminDashboard() {
                        />
                     </div>
 
-                    <div className="flex-grow min-w-0">
-                      <p className="font-semibold text-white text-lg truncate" title={appState.activeSong.title}>{appState.activeSong.title || 'Unknown Title'}</p>
+                    <div className="flex-1 min-w-0 overflow-hidden">
+                      <p className="font-semibold text-white text-lg truncate overflow-hidden whitespace-nowrap" title={appState.activeSong.title}>{appState.activeSong.title || 'Unknown Title'}</p>
                       <p className="text-sm text-gray-400 truncate hover:text-gray-300 transition-colors">
                         {appState.activeSong.channelId ? (
                           <Link href={`https://www.youtube.com/channel/${appState.activeSong.channelId}`} target="_blank" rel="noopener noreferrer" className="underline">
@@ -884,7 +884,7 @@ export default function AdminDashboard() {
                                    <li 
                                      ref={provided.innerRef}
                                      {...provided.draggableProps}
-                                     className={`flex items-center space-x-3 p-3 rounded-md bg-gray-800 hover:bg-gray-700/80 transition mb-2 group ${snapshot.isDragging ? 'opacity-70 border border-purple-500' : ''}`}
+                                     className={`flex items-center space-x-3 p-3 rounded-md bg-gray-800 hover:bg-gray-700/80 transition mb-2 group w-full ${snapshot.isDragging ? 'opacity-70 border border-purple-500' : ''}`}
                                    >
                                      <div 
                                        {...provided.dragHandleProps}
@@ -908,8 +908,13 @@ export default function AdminDashboard() {
                                          </div>
                                        )}
                                      </div>
-                                     <div className="flex-grow min-w-0">
-                                        <p className="font-medium text-white truncate" title={song.title}>{song.title || 'Loading title...'}</p>
+                                     <div className="flex-1 min-w-0 overflow-hidden">
+                                        <p 
+                                            className="font-medium text-white truncate max-w-md"
+                                            title={song.title}
+                                        >
+                                            {song.title || 'Loading title...'}
+                                        </p>
                                         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1">
                                            {song.channelId ? (
                                              <Link href={`https://www.youtube.com/channel/${song.channelId}`} target="_blank" rel="noopener noreferrer" className="hover:text-purple-300 transition-colors group/artist">
@@ -972,7 +977,8 @@ export default function AdminDashboard() {
                                         )}
                                         {/* END: Added Spotify Details */}
                                      </div>
-                                     <div className="flex-shrink-0 flex flex-col items-end">
+                                     {/* Buttons and Timestamp container */}
+                                     <div className="flex-shrink-0 flex flex-col items-end flex-grow-0">
                                         <div className="flex space-x-1 items-center"> {/* Wrap buttons for alignment */}
                                            {/* NEW: Edit Spotify Button */}
                                            <Button 
@@ -1064,8 +1070,8 @@ export default function AdminDashboard() {
                                 </div>
                               )}
                              </div>
-                            <div className="flex-grow min-w-0">
-                               <p className="font-medium text-white truncate" title={song.title}>{song.title || 'Unknown Title'}</p>
+                            <div className="flex-1 min-w-0 overflow-hidden">
+                               <p className="font-medium text-white truncate overflow-hidden whitespace-nowrap" title={song.title}>{song.title || 'Unknown Title'}</p>
                                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1">
                                   {song.channelId ? (
                                     <Link href={`https://www.youtube.com/channel/${song.channelId}`} target="_blank" rel="noopener noreferrer" className="hover:text-purple-300 transition-colors group/artist">
