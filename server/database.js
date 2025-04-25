@@ -680,9 +680,13 @@ function deleteHistoryItem(id) {
     }
 }
 
-function getRecentHistory(limit = 50) {
+/**
+ * @returns {SongRequest[]} An array of recent history items, formatted as SongRequest objects.
+ */
+function getRecentHistory() {
     try {
-        const historyItems = db.prepare('SELECT * FROM song_history ORDER BY id DESC LIMIT ?').all(limit);
+        // Removed LIMIT from the query
+        const historyItems = db.prepare('SELECT * FROM song_history ORDER BY id DESC').all();
         
         return historyItems.map(item => {
             let spotifyData = null;

@@ -600,7 +600,7 @@ export default function SongRequestQueue() {
       console.log('Received new song request:', song)
       setState((prev: AppState) => ({
         ...prev,
-        queue: [...prev.queue, song].slice(-constants.MAX_QUEUE_SIZE) // Add to end, ensure max size
+        queue: [...prev.queue, song]
       }))
     })
 

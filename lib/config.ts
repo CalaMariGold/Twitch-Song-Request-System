@@ -33,8 +33,6 @@ export function validateConfig() {
  * Application constants
  */
 export const constants = {
-  MAX_QUEUE_SIZE: 50,
-  MAX_HISTORY_SIZE: 100,
   SOCKET_RECONNECT_ATTEMPTS: 5,
   SOCKET_RECONNECT_DELAY: 1000,
   MAX_SONG_DURATION_MINUTES: 5,
