@@ -79,7 +79,8 @@ function initDatabase(dbPath) {
         const createActiveQueueTableStmt = `
             CREATE TABLE IF NOT EXISTS active_queue (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                youtubeUrl TEXT, -- Not required anymore
+                request_id TEXT UNIQUE,
+                youtubeUrl TEXT,
                 title TEXT,
                 artist TEXT,
                 channelId TEXT,
@@ -88,10 +89,10 @@ function initDatabase(dbPath) {
                 requesterLogin TEXT,
                 requesterAvatar TEXT,
                 thumbnailUrl TEXT,
-                requestType TEXT NOT NULL, -- 'channelPoint' or 'donation'
-                priority INTEGER DEFAULT 0, -- e.g., 0=channelPoint, 1=donation
+                requestType TEXT NOT NULL,
+                priority INTEGER DEFAULT 0,
                 addedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                spotifyData TEXT -- Spotify data as JSON string
+                spotifyData TEXT
             );
         `;
         db.exec(createActiveQueueTableStmt);
@@ -124,6 +125,24 @@ function initDatabase(dbPath) {
         db.exec(createBlockedUsersTableStmt);
 
         // Run migration logic *after* base tables are guaranteed to exist
+        // --- Migration logic placeholder --- 
+        try {
+            const queueColumns = db.prepare("PRAGMA table_info(active_queue)").all();
+            const requestIdColExists = queueColumns.some(col => col.name === 'request_id');
+            if (!requestIdColExists) {
+                console.log(chalk.blue('[Database] Adding request_id column to active_queue table'));
+                // Step 1: Add column WITHOUT UNIQUE constraint
+                db.exec('ALTER TABLE active_queue ADD COLUMN request_id TEXT'); 
+                console.log(chalk.yellow('[Database] Warning: Added request_id column. Existing rows will have NULL request_id.'));
+                // Step 2: Create UNIQUE index separately AFTER adding column
+                console.log(chalk.blue('[Database] Creating UNIQUE index on request_id column'));
+                db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_queue_request_id_unique ON active_queue (request_id)');
+            }
+        } catch (migrationError) {
+            console.error(chalk.red('[Database] Error during request_id column migration:'), migrationError);
+            // If the migration fails, the subsequent index creation might also fail.
+        }
+        // --- End migration logic --- 
         ensureSpotifyColumnsExist();
 
         // Index Creation
@@ -303,10 +322,10 @@ function prepareStatements() {
         `);
         insertQueueStmt = db.prepare(`
             INSERT INTO active_queue (
-                youtubeUrl, title, artist, channelId, durationSeconds,
+                request_id, youtubeUrl, title, artist, channelId, durationSeconds,
                 requester, requesterLogin, requesterAvatar, thumbnailUrl, requestType, priority, addedAt, spotifyData
             ) VALUES (
-                @youtubeUrl, @title, @artist, @channelId, @durationSeconds,
+                @request_id, @youtubeUrl, @title, @artist, @channelId, @durationSeconds,
                 @requester, @requesterLogin, @requesterAvatar, @thumbnailUrl, @requestType, @priority, @addedAt, @spotifyData
             )
         `);
@@ -405,32 +424,24 @@ function removeBlockedUser(username) {
 
 function addSongToDbQueue(song) {
     try {
-        // Determine priority: Use explicit priority if passed (e.g., from history requeue),
-        // otherwise calculate based on requestType (higher value for donations)
-        const priority = typeof song.priority === 'number' 
-            ? song.priority 
-            : (song.requestType === 'donation' ? 1 : 0);
-        
-        // Serialize Spotify data if present
-        const spotifyData = song.spotifyData ? JSON.stringify(song.spotifyData) : null;
-        // Ensure timestamp exists on the song object, default if not (should exist)
-        const addedAt = song.timestamp || new Date().toISOString();
-        
-        // Use the prepared statement defined earlier
+        const priority = song.requestType === 'donation' ? 1 : 0;
+        const spotifyDataJson = song.spotifyData ? JSON.stringify(song.spotifyData) : null;
+
         insertQueueStmt.run({
-            youtubeUrl: song.youtubeUrl || null,
-            title: song.title || null,
-            artist: song.artist || null,
-            channelId: song.channelId || null,
-            durationSeconds: song.durationSeconds || null,
+            request_id: song.id,
+            youtubeUrl: song.youtubeUrl,
+            title: song.title,
+            artist: song.artist,
+            channelId: song.channelId,
+            durationSeconds: song.durationSeconds,
             requester: song.requester,
-            requesterLogin: song.requesterLogin || null,
-            requesterAvatar: song.requesterAvatar || null,
-            thumbnailUrl: song.thumbnailUrl || null,
+            requesterLogin: song.requesterLogin,
+            requesterAvatar: song.requesterAvatar,
+            thumbnailUrl: song.thumbnailUrl,
             requestType: song.requestType,
-            priority: priority,
-            addedAt: addedAt,
-            spotifyData: spotifyData
+            priority: song.priority || priority,
+            addedAt: song.timestamp || new Date().toISOString(),
+            spotifyData: spotifyDataJson
         });
         console.log(chalk.grey(`[DB Write] Added song to active_queue: ${song.title}`));
     } catch (err) {
@@ -530,20 +541,38 @@ function loadActiveSongFromDB() {
     }
 }
 
-function removeSongFromDbQueue(songId) {
-    if (!songId) {
-        console.warn(chalk.yellow('[DB Write] removeSongFromDbQueue called with null/undefined songId'));
-        return;
+/**
+ * Removes a song from the active_queue table based on its unique request_id.
+ * @param {string} requestId - The unique ID generated by the application (e.g., timestamp string).
+ * @returns {boolean} True if a row was deleted, false otherwise.
+ */
+function removeSongFromDbQueue(requestId) { // Renamed parameter for clarity
+    if (!db) {
+        console.error(chalk.red('[Database] Cannot remove song, database not initialized.'));
+        return false;
+    }
+    if (!requestId) {
+        console.warn(chalk.yellow('[Database] removeSongFromDbQueue called with invalid requestId:', requestId));
+        return false;
     }
     try {
-        // Update to use song ID instead of youtubeUrl
-        const deleteByIdStmt = db.prepare('DELETE FROM active_queue WHERE id = ?');
-        const result = deleteByIdStmt.run(songId);
+        // Prepare statement locally if not already done (safer)
+        const stmt = db.prepare('DELETE FROM active_queue WHERE request_id = ?');
+        // Delete based on the request_id (JavaScript generated ID)
+        const result = stmt.run(requestId);
+        
         if (result.changes > 0) {
-            console.log(chalk.grey(`[DB Write] Removed song from active_queue with ID: ${songId}`));
+            console.log(chalk.grey(`[DB Write] Removed song with request_id ${requestId} from active_queue.`));
+            return true;
+        } else {
+            // This might happen if the song was manually added and didn't go through the normal DB add flow
+            // or if there's a state mismatch. Should be less common now.
+            console.warn(chalk.yellow(`[DB Write] No song found with request_id ${requestId} in active_queue to remove.`));
+            return false;
         }
     } catch (err) {
-        console.error(chalk.red(`[Database] Failed to remove song from active_queue (ID: ${songId}):`), err);
+        console.error(chalk.red(`[Database] Failed to remove song with request_id ${requestId} from active_queue:`), err);
+        return false;
     }
 }
 
