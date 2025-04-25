@@ -276,37 +276,39 @@ export default function SongRequestQueue() {
                           ref={provided.innerRef}
                           {...provided.draggableProps}
                           className={cn(
-                            "flex items-center space-x-3 p-3 rounded-md bg-brand-purple-dark/30 hover:bg-brand-purple-dark/50 transition-colors duration-200 mb-2 border border-brand-purple-neon/10 hover:border-brand-purple-neon/30",
+                            "flex flex-wrap sm:flex-nowrap items-center sm:space-x-3 p-3 rounded-md bg-brand-purple-dark/30 hover:bg-brand-purple-dark/50 transition-colors duration-200 mb-2 border border-brand-purple-neon/10 hover:border-brand-purple-neon/30",
                           )}
                         >
-                          <div
-                            {...provided.dragHandleProps}
-                            className="flex-shrink-0 cursor-move text-brand-purple-light/50 hover:text-brand-purple-light/80 transition-colors"
-                          >
-                            <GripVertical size={20} />
+                          <div className="flex items-center space-x-3 flex-shrink-0">
+                            <div
+                              {...provided.dragHandleProps}
+                              className="flex-shrink-0 cursor-move text-brand-purple-light/50 hover:text-brand-purple-light/80 transition-colors"
+                            >
+                              <GripVertical size={20} />
+                            </div>
+                            
+                            <div className="flex-shrink-0 font-semibold text-brand-purple-light/60 w-6 text-center">
+                              {index + 1}
+                            </div>
+                            
+                            <div className="relative w-16 h-9 rounded-md overflow-hidden flex-shrink-0 border border-brand-purple-neon/10">
+                              {song.thumbnailUrl ? (
+                                <img 
+                                  src={song.thumbnailUrl} 
+                                  alt={song.title || 'Video thumbnail'}
+                                  className="w-full h-full object-cover"
+                                />
+                              ) : (
+                                <Avatar className="w-full h-full rounded-md bg-brand-purple-dark/50">
+                                  <AvatarFallback className="rounded-md bg-transparent flex items-center justify-center">
+                                    <Music size={24} className="text-brand-purple-light/70"/>
+                                  </AvatarFallback>
+                                </Avatar>
+                              )}
+                            </div>
                           </div>
                           
-                          <div className="flex-shrink-0 font-semibold text-brand-purple-light/60 w-6 text-center">
-                            {index + 1}
-                          </div>
-                          
-                          <div className="relative w-16 h-9 rounded-md overflow-hidden flex-shrink-0 border border-brand-purple-neon/10">
-                            {song.thumbnailUrl ? (
-                              <img 
-                                src={song.thumbnailUrl} 
-                                alt={song.title || 'Video thumbnail'}
-                                className="w-full h-full object-cover"
-                              />
-                            ) : (
-                              <Avatar className="w-full h-full rounded-md bg-brand-purple-dark/50">
-                                <AvatarFallback className="rounded-md bg-transparent flex items-center justify-center">
-                                  <Music size={24} className="text-brand-purple-light/70"/>
-                                </AvatarFallback>
-                              </Avatar>
-                            )}
-                          </div>
-                          
-                          <div className="flex-grow min-w-0">
+                          <div className="flex-grow min-w-0 w-full sm:w-auto order-first sm:order-none mb-2 sm:mb-0">
                             <p className="font-medium text-white truncate flex items-center gap-1">
                               {song.title || song.youtubeUrl}
                             </p>
@@ -331,7 +333,7 @@ export default function SongRequestQueue() {
                             </div>
                           </div>
                           
-                          <div className="flex flex-col items-end space-y-1 flex-shrink-0">            
+                          <div className="flex flex-col items-start sm:items-end space-y-1 flex-shrink-0 w-full sm:w-auto">
                             <div className="flex space-x-1 items-center">
                               {/* Youtube button */}
                               <a href={song.youtubeUrl} target="_blank" rel="noopener noreferrer" aria-label="Watch on YouTube">
@@ -698,39 +700,39 @@ export default function SongRequestQueue() {
         </div>
 
         <Tabs defaultValue="queue" className="w-full">
-          {/* Update Tabs Style */}
-          <TabsList className="grid w-full grid-cols-4 bg-brand-purple-dark/50 border border-brand-purple-neon/10 p-1 h-auto rounded-lg">
-            <TabsTrigger value="queue" className="data-[state=active]:bg-brand-purple-dark data-[state=active]:text-brand-pink-light data-[state=active]:shadow-md data-[state=active]:shadow-brand-black/30 text-brand-purple-light/80 hover:bg-brand-purple-dark/70 hover:text-white transition-all rounded-md data-[state=active]:border data-[state=active]:border-brand-pink-neon/50 data-[state=active]:text-glow-pink relative group">
+          {/* Tabs Style */}
+          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 bg-brand-purple-dark/50 border border-brand-purple-neon/10 p-1 h-auto rounded-lg">
+            <TabsTrigger value="queue" className="data-[state=active]:bg-brand-purple-dark data-[state=active]:text-brand-pink-light data-[state=active]:shadow-md data-[state=active]:shadow-brand-black/30 text-brand-purple-light/80 hover:bg-brand-purple-dark/70 hover:text-white transition-all rounded-md data-[state=active]:border data-[state=active]:border-brand-pink-neon/50 data-[state=active]:text-glow-pink relative group text-xs sm:text-sm">
               {/* Add shiny icon to active state */}
               <div className="absolute -top-1 -right-1 w-3 h-3 opacity-0 group-data-[state=active]:opacity-100 transition-opacity duration-300">
                 <Image src="/shiny.png" alt="" fill sizes="12px" className="object-contain"/>
               </div>
-              <Music className="mr-1.5" size={16} />
-              Queue ({state.queue.length})
+              <Music className="mr-1 sm:mr-1.5" size={16} />
+              <span className="truncate">Queue ({state.queue.length})</span>
             </TabsTrigger>
-            <TabsTrigger value="history" className="data-[state=active]:bg-brand-purple-dark data-[state=active]:text-brand-pink-light data-[state=active]:shadow-md data-[state=active]:shadow-brand-black/30 text-brand-purple-light/80 hover:bg-brand-purple-dark/70 hover:text-white transition-all rounded-md data-[state=active]:border data-[state=active]:border-brand-pink-neon/50 data-[state=active]:text-glow-pink relative group">
+            <TabsTrigger value="history" className="data-[state=active]:bg-brand-purple-dark data-[state=active]:text-brand-pink-light data-[state=active]:shadow-md data-[state=active]:shadow-brand-black/30 text-brand-purple-light/80 hover:bg-brand-purple-dark/70 hover:text-white transition-all rounded-md data-[state=active]:border data-[state=active]:border-brand-pink-neon/50 data-[state=active]:text-glow-pink relative group text-xs sm:text-sm">
               {/* Add shiny icon to active state */}
               <div className="absolute -top-1 -right-1 w-3 h-3 opacity-0 group-data-[state=active]:opacity-100 transition-opacity duration-300">
                 <Image src="/shiny.png" alt="" fill sizes="12px" className="object-contain"/>
               </div>
-              <History className="mr-1.5" size={16} />
-              History ({state.history.length})
+              <History className="mr-1 sm:mr-1.5" size={16} />
+              <span className="truncate">History ({state.history.length})</span>
             </TabsTrigger>
-            <TabsTrigger value="myrequests" className="data-[state=active]:bg-brand-purple-dark data-[state=active]:text-brand-pink-light data-[state=active]:shadow-md data-[state=active]:shadow-brand-black/30 text-brand-purple-light/80 hover:bg-brand-purple-dark/70 hover:text-white transition-all rounded-md data-[state=active]:border data-[state=active]:border-brand-pink-neon/50 data-[state=active]:text-glow-pink disabled:opacity-50 disabled:pointer-events-none relative group" disabled={!currentUser}>
+            <TabsTrigger value="myrequests" className="data-[state=active]:bg-brand-purple-dark data-[state=active]:text-brand-pink-light data-[state=active]:shadow-md data-[state=active]:shadow-brand-black/30 text-brand-purple-light/80 hover:bg-brand-purple-dark/70 hover:text-white transition-all rounded-md data-[state=active]:border data-[state=active]:border-brand-pink-neon/50 data-[state=active]:text-glow-pink disabled:opacity-50 disabled:pointer-events-none relative group text-xs sm:text-sm" disabled={!currentUser}>
               {/* Add shiny icon to active state */}
               <div className="absolute -top-1 -right-1 w-3 h-3 opacity-0 group-data-[state=active]:opacity-100 transition-opacity duration-300">
                 <Image src="/shiny.png" alt="" fill sizes="12px" className="object-contain"/>
               </div>
-              <User className="mr-1.5" size={16} />
-              My Requests {currentUser ? `(${myRequestsCount})` : ''}
+              <User className="mr-1 sm:mr-1.5" size={16} />
+              <span className="truncate">My Requests {currentUser ? `(${myRequestsCount})` : ''}</span>
             </TabsTrigger>
-            <TabsTrigger value="requestplan" className="data-[state=active]:bg-brand-purple-dark data-[state=active]:text-brand-pink-light data-[state=active]:shadow-md data-[state=active]:shadow-brand-black/30 text-brand-purple-light/80 hover:bg-brand-purple-dark/70 hover:text-white transition-all rounded-md data-[state=active]:border data-[state=active]:border-brand-pink-neon/50 data-[state=active]:text-glow-pink disabled:opacity-50 disabled:pointer-events-none relative group" disabled={!currentUser}>
+            <TabsTrigger value="requestplan" className="data-[state=active]:bg-brand-purple-dark data-[state=active]:text-brand-pink-light data-[state=active]:shadow-md data-[state=active]:shadow-brand-black/30 text-brand-purple-light/80 hover:bg-brand-purple-dark/70 hover:text-white transition-all rounded-md data-[state=active]:border data-[state=active]:border-brand-pink-neon/50 data-[state=active]:text-glow-pink disabled:opacity-50 disabled:pointer-events-none relative group text-xs sm:text-sm" disabled={!currentUser}>
               {/* Add shiny icon to active state */}
               <div className="absolute -top-1 -right-1 w-3 h-3 opacity-0 group-data-[state=active]:opacity-100 transition-opacity duration-300">
                 <Image src="/shiny.png" alt="" fill sizes="12px" className="object-contain"/>
               </div>
-              <ListPlus className="mr-1.5" size={16} />
-              Request Plan {currentUser ? `(${requestPlan.length})` : ''}
+              <ListPlus className="mr-1 sm:mr-1.5" size={16} />
+              <span className="truncate">Request Plan {currentUser ? `(${requestPlan.length})` : ''}</span>
             </TabsTrigger>
           </TabsList>
           <TabsContent value="queue" className="mt-4">
@@ -929,30 +931,37 @@ function SongList({ songs, isHistory, currentUser, socket }: { songs: SongReques
           >
             <div 
               className={cn(
-                "flex items-center space-x-3 p-3 rounded-md bg-brand-purple-dark/30 hover:bg-brand-purple-dark/50 transition-colors duration-200 border border-brand-purple-neon/10 hover:border-brand-purple-neon/30",
-                isOwnRequest && "shadow-glow-pink-sm" // Added shadow back here
+                // Use flex-wrap to allow right content to drop below on mobile
+                "flex flex-wrap sm:flex-nowrap items-center sm:space-x-3 p-3 rounded-md bg-brand-purple-dark/30 hover:bg-brand-purple-dark/50 transition-colors duration-200 border border-brand-purple-neon/10 hover:border-brand-purple-neon/30", 
+                isOwnRequest && "shadow-glow-pink-sm"
               )}
             >
-              <div className={cn(`flex-shrink-0 font-semibold w-6 text-center`, isHistory ? 'text-brand-purple-light/50' : 'text-brand-purple-light/70')}
-              >
-                {index + 1}
+              {/* Left section (Index + Thumbnail) */}
+              <div className="flex items-center space-x-3 flex-shrink-0">
+                <div className={cn(`flex-shrink-0 font-semibold w-6 text-center`, isHistory ? 'text-brand-purple-light/50' : 'text-brand-purple-light/70')}
+                >
+                  {index + 1}
+                </div>
+                <div className="relative w-16 h-9 rounded-md overflow-hidden flex-shrink-0 border border-brand-purple-neon/10">
+                  {song.thumbnailUrl ? (
+                    <img 
+                      src={song.thumbnailUrl}
+                      alt={song.title || 'Song thumbnail'}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <Avatar className="w-full h-full rounded-md bg-brand-purple-dark/50">
+                      <AvatarFallback className="rounded-md bg-transparent flex items-center justify-center">
+                        <Music size={24} className={`text-brand-purple-light/${isHistory ? '50' : '70'}`}/>
+                      </AvatarFallback>
+                    </Avatar>
+                  )}
+                </div>
               </div>
-              <div className="relative w-16 h-9 rounded-md overflow-hidden flex-shrink-0 border border-brand-purple-neon/10">
-                {song.thumbnailUrl ? (
-                  <img 
-                    src={song.thumbnailUrl}
-                    alt={song.title || 'Song thumbnail'}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <Avatar className="w-full h-full rounded-md bg-brand-purple-dark/50">
-                    <AvatarFallback className="rounded-md bg-transparent flex items-center justify-center">
-                      <Music size={24} className={`text-brand-purple-light/${isHistory ? '50' : '70'}`}/>
-                    </AvatarFallback>
-                  </Avatar>
-                )}
-              </div>
-              <div className="flex-grow min-w-0">
+
+              {/* Middle section (Title, Artist, Duration, Requester) */}
+              {/* On mobile (when wrapped), add some margin bottom */}
+              <div className="flex-grow min-w-0 w-full sm:w-auto order-first sm:order-none mb-2 sm:mb-0">
                 <p className={`font-medium truncate flex items-center gap-1 ${isHistory ? 'text-gray-400' : 'text-white'}`}>
                   {song.title || (song.youtubeUrl ? 'Untitled YouTube Video' : 'Untitled Song')}
                 </p>
@@ -968,19 +977,19 @@ function SongList({ songs, isHistory, currentUser, socket }: { songs: SongReques
                       {song.artist || 'Unknown Artist'}
                     </Badge>
                   )}
-                  <span className={cn(`text-xs flex items-center`, isHistory ? 'text-brand-purple-light/50' : 'text-brand-purple-light/70')}
+                  <span className={cn(`text-xs flex items-center whitespace-nowrap`, isHistory ? 'text-brand-purple-light/50' : 'text-brand-purple-light/70')}
                   >
                     <Clock className="inline-block mr-1" size={12} />
                     {formatDurationFromSeconds(song.durationSeconds ?? 0)}
                   </span>
-                  <div className={cn(`text-xs flex items-center gap-1`, isHistory ? 'text-brand-purple-light/50' : 'text-brand-purple-light/70')}
+                  <div className={cn(`text-xs flex items-center gap-1 flex-wrap`, isHistory ? 'text-brand-purple-light/50' : 'text-brand-purple-light/70')}
                   >
-                    by:
+                    <span className="whitespace-nowrap">by:</span>
                     <Avatar className="w-3 h-3 rounded-full inline-block border border-brand-purple-light/20">
                       <AvatarImage src={song.requesterAvatar ?? undefined} alt={song.requester} />
                       <AvatarFallback className="text-[8px] bg-brand-purple-dark">{song.requester.slice(0,1)}</AvatarFallback>
                     </Avatar>
-                    <Link href={`https://www.twitch.tv/${song.requesterLogin || song.requester.toLowerCase()}`} target="_blank" rel="noopener noreferrer" className="hover:text-brand-pink-light hover:underline transition-colors">
+                    <Link href={`https://www.twitch.tv/${song.requesterLogin || song.requester.toLowerCase()}`} target="_blank" rel="noopener noreferrer" className="hover:text-brand-pink-light hover:underline transition-colors min-w-0 truncate">
                       {song.requester}
                     </Link>
                     
@@ -997,7 +1006,10 @@ function SongList({ songs, isHistory, currentUser, socket }: { songs: SongReques
                   </div>
                 </div>
               </div>
-              <div className="flex flex-col items-end space-y-1 flex-shrink-0">
+
+              {/* Right section (Buttons + Timestamp) */}
+              {/* Takes full width on mobile, auto on sm+, aligns left on mobile, right on sm+ */}
+              <div className="flex flex-col space-y-1 w-full sm:w-auto items-start sm:items-end flex-shrink-0">
                 <div className="flex space-x-1 items-center">
                   {song.youtubeUrl && (
                     <a href={song.youtubeUrl} target="_blank" rel="noopener noreferrer" aria-label="Watch on YouTube">

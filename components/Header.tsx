@@ -95,12 +95,12 @@ export function Header({ isConnected }: HeaderProps) {
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
-      <div className="flex items-center justify-between py-3 px-4 bg-gradient-to-r from-brand-purple-dark/70 to-brand-purple-deep/70 backdrop-blur-sm rounded-lg mb-6 border border-brand-purple-neon/20 shadow-md">
-        <div className="flex items-center gap-3">
+      <div className="flex flex-col sm:flex-row items-center sm:justify-between py-3 px-4 bg-gradient-to-r from-brand-purple-dark/70 to-brand-purple-deep/70 backdrop-blur-sm rounded-lg mb-6 border border-brand-purple-neon/20 shadow-md gap-3 sm:gap-0">
+        <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto justify-center sm:justify-start">
           <Link href="/" className="flex items-center gap-2 text-brand-pink-light hover:text-white hover:text-glow-pink transition-all duration-200 group">
-            <Music2 className="h-6 w-6 group-hover:text-brand-pink-neon transition-colors" />
-            <h1 className="text-2xl font-bold">CalaMariGold Requests</h1>
-            <div className="relative w-5 h-5 -ml-1 group-hover:animate-pulse">
+            <Music2 className="h-6 w-6 group-hover:text-brand-pink-neon transition-colors flex-shrink-0" />
+            <h1 className="text-lg sm:text-2xl font-bold whitespace-nowrap">CalaMariGold Requests</h1>
+            <div className="relative w-4 h-4 sm:w-5 sm:h-5 -ml-1 group-hover:animate-pulse flex-shrink-0">
               <Image 
                 src="/shiny.png" 
                 alt="Shiny emoji" 
@@ -113,7 +113,7 @@ export function Header({ isConnected }: HeaderProps) {
           <ConnectionStatus isConnected={isConnected} />
         </div>
         
-        <div className="flex items-center gap-4">
+        <div className="flex items-center justify-center sm:justify-end gap-4 w-full sm:w-auto">
           {user ? (
             <div className="flex items-center gap-3">
               <DropdownMenu>
