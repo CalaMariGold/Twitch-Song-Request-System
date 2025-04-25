@@ -22,7 +22,8 @@ const { fetchYouTubeDetails } = require('./youtube')
 const { 
   initTwitchChat, 
   sendChatMessage, 
-  getTwitchUser 
+  getTwitchUser,
+  disconnectFromTwitch
 } = require('./twitch')
 const { connectToStreamElements, disconnectFromStreamElements } = require('./streamElements')
 const spotify = require('./spotify')
@@ -84,7 +85,7 @@ if (!TWITCH_BOT_USERNAME || !TWITCH_BOT_OAUTH_TOKEN || !TWITCH_CHANNEL_NAME) {
 }
 
 // Initialize Twitch chat client
-initTwitchChat({
+const tmiClient = initTwitchChat({
   TWITCH_BOT_USERNAME,
   TWITCH_BOT_OAUTH_TOKEN,
   TWITCH_CHANNEL_NAME
@@ -435,84 +436,63 @@ io.on('connection', (socket) => {
 
     // Handle active song updates (Auth needed)
     // Note: updateActiveSong can be called with null (stop) or a song object (play)
-    socket.on('updateActiveSong', requireAdmin(async (song) => {
-        const previousSong = state.activeSong; // Store previous song
+    socket.on('updateActiveSong', requireAdmin((song) => {
+        console.log(chalk.magenta(`[Admin:${socket.id}] Updating active song via socket:`), song);
+
+        // If there was a song previously active, log it to history
+        if (state.activeSong) {
+            const finishedSong = { ...state.activeSong, completedAt: new Date().toISOString() };
+            console.log(chalk.blue(`[Control] Previous active song "${finishedSong.title}" moved to history.`));
+            db.logCompletedSong(finishedSong);
+            // No need to clear active song from DB here, as saveActiveSongToDB below will overwrite it
+            
+            // Send history update immediately for the previously active song
+            const recentHistory = db.getRecentHistory();
+            state.history = recentHistory; // Update cache
+            io.emit('historyUpdate', recentHistory);
+        }
+
 
         if (song) {
-            // Log previous song if it existed
-            if (previousSong) { 
-                 const previousSongWithTimestamp = { ...previousSong, completedAt: new Date().toISOString() };
-                 const result = db.logCompletedSong(previousSongWithTimestamp); // Log previous song to DB
-                 if (result) {
-                     io.emit('songFinished', previousSong); // Emit event for clients
-                     
-                     // Fetch and emit updated history AFTER successful logging
-                     const recentHistory = db.getRecentHistory();
-                     io.emit('historyUpdate', recentHistory);
-                     console.log(chalk.blue(`[History] Broadcast updated history (${recentHistory.length} items) after song completion.`));
-                     
-                     // Also update statistics
-                     try {
-                         const statistics = fetchAllTimeStats(db.getDb());
-                         io.emit('allTimeStatsUpdate', statistics);
-                         console.log(chalk.blue('[Statistics] Broadcast updated statistics after song completion.'));
-                     } catch (statsError) {
-                         console.error(chalk.red('[Statistics] Error refreshing statistics:'), statsError);
-                     }
-                 }
-            }
-            
-            // --- Reordered DB Operations --- 
-            // 1. Remove from memory queue first
-            state.queue = state.queue.filter(queuedSong => queuedSong.id !== song.id);
-            // 2. Remove from DB queue *BEFORE* saving as active
-            const removed = db.removeSongFromDbQueue(song.id);
-            if (removed) {
-                 console.log(chalk.yellow(`[Queue] Removed song ID ${song.id} from DB queue before making active.`));
-            } else {
-                 console.warn(chalk.yellow(`[Queue] Attempted to remove song ID ${song.id} from DB queue before making active, but it wasn't found (might be okay if added manually bypassing queue).`));
-            }
-            // 3. Set active song in memory
-            state.activeSong = song 
-            // 4. Save the active song to the database
-            db.saveActiveSongToDB(song);
-            // --- End Reordered --- 
+            // Setting a new song as active
+            state.activeSong = { ...song, startedAt: new Date().toISOString() };
+            db.saveActiveSongToDB(state.activeSong);
+            console.log(chalk.green(`[Control] Set active song to: "${state.activeSong.title}"`));
 
-            console.log(chalk.yellow(`[Queue] Active song: "${song.title}" (Requester: ${song.requester}) - Set as active in DB.`));
-        } else {
-            // Song finished or stopped (song is null)
-            if (previousSong) {
-                const previousSongWithTimestamp = { ...previousSong, completedAt: new Date().toISOString() };
-                const result = db.logCompletedSong(previousSongWithTimestamp); // Log previous song to DB
-                 if (result) {
-                     io.emit('songFinished', previousSong); // Emit event for clients
-                     
-                     // Fetch and emit updated history AFTER successful logging
-                     const recentHistory = db.getRecentHistory();
-                     io.emit('historyUpdate', recentHistory);
-                     console.log(chalk.blue(`[History] Broadcast updated history (${recentHistory.length} items) after song stopped/removed.`));
-                     
-                     // Also update statistics
-                     try {
-                         const statistics = fetchAllTimeStats(db.getDb());
-                         io.emit('allTimeStatsUpdate', statistics);
-                         console.log(chalk.blue('[Statistics] Broadcast updated statistics after song stopped/removed.'));
-                     } catch (statsError) {
-                         console.error(chalk.red('[Statistics] Error refreshing statistics:'), statsError);
-                     }
-                 }
-                 console.log(chalk.yellow(`[Queue] Song finished/removed: "${previousSong.title}"`));
+            // Remove the song from the queue state and DB if it was there
+            const originalQueueLength = state.queue.length;
+            state.queue = state.queue.filter(s => s.id !== song.id);
+            if (state.queue.length < originalQueueLength) {
+                 db.removeSongFromDbQueue(song.id); // Remove from DB only if found in memory queue
+                 console.log(chalk.grey(`[DB Write] Removed newly active song ${song.id} from active_queue.`));
+            } else {
+                 console.log(chalk.grey(`[Control] Newly active song ${song.id} was not found in the memory queue (maybe added manually or from history).`));
             }
-            // Clear active song state
-            state.activeSong = null
-            db.clearActiveSongFromDB();
+
+        } else {
+             // Clearing the active song (e.g., Skip button on empty queue or explicit clear)
+             // This case might be handled better by 'markSongAsFinished' if the intent is completion
+             console.log(chalk.blue(`[Control] Clearing active song.`));
+             state.activeSong = null;
+             db.clearActiveSongFromDB();
         }
-        
-        // Broadcast updates
-        io.emit('activeSong', state.activeSong)
-        io.emit('queueUpdate', state.queue)
-        console.log(chalk.magenta(`[Admin:${socket.id}] Active song updated via socket. New song: ${song ? song.title : 'None'}`));
-    }))
+
+        // Broadcast the change to all clients
+        io.emit('activeSong', state.activeSong);
+        io.emit('queueUpdate', state.queue); // Also update queue in case a song was removed
+
+    }));
+
+    // Mark song as finished (without playing next)
+    socket.on('markSongAsFinished', requireAdmin(() => {
+        console.log(chalk.magenta(`[Admin:${socket.id}] Marking song as finished via socket.`));
+        const finishedSong = handleMarkSongAsFinished(); // Use the refactored helper
+        if (finishedSong) {
+             // Optionally send confirmation back to admin?
+        } else {
+             // Optionally send info back that no song was active?
+        }
+    }));
 
     // Handle blacklist updates
     socket.on('updateBlacklist', requireAdmin((newBlacklist) => {
@@ -553,44 +533,6 @@ io.on('connection', (socket) => {
         io.emit('blockedUsersUpdate', state.blockedUsers)
         console.log(chalk.magenta(`[Admin:${socket.id}] Blocked users updated via socket (${(state.blockedUsers || []).length} users). Added: ${addedUsers.length}, Removed: ${removedUsers.length}`));
     }))
-
-    // Handle marking a song as finished (from admin)
-    socket.on('markSongAsFinished', requireAdmin((song) => {
-        if (!song) {
-            console.error(chalk.red('[Admin] Attempted to mark null song as finished'));
-            return;
-        }
-        
-        // Add completedAt to song before logging
-        const completedSong = { ...song, completedAt: new Date().toISOString() };
-
-        // Move active song to history
-        const result = db.logCompletedSong(completedSong);
-        if (result) {
-            // Clear active song
-            state.activeSong = null;
-            db.clearActiveSongFromDB();
-            
-            // Broadcast updates
-            io.emit('activeSong', null);
-            io.emit('songFinished', song);
-            console.log(chalk.magenta(`[Admin:${socket.id}] Song marked as finished: ${song.title}`));
-            
-            // Fetch and emit updated history AFTER successful logging
-            const recentHistory = db.getRecentHistory();
-            io.emit('historyUpdate', recentHistory);
-            console.log(chalk.blue(`[History] Broadcast updated history (${recentHistory.length} items) after marking song finished.`));
-            
-            // Also update statistics
-            try {
-                const statistics = fetchAllTimeStats(db.getDb());
-                io.emit('allTimeStatsUpdate', statistics);
-                console.log(chalk.blue('[Statistics] Broadcast updated statistics after song completion.'));
-            } catch (statsError) {
-                console.error(chalk.red('[Statistics] Error refreshing statistics:'), statsError);
-            }
-        }
-    }));
 
     // Handle returning a song from history to the queue
     socket.on('returnToQueue', requireAdmin((song) => {
@@ -1475,3 +1417,112 @@ function addSongToQueue(song) {
     return -1;
   }
 }
+
+// --- NEW HELPER FUNCTIONS for Song Control ---
+
+/**
+ * Marks the currently active song as finished, moves it to history, and emits updates.
+ * Does NOT automatically play the next song.
+ * @returns {SongRequest | null} The song that was finished, or null if no active song.
+ */
+function handleMarkSongAsFinished() {
+    if (!state.activeSong) {
+        console.log(chalk.grey('[Control] No active song to mark as finished.'));
+        return null;
+    }
+
+    const finishedSong = { ...state.activeSong, completedAt: new Date().toISOString() };
+    console.log(chalk.blue(`[Control] Marking song as finished: "${finishedSong.title}" requested by ${finishedSong.requester}`));
+
+    // Add to history DB
+    db.logCompletedSong(finishedSong);
+
+    // Update state
+    state.activeSong = null;
+    const recentHistory = db.getRecentHistory(); // Get updated history
+    state.history = recentHistory; // Update in-memory cache (optional, but good practice)
+
+    // Clear active song from DB
+    db.clearActiveSongFromDB();
+
+    // Emit updates
+    io.emit('songFinished', finishedSong); // Notify about the finished song
+    io.emit('activeSong', null); // Explicitly send null for active song
+    io.emit('historyUpdate', recentHistory); // Send updated history
+
+    return finishedSong;
+}
+
+/**
+ * Skips the currently active song (moves to history) and plays the next song in the queue.
+ * @returns {{ skippedSong: SongRequest | null, nextSong: SongRequest | null }} The skipped song and the next song started, or nulls if actions couldn't be performed.
+ */
+function handleSkipSong() {
+    const skippedSong = handleMarkSongAsFinished(); // Mark current as finished first
+
+    if (state.queue.length > 0) {
+        const nextSong = state.queue.shift(); // Get the next song
+        console.log(chalk.blue(`[Control] Skipping to next song: "${nextSong.title}" requested by ${nextSong.requester}`));
+
+        // Update state
+        state.activeSong = { ...nextSong, startedAt: new Date().toISOString() };
+
+        // Update DB
+        db.saveActiveSongToDB(state.activeSong);
+        db.removeSongFromDbQueue(nextSong.id); // Remove from queue DB
+
+        // Emit updates
+        io.emit('activeSong', state.activeSong);
+        io.emit('queueUpdate', state.queue);
+
+        return { skippedSong, nextSong: state.activeSong };
+    } else {
+        console.log(chalk.grey('[Control] Queue is empty after finishing song, nothing to skip to.'));
+        // Active song is already null from handleMarkSongAsFinished
+        io.emit('queueUpdate', state.queue); // Still emit queue update (it's empty)
+        return { skippedSong, nextSong: null };
+    }
+}
+
+// --- END NEW HELPER FUNCTIONS ---
+
+// --- NEW: Twitch Chat Command Listener ---
+if (tmiClient) {
+    tmiClient.on('message', (channel, tags, message, self) => {
+        if (self) return; // Ignore messages from the bot itself
+
+        const msg = message.trim().toLowerCase();
+        const username = tags.username?.toLowerCase();
+
+        if (!username) return; // Should not happen, but safety check
+
+        // Check if the user is an admin
+        const isAdmin = ADMIN_USERNAMES_LOWER.includes(username);
+
+        if (isAdmin) {
+            if (msg === '!finish') {
+                console.log(chalk.cyan(`[Twitch Command] Received !finish from admin: ${username}`));
+                const finishedSong = handleMarkSongAsFinished();
+                if (finishedSong) {
+                    //sendChatMessage(`Marked "${finishedSong.title}" as finished.`);
+                } else {
+                    sendChatMessage(`@${username}, there is no active song to mark as finished.`);
+                }
+            } else if (msg === '!next' || msg === '!skip') { // Allow !skip as alias
+                console.log(chalk.cyan(`[Twitch Command] Received !next from admin: ${username}`));
+                const { skippedSong, nextSong } = handleSkipSong();
+
+                if (skippedSong && nextSong) {
+                     sendChatMessage(`Finished "${skippedSong.title}". Now playing: "${nextSong.title}" by ${nextSong.artist}, requested by ${nextSong.requester}.`);
+                } else if (skippedSong) { // Skipped but queue was empty
+                     sendChatMessage(`Finished "${skippedSong.title}". Queue is now empty.`);
+                } else if (nextSong) {
+                    sendChatMessage(`Now playing: "${nextSong.title}" by ${nextSong.artist}, requested by ${nextSong.requester}.`);
+                }
+            }
+        }
+    });
+} else {
+     console.warn(chalk.yellow('[Twitch Command] TMI client not initialized, admin chat commands disabled.'));
+}
+// --- END NEW ---
