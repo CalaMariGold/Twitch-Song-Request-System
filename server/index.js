@@ -713,8 +713,8 @@ async function startServer() {
 
       console.log(chalk.magenta(`[StreamElements] Processing donation: ${userName} - ${amount} ${currency} - Msg: "${message}"`));
 
-      // Check for a YouTube URL or text-based request
-      const { isYouTubeUrl, youtubeUrl, searchQuery } = analyzeRequestText(message);
+      // Check for request type
+      const analysisResult = analyzeRequestText(message);
 
       // Minimum donation amount ($3)
       const MIN_DONATION_AMOUNT = 3;
@@ -724,17 +724,16 @@ async function startServer() {
           return;
       }
 
-      // If no YouTube URL or search query, thank them for the donation but don't process as song request
-      if (!isYouTubeUrl && !searchQuery) {
-          console.warn(chalk.yellow(`[StreamElements] No YouTube URL or song query found in donation from ${userName}: "${message}"`));
-          sendChatMessage(`Thanks @${userName} for the ${amount} ${currency}! If you want to request a song with your dono next time, put either a YouTube link or song name in the dono message.`);
+      // If no valid request type found, thank for donation but don't process
+      if (analysisResult.type === 'none') {
+          console.warn(chalk.yellow(`[StreamElements] No YouTube URL, Spotify URL, or song query found in donation from ${userName}: "${message}"`));
+          sendChatMessage(`Thanks @${userName} for the ${amount} ${currency}! If you want to request a song with your dono next time, put either a YouTube link, Spotify link, or song name in the dono message.`);
           return;
       }
 
-      // Create song request from donation
-      const songRequest = {
+      // Create initial song request object (partially filled)
+      const initialRequestData = {
           id: tipData.id || Date.now().toString(),
-          youtubeUrl: youtubeUrl, // This will be null for text-based requests
           requester: userName,
           timestamp: tipData.timestamp || new Date().toISOString(),
           requestType: 'donation',
@@ -742,31 +741,97 @@ async function startServer() {
               amount: amount,
               currency: currency
           },
-          message: searchQuery // Store the search query for text-based requests
+          message: message // Keep original message for reference
       };
 
-      if (isYouTubeUrl) {
-        // Process as a YouTube URL request
-        await validateAndAddSong(songRequest);
-      } else {
-        // Process as a text-based song request
+      if (analysisResult.type === 'youtube') {
+        // Process as a YouTube URL request using the existing centralized function
+        await validateAndAddSong({
+            ...initialRequestData,
+            youtubeUrl: analysisResult.value,
+            message: null // Clear message field when URL is provided
+        });
+      } else if (analysisResult.type === 'spotifyUrl') {
+        // Process as a Spotify URL request
+        try {
+            const trackId = extractSpotifyTrackId(analysisResult.value);
+            if (!trackId) {
+                console.warn(chalk.yellow(`[Spotify] Invalid Spotify URL in donation: ${analysisResult.value}`));
+                sendChatMessage(`@${userName} Thanks for the donation! The Spotify link you provided doesn't look right. Please use a valid track link.`);
+                return;
+            }
+
+            const spotifyDetails = await getSpotifyTrackDetailsById(trackId);
+            if (spotifyDetails) {
+                // Create a song request based on Spotify data
+                const spotifyRequest = await createSpotifyBasedRequest(spotifyDetails, initialRequestData);
+
+                // *** Perform Validations (Copied from text search path) ***
+                const durationError = validateDuration(
+                    spotifyRequest.durationSeconds,
+                    spotifyRequest.requestType,
+                    MAX_DONATION_DURATION_SECONDS,
+                    MAX_CHANNEL_POINT_DURATION_SECONDS
+                );
+                if (durationError) {
+                    console.log(chalk.yellow(`[Queue] Donation (Spotify URL) request duration (${spotifyRequest.durationSeconds}s) exceeds limit (${durationError.limit}s) - rejecting "${spotifyRequest.title}"`));
+                    sendChatMessage(`@${userName} ${durationError.message}`);
+                    return;
+                }
+
+                const blacklistMatch = checkBlacklist(spotifyRequest.title, spotifyRequest.artist, state.blacklist);
+                if (blacklistMatch) {
+                    console.log(chalk.yellow(`[Blacklist] Item matching term "${blacklistMatch.term}" (type: ${blacklistMatch.type}) found for "${spotifyRequest.title}" by ${spotifyRequest.artist} - rejecting`));
+                    let blacklistMessage = `@${userName}, sorry, your request for "${spotifyRequest.title}"`;
+                    if (blacklistMatch.type === 'artist') {
+                        blacklistMessage += ` by "${spotifyRequest.artist}"`;
+                    }
+                    blacklistMessage += ` is currently blacklisted.`;
+                    sendChatMessage(blacklistMessage);
+                    return;
+                }
+                // *** End Validations ***
+
+                // Add to queue
+                const position = addSongToQueue(spotifyRequest);
+                const queuePosition = position + 1;
+
+                // Emit updates
+                io.emit('newSongRequest', spotifyRequest);
+                io.emit('queueUpdate', state.queue);
+
+                console.log(chalk.green(`[Queue] Added Spotify song (from URL) "${spotifyRequest.title}" by ${spotifyRequest.artist}. Type: donation. Requester: ${spotifyRequest.requester}. Position: #${queuePosition}`));
+
+                // Send success message
+                sendChatMessage(`@${userName} Thanks for the ${amount} ${currency} donation! Your priority request for "${spotifyRequest.title}" by ${spotifyRequest.artist} (from Spotify link) is #${queuePosition} in the queue.`);
+            } else {
+                console.log(chalk.yellow(`[Spotify] Could not find track details for Spotify URL: ${analysisResult.value}`));
+                sendChatMessage(`@${userName} Thanks for the donation! I couldn't find the song details for the Spotify link you provided.`);
+            }
+        } catch (error) {
+            console.error(chalk.red('[Spotify] Error processing Spotify URL donation:'), error);
+            sendChatMessage(`@${userName} Thanks for the donation! There was an error processing the Spotify link.`);
+        }
+      } else if (analysisResult.type === 'text') {
+        // Process as a text-based song request (Existing Logic)
+        const searchQuery = analysisResult.value;
         try {
           console.log(chalk.blue(`[Spotify] Searching for song based on text: "${searchQuery}"`));
           const spotifyTrack = await spotify.findSpotifyTrackBySearchQuery(searchQuery);
 
           if (spotifyTrack) {
             // Create a song request based on Spotify data
-            const spotifyRequest = await createSpotifyBasedRequest(spotifyTrack, songRequest);
+            const spotifyRequest = await createSpotifyBasedRequest(spotifyTrack, initialRequestData);
 
             // Check duration using the helper and values from .env
             const durationError = validateDuration(
-                spotifyRequest.durationSeconds, 
-                spotifyRequest.requestType, 
-                MAX_DONATION_DURATION_SECONDS, 
+                spotifyRequest.durationSeconds,
+                spotifyRequest.requestType,
+                MAX_DONATION_DURATION_SECONDS,
                 MAX_CHANNEL_POINT_DURATION_SECONDS
             );
             if (durationError) {
-              console.log(chalk.yellow(`[Queue] Donation request duration (${spotifyRequest.durationSeconds}s) exceeds limit (${durationError.limit}s) - rejecting "${spotifyRequest.title}"`));
+              console.log(chalk.yellow(`[Queue] Donation (text) request duration (${spotifyRequest.durationSeconds}s) exceeds limit (${durationError.limit}s) - rejecting "${spotifyRequest.title}"`));
               sendChatMessage(`@${userName} ${durationError.message}`);
               return;
             }
@@ -792,17 +857,17 @@ async function startServer() {
             io.emit('newSongRequest', spotifyRequest);
             io.emit('queueUpdate', state.queue);
 
-            console.log(chalk.green(`[Queue] Added Spotify song "${spotifyRequest.title}" by ${spotifyRequest.artist}. Type: donation. Requester: ${spotifyRequest.requester}. Position: #${queuePosition}`));
+            console.log(chalk.green(`[Queue] Added Spotify song (from text) "${spotifyRequest.title}" by ${spotifyRequest.artist}. Type: donation. Requester: ${spotifyRequest.requester}. Position: #${queuePosition}`));
 
             // Send success message
             sendChatMessage(`@${userName} Thanks for the ${amount} ${currency} donation! Your priority request for "${spotifyRequest.title}" by ${spotifyRequest.artist} is #${queuePosition} in the queue.`);
           } else {
             console.log(chalk.yellow(`[Spotify] No track found for query: "${searchQuery}"`));
-            sendChatMessage(`@${userName} Thanks for the ${amount} ${currency} donation! I couldn't find a song matching "${searchQuery}". Try a different search or a YouTube link next time.`);
+            sendChatMessage(`@${userName} Thanks for the ${amount} ${currency} donation! I couldn't find a song matching "${searchQuery}". Try a different search or a YouTube/Spotify link next time.`);
           }
         } catch (error) {
-          console.error(chalk.red('[Spotify] Error processing text-based request:'), error);
-          sendChatMessage(`@${userName} Thanks for the ${amount} ${currency} donation! There was an error finding your requested song. Please try again with a YouTube link.`);
+          console.error(chalk.red('[Spotify] Error processing text-based donation:'), error);
+          sendChatMessage(`@${userName} Thanks for the ${amount} ${currency} donation! There was an error finding your requested song. Please try again with a YouTube/Spotify link.`);
         }
       }
     } catch (error) {
@@ -817,40 +882,113 @@ async function startServer() {
 
       console.log(chalk.magenta(`[StreamElements] Channel point redemption: ${userName} - Content: "${userInput}"`));
 
-      // Check for a YouTube URL or text-based request
-      const { isYouTubeUrl, youtubeUrl, searchQuery } = analyzeRequestText(userInput);
+      // Check for request type
+      const analysisResult = analyzeRequestText(userInput);
 
-      // If no YouTube URL or search query, reject the request
-      if (!isYouTubeUrl && !searchQuery) {
-        console.warn(chalk.yellow(`[StreamElements] No YouTube URL or song query found in redemption from ${userName}`));
-        sendChatMessage(`@${userName}, you need to include either a YouTube link or song name in your request.`);
+      // If no valid request type found, reject the request
+      if (analysisResult.type === 'none') {
+        console.warn(chalk.yellow(`[StreamElements] No YouTube URL, Spotify URL, or song query found in redemption from ${userName}`));
+        sendChatMessage(`@${userName}, you need to include either a YouTube link, Spotify link, or song name in your request.`);
         return;
       }
 
-      // Create song request from channel point redemption
-      const songRequest = {
+      // Create initial song request object (partially filled)
+      const initialRequestData = {
         id: redemptionData.id || Date.now().toString(),
-        youtubeUrl: youtubeUrl, // This will be null for text-based requests
         requester: userName,
         timestamp: redemptionData.timestamp || new Date().toISOString(),
         requestType: 'channelPoint',
         source: 'streamelements_redemption',
-        message: searchQuery // Store the search query for text-based requests
+        message: userInput // Keep original message for reference
       };
 
-      if (isYouTubeUrl) {
-        // Process as a YouTube URL request
+      if (analysisResult.type === 'youtube') {
+        // Process as a YouTube URL request using the existing centralized function
         // Duration and blacklist validation happens inside validateAndAddSong
-        await validateAndAddSong(songRequest);
-      } else {
-        // Process as a text-based song request
+        await validateAndAddSong({
+            ...initialRequestData,
+            youtubeUrl: analysisResult.value,
+            message: null // Clear message field when URL is provided
+        });
+      } else if (analysisResult.type === 'spotifyUrl') {
+         // Process as a Spotify URL request
+        try {
+            const trackId = extractSpotifyTrackId(analysisResult.value);
+            if (!trackId) {
+                console.warn(chalk.yellow(`[Spotify] Invalid Spotify URL in redemption: ${analysisResult.value}`));
+                sendChatMessage(`@${userName}, the Spotify link you provided doesn't look right. Please use a valid track link.`);
+                return;
+            }
+
+            const spotifyDetails = await getSpotifyTrackDetailsById(trackId);
+            if (spotifyDetails) {
+                // Create a song request based on Spotify data
+                const spotifyRequest = await createSpotifyBasedRequest(spotifyDetails, initialRequestData);
+
+                // *** Perform Validations (Copied from text search path) ***
+                // Check for user queue limit first
+                const existingRequest = state.queue.find(song => song.requesterLogin?.toLowerCase() === userName.toLowerCase() || song.requester.toLowerCase() === userName.toLowerCase());
+                if (existingRequest) {
+                    console.log(chalk.yellow(`[Queue] User ${userName} already has a song in the queue - rejecting channel point request`));
+                    sendChatMessage(`@${userName}, you already have a song in the queue. Please wait for it to play.`);
+                    return;
+                }
+
+                const durationError = validateDuration(
+                    spotifyRequest.durationSeconds,
+                    spotifyRequest.requestType,
+                    MAX_DONATION_DURATION_SECONDS,
+                    MAX_CHANNEL_POINT_DURATION_SECONDS
+                );
+                if (durationError) {
+                    console.log(chalk.yellow(`[Queue] Channel Point (Spotify URL) request duration (${spotifyRequest.durationSeconds}s) exceeds limit (${durationError.limit}s) - rejecting "${spotifyRequest.title}"`));
+                    sendChatMessage(`@${userName} ${durationError.message}`);
+                    return;
+                }
+
+                const blacklistMatch = checkBlacklist(spotifyRequest.title, spotifyRequest.artist, state.blacklist);
+                if (blacklistMatch) {
+                    console.log(chalk.yellow(`[Blacklist] Item matching term "${blacklistMatch.term}" (type: ${blacklistMatch.type}) found for "${spotifyRequest.title}" by ${spotifyRequest.artist} - rejecting`));
+                    let blacklistMessage = `@${userName}, sorry, your request for "${spotifyRequest.title}"`;
+                    if (blacklistMatch.type === 'artist') {
+                        blacklistMessage += ` by "${spotifyRequest.artist}"`;
+                    }
+                    blacklistMessage += ` is currently blacklisted.`;
+                    sendChatMessage(blacklistMessage);
+                    return;
+                }
+                 // *** End Validations ***
+
+                // Add to queue
+                const position = addSongToQueue(spotifyRequest);
+                const queuePosition = position + 1;
+
+                // Emit updates
+                io.emit('newSongRequest', spotifyRequest);
+                io.emit('queueUpdate', state.queue);
+
+                console.log(chalk.green(`[Queue] Added Spotify song (from URL) "${spotifyRequest.title}" by ${spotifyRequest.artist}. Type: channelPoint. Requester: ${spotifyRequest.requester}. Position: #${queuePosition}`));
+
+                // Send success message
+                sendChatMessage(`@${userName} Your request for "${spotifyRequest.title}" by ${spotifyRequest.artist} (from Spotify link) is #${queuePosition} in the queue.`);
+            } else {
+                 console.log(chalk.yellow(`[Spotify] Could not find track details for Spotify URL: ${analysisResult.value}`));
+                sendChatMessage(`@${userName}, I couldn't find the song details for the Spotify link you provided.`);
+            }
+        } catch (error) {
+            console.error(chalk.red('[Spotify] Error processing Spotify URL redemption:'), error);
+            sendChatMessage(`@${userName}, there was an error processing the Spotify link.`);
+        }
+      } else if (analysisResult.type === 'text') {
+        // Process as a text-based song request (Existing Logic)
+        const searchQuery = analysisResult.value;
         try {
           console.log(chalk.blue(`[Spotify] Searching for song based on text: "${searchQuery}"`));
           const spotifyTrack = await spotify.findSpotifyTrackBySearchQuery(searchQuery);
 
           if (spotifyTrack) {
             // Create a song request based on Spotify data
-            const spotifyRequest = await createSpotifyBasedRequest(spotifyTrack, songRequest);
+            const spotifyRequest = await createSpotifyBasedRequest(spotifyTrack, initialRequestData);
 
             // Check for user queue limit
             const existingRequest = state.queue.find(song => song.requesterLogin?.toLowerCase() === userName.toLowerCase() || song.requester.toLowerCase() === userName.toLowerCase());
@@ -862,13 +1000,13 @@ async function startServer() {
 
             // Check duration using the helper and values from .env
             const durationError = validateDuration(
-                spotifyRequest.durationSeconds, 
-                spotifyRequest.requestType, 
-                MAX_DONATION_DURATION_SECONDS, 
+                spotifyRequest.durationSeconds,
+                spotifyRequest.requestType,
+                MAX_DONATION_DURATION_SECONDS,
                 MAX_CHANNEL_POINT_DURATION_SECONDS
             );
             if (durationError) {
-              console.log(chalk.yellow(`[Queue] Channel Point request duration (${spotifyRequest.durationSeconds}s) exceeds limit (${durationError.limit}s) - rejecting "${spotifyRequest.title}"`));
+              console.log(chalk.yellow(`[Queue] Channel Point (text) request duration (${spotifyRequest.durationSeconds}s) exceeds limit (${durationError.limit}s) - rejecting "${spotifyRequest.title}"`));
               sendChatMessage(`@${userName} ${durationError.message}`);
               return;
             }
@@ -894,17 +1032,17 @@ async function startServer() {
             io.emit('newSongRequest', spotifyRequest);
             io.emit('queueUpdate', state.queue);
 
-            console.log(chalk.green(`[Queue] Added Spotify song "${spotifyRequest.title}" by ${spotifyRequest.artist}. Type: channelPoint. Requester: ${spotifyRequest.requester}. Position: #${queuePosition}`));
+            console.log(chalk.green(`[Queue] Added Spotify song (from text) "${spotifyRequest.title}" by ${spotifyRequest.artist}. Type: channelPoint. Requester: ${spotifyRequest.requester}. Position: #${queuePosition}`));
 
             // Send success message
             sendChatMessage(`@${userName} Your request for "${spotifyRequest.title}" by ${spotifyRequest.artist} is #${queuePosition} in the queue.`);
           } else {
             console.log(chalk.yellow(`[Spotify] No track found for query: "${searchQuery}"`));
-            sendChatMessage(`@${userName} I couldn't find a song matching "${searchQuery}". Try again or use a YouTube link.`);
+            sendChatMessage(`@${userName} I couldn't find a song matching "${searchQuery}". Try again or use a YouTube/Spotify link.`);
           }
         } catch (error) {
-          console.error(chalk.red('[Spotify] Error processing text-based request:'), error);
-          sendChatMessage(`@${userName} There was an error finding your requested song. Please try again with a YouTube link.`);
+          console.error(chalk.red('[Spotify] Error processing text-based redemption:'), error);
+          sendChatMessage(`@${userName} There was an error finding your requested song. Please try again with a YouTube/Spotify link.`);
         }
       }
     } catch (error) {

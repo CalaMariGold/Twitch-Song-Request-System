@@ -110,23 +110,49 @@ function extractYouTubeUrlFromText(text) {
 }
 
 /**
- * Check if text is a YouTube URL or a search query
+ * Find a Spotify Track URL in a text string
+ * @param {string} text - Text to search in
+ * @returns {string|null} Spotify Track URL or null if not found
+ */
+function extractSpotifyUrlFromText(text) {
+    if (!text) return null;
+    // Regex to find Spotify track URLs
+    const regex = /(https?:\/\/open\.spotify\.com\/track\/([a-zA-Z0-9]+))/i;
+    const match = text.match(regex);
+    return match ? match[0] : null; // Return the full matched URL
+}
+
+/**
+ * Check if text contains a YouTube URL, Spotify URL, or should be treated as a search query.
  * @param {string} text - Text to analyze
- * @returns {Object} { isYouTubeUrl: boolean, youtubeUrl: string|null, searchQuery: string|null }
+ * @returns {Object} { type: 'youtube'|'spotifyUrl'|'text'|'none', value: string|null }
  */
 function analyzeRequestText(text) {
     if (!text) {
-        return { isYouTubeUrl: false, youtubeUrl: null, searchQuery: null };
+        return { type: 'none', value: null };
     }
     
-    // Check if the text contains a YouTube URL
-    const youtubeUrl = extractYouTubeUrlFromText(text);
+    const trimmedText = text.trim();
     
+    // Prioritize URLs: Check for YouTube first
+    const youtubeUrl = extractYouTubeUrlFromText(trimmedText);
     if (youtubeUrl) {
-        return { isYouTubeUrl: true, youtubeUrl, searchQuery: null };
+        return { type: 'youtube', value: youtubeUrl };
+    }
+    
+    // Check for Spotify URL next
+    const spotifyUrl = extractSpotifyUrlFromText(trimmedText);
+    if (spotifyUrl) {
+        return { type: 'spotifyUrl', value: spotifyUrl };
+    }
+    
+    // If no URL found, treat the entire text as a search query
+    // Ensure the text isn't just whitespace after trimming
+    if (trimmedText.length > 0) {
+        return { type: 'text', value: trimmedText };
     } else {
-        // If no YouTube URL found, treat the entire text as a search query
-        return { isYouTubeUrl: false, youtubeUrl: null, searchQuery: text.trim() };
+        // Input was just whitespace
+        return { type: 'none', value: null };
     }
 }
 
@@ -206,6 +232,7 @@ module.exports = {
     formatDuration,
     extractVideoId,
     extractYouTubeUrlFromText,
+    extractSpotifyUrlFromText,
     analyzeRequestText,
     checkBlacklist,
     validateDuration

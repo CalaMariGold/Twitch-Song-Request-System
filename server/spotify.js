@@ -756,6 +756,7 @@ async function getSpotifyTrackDetailsById(trackId) {
 module.exports = {
   getSpotifyToken,
   getSpotifyEquivalent,
+  findSpotifyTrackBySearchQuery,
   extractSpotifyTrackId,
   getSpotifyTrackDetailsById,
 };
