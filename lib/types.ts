@@ -129,42 +129,55 @@ export interface AppState {
  * Socket event types (consider defining payload types more strictly)
  */
 export interface SocketEvents {
-    // Emitted by Server
+    // === Server -> Client ===
     initialState: (state: AppState) => void;
     queueUpdate: (queue: SongRequest[]) => void;
-    historyUpdate: (history: SongRequest[]) => void; // For broadcasting recent history changes
+    historyUpdate: (history: SongRequest[]) => void;
     activeSong: (song: SongRequest | null) => void;
-    newSongRequest: (request: SongRequest) => void; // Feedback for successful request
+    newSongRequest: (request: SongRequest) => void;
     settingsUpdate: (settings: Settings) => void;
     blacklistUpdate: (blacklist: BlacklistItem[]) => void;
     blockedUsersUpdate: (blockedUsers: BlockedUser[]) => void;
-    songFinished: (song: SongRequest) => void; // When a song completes or is skipped
+    songFinished: (song: SongRequest) => void;
     allTimeStatsUpdate: (stats: AllTimeStats) => void;
     allTimeStatsError: (error: { message: string }) => void;
-    adminAuthenticated: () => void; // NEW: Confirmation from server that admin auth succeeded
+    adminAuthenticated: () => void;
+    adminAuthFailed?: () => void; // Optional: If server sends this
+    adminError?: (payload: { message: string }) => void; // Optional: Generic admin error
+    // --- Spotify Update Events --- 
+    updateSpotifySuccess: (payload: { requestId: string }) => void;
+    updateSpotifyError: (payload: { requestId: string; message: string }) => void;
+    // --- User Specific Events --- 
+    myRequestsUpdate?: (requests: SongRequest[]) => void; // Optional for user-specific features
+    deleteRequestSuccess?: (payload: { requestId: string }) => void; // Optional confirmation
+    deleteRequestError?: (payload: { requestId: string; message: string }) => void; // Optional error feedback
 
-    // Emitted by Client (Admin)
+    // === Client -> Server ===
+    // --- Admin Actions --- 
     getState: () => void;
-    authenticateAdmin: (data: { login: string }) => void; // NEW: Admin client sends auth data
-    updateQueue: (updatedQueue: SongRequest[]) => void; // For reordering
-    addSong: (songRequestData: Partial<SongRequest> & { youtubeUrl: string; requester: string; bypassRestrictions?: boolean }) => void; // Manual add (added bypassRestrictions)
+    authenticateAdmin: (data: { login: string }) => void;
+    updateQueue: (updatedQueue: SongRequest[]) => void;
+    addSong: (songRequestData: Partial<SongRequest> & { youtubeUrl?: string; message?: string; requester: string; bypassRestrictions?: boolean }) => void;
     removeSong: (songId: string) => void;
     clearQueue: () => void;
-    resetSystem: () => void;
-    setMaxDuration: (minutes: number) => void; // Or seconds, match backend
-    updateActiveSong: (song: SongRequest | null) => void; // When admin forces next song or stops
-    updateBlacklist: (newBlacklist: BlacklistItem[]) => void;
-    updateBlockedUsers: (newBlockedUsers: BlockedUser[]) => void;
+    resetSystem?: () => void; // Make optional if not always implemented/used
+    setMaxDuration: (minutes: number) => void;
+    updateActiveSong: (song: SongRequest | null) => void;
+    updateBlacklist: (newBlacklist: BlacklistItem[]) => void; // Assuming full list update based on frontend code
+    updateBlockedUsers: (newBlockedUsers: BlockedUser[]) => void; // Assuming full list update based on frontend code
     getAllTimeStats: () => void;
-    clearHistory: () => void; // Clear all history
-    deleteHistoryItem: (id: string) => void; // Delete a single history item
-    markSongAsFinished: (song: SongRequest) => void; // Mark the current song as finished and move to history
-    returnToQueue: (song: SongRequest) => void; // Return a song from history to the top of the queue
-    skipSong: () => void; // Added for admin skipping song
-
-    // Emitted by Client (Public/User)
+    clearHistory: () => void;
+    deleteHistoryItem: (id: string) => void;
+    markSongAsFinished: (song: SongRequest) => void; // Frontend seems to send the song object
+    returnToQueue: (song: SongRequest) => void; // Frontend seems to send the song object
+    skipSong: () => void;
+    // --- Admin Spotify Update Action --- 
+    adminUpdateSpotifyLink: (payload: { requestId: string; spotifyUrl: string }) => void;
+    
+    // --- Public/User Actions --- 
     getYouTubeDetails: (youtubeUrl: string, callback: (error: { message: string } | null, details?: YouTubeVideoDetails) => void) => void;
-    deleteMyRequest: (data: { requestId: string; userLogin: string }) => void;
+    deleteMyRequest?: (data: { requestId: string; userLogin?: string }) => void; // Make userLogin optional if client might not send it
+    getMyRequests?: () => void; // Optional user-specific feature
 }
 
 /**
@@ -214,22 +227,24 @@ export interface PlannedRequest {
   spotifyData?: SpotifyTrackData | null
 }
 
-// Interface for Spotify track data (as received from backend)
+// Interface for Spotify track data (as received from backend or used in frontend)
 export interface SpotifyTrackData {
   id: string;
   name: string;
-  artists: { id: string; name: string }[];
-  album: {
-    id: string;
-    name: string;
-    releaseDate: string;
-    images: { url: string; height: number; width: number }[];
+  artists: { id: string; name: string }[]; // Array of artists
+  album?: { // Make album optional as it might not always be present/needed
+    id?: string; // Make nested properties optional too
+    name?: string;
+    releaseDate?: string;
+    images?: { url: string; height: number; width: number }[];
   };
-  durationMs: number;
+  durationMs?: number;
   previewUrl?: string | null;
-  externalUrl: string;
-  uri: string;
+  externalUrl?: string; // For linking to web player - might be same as url
+  url?: string; // Explicitly add the url property for Spotify links
+  uri?: string; // Spotify URI
   matchScore?: number; // Score from YouTube matching
+  // Keep these potentially redundant fields if used elsewhere, but make optional
   albumName?: string; 
   albumImages?: { url: string; height: number; width: number }[];
 }

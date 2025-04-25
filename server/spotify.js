@@ -674,9 +674,88 @@ async function findSpotifyTrackBySearchQuery(query) {
   }
 }
 
+/**
+ * Extracts the Spotify track ID from a Spotify track URL.
+ * @param {string} url The Spotify track URL.
+ * @returns {string|null} The track ID or null if the URL is invalid.
+ */
+function extractSpotifyTrackId(url) {
+  try {
+    const urlObj = new URL(url);
+    if (urlObj.hostname !== 'open.spotify.com' || !urlObj.pathname.startsWith('/track/')) {
+      return null;
+    }
+    const parts = urlObj.pathname.split('/');
+    return parts[2] || null; // ID is usually the 3rd part, e.g., /track/TRACK_ID
+  } catch (error) {
+    console.error(chalk.yellow(`[Spotify] Invalid URL format: ${url}`), error);
+    return null;
+  }
+}
+
+/**
+ * Fetches track details directly from Spotify using a track ID.
+ * @param {string} trackId The Spotify track ID.
+ * @returns {Promise<object|null>} The formatted track details matching SpotifyTrackData structure or null.
+ */
+async function getSpotifyTrackDetailsById(trackId) {
+  if (!trackId) return null;
+
+  const token = await getSpotifyToken();
+  if (!token) {
+    console.error(chalk.red('[Spotify] Failed to get Spotify token for direct track fetch.'));
+    return null;
+  }
+
+  const url = `https://api.spotify.com/v1/tracks/${trackId}`;
+
+  try {
+    const response = await fetch(url, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      console.error(chalk.red(`[Spotify] Error fetching track ${trackId}: ${response.status} ${response.statusText}`), errorBody);
+      if (response.status === 404) return null;
+      return null;
+    }
+
+    const trackData = await response.json();
+
+    // Format the data to match SpotifyTrackData structure
+    const firstArtist = trackData.artists && trackData.artists.length > 0 ? trackData.artists[0] : null;
+
+    return {
+      id: trackData.id,
+      name: trackData.name,
+      // Return artists array in the expected format (using only first artist for consistency here)
+      artists: firstArtist ? [{ id: firstArtist.id, name: firstArtist.name }] : [],
+      // Return album object in the expected format
+      album: trackData.album ? {
+        id: trackData.album.id,
+        name: trackData.album.name,
+        releaseDate: trackData.album.release_date,
+        images: trackData.album.images
+      } : null,
+      durationMs: trackData.duration_ms,
+      previewUrl: trackData.preview_url,
+      externalUrl: trackData.external_urls.spotify, // Consistent naming
+      url: trackData.external_urls.spotify, // Add the url field explicitly
+      uri: trackData.uri,
+      // Note: matchScore is not applicable here
+    };
+  } catch (error) {
+    console.error(chalk.red(`[Spotify] Exception fetching track ${trackId}:`), error);
+    return null;
+  }
+}
+
 module.exports = {
   getSpotifyToken,
-  searchSpotifyTrack,
   getSpotifyEquivalent,
-  findSpotifyTrackBySearchQuery
-}; 
+  extractSpotifyTrackId,
+  getSpotifyTrackDetailsById,
+};

@@ -844,6 +844,36 @@ function closeDatabase() {
     }
 }
 
+/**
+ * Updates the spotifyData for a specific song in the active_queue table using the application-generated request ID.
+ * @param {string} appRequestId The application-generated unique ID of the song request to update.
+ * @param {object | null} spotifyData The new Spotify data object (or null).
+ */
+function updateSongSpotifyDataInDbQueue(appRequestId, spotifyData) {
+  if (!db) {
+      console.error(chalk.red('[DB] Database not initialized. Cannot update Spotify data.'));
+      return;
+  }
+  if (!appRequestId) {
+      console.warn(chalk.yellow('[DB] updateSongSpotifyDataInDbQueue called with invalid appRequestId.'));
+      return;
+  }
+
+  try {
+    // Update using the request_id column which stores the app's ID
+    const stmt = db.prepare('UPDATE active_queue SET spotifyData = ? WHERE request_id = ?');
+    const result = stmt.run(spotifyData ? JSON.stringify(spotifyData) : null, appRequestId);
+    if (result.changes > 0) {
+      console.log(chalk.blue(`[DB] Updated Spotify data for queue item with request_id ${appRequestId}.`));
+    } else {
+      // This could happen if the item was removed from the queue just before the update attempt
+      console.log(chalk.yellow(`[DB] Attempted to update Spotify data for non-existent queue item with request_id ${appRequestId}.`));
+    }
+  } catch (error) {
+    console.error(chalk.red(`[DB] Error updating Spotify data in queue for request_id ${appRequestId}:`), error);
+  }
+}
+
 module.exports = {
     initDatabase,
     loadInitialState,
@@ -871,5 +901,6 @@ module.exports = {
     
     closeDatabase,
     
-    getDb
+    getDb,
+    updateSongSpotifyDataInDbQueue
 }; 

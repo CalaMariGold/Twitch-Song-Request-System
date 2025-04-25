@@ -14,6 +14,10 @@ const {
   checkBlacklist,
   validateDuration
 } = require('./helpers')
+const { 
+  extractSpotifyTrackId,
+  getSpotifyTrackDetailsById
+} = require('./spotify')
 const { fetchYouTubeDetails } = require('./youtube')
 const { 
   initTwitchChat, 
@@ -88,6 +92,7 @@ initTwitchChat({
 
 // Initialize database first, before we setup any routes or connections
 db.initDatabase(dbPath);
+const { updateSongSpotifyDataInDbQueue } = require('./database');
 
 // Server state - Initial state will be loaded from DB
 const state = {
@@ -244,18 +249,74 @@ io.on('connection', (socket) => {
         const songToRemove = state.queue.find(song => song.id === songId);
         if (songToRemove) {
             state.queue = state.queue.filter(song => song.id !== songId);
-            db.removeSongFromDbQueue(songId); // Fixed: use songId not youtubeUrl
+            db.removeSongFromDbQueue(songId); // Ensure db module exports this function
             io.emit('queueUpdate', state.queue);
             console.log(chalk.magenta(`[Admin:${socket.id}] Song removed via socket: ${songId}`));
         } else {
-            console.warn(chalk.yellow(`[Admin:${socket.id}] Attempted to remove non-existent song ID: ${songId}`));
+            console.warn(chalk.yellow(`[Admin:${socket.id}] Attempted to remove non-existent song via socket: ${songId}`));
         }
     }))
+
+    // NEW: Handle updating Spotify link for a request
+    socket.on('adminUpdateSpotifyLink', requireAdmin(async ({ requestId, spotifyUrl }) => {
+        console.log(chalk.cyan(`[Admin:${socket.id}] Received adminUpdateSpotifyLink for ${requestId} with URL: ${spotifyUrl}`));
+
+        if (!requestId || typeof spotifyUrl !== 'string') {
+            console.warn(chalk.yellow(`[Admin:${socket.id}] Invalid payload for adminUpdateSpotifyLink.`));
+            socket.emit('updateSpotifyError', { requestId, message: 'Invalid request data.' });
+            return;
+        }
+
+        const trackId = extractSpotifyTrackId(spotifyUrl);
+        if (!trackId) {
+            console.warn(chalk.yellow(`[Admin:${socket.id}] Invalid Spotify URL provided: ${spotifyUrl}`));
+            socket.emit('updateSpotifyError', { requestId, message: 'Invalid Spotify track URL format.' });
+            return;
+        }
+
+        try {
+            const spotifyDetails = await getSpotifyTrackDetailsById(trackId);
+            if (!spotifyDetails) {
+                console.warn(chalk.yellow(`[Admin:${socket.id}] Could not find Spotify track details for ID: ${trackId}`));
+                socket.emit('updateSpotifyError', { requestId, message: 'Could not find track details on Spotify.' });
+                return;
+            }
+
+            // Find the request in the in-memory queue
+            const requestIndex = state.queue.findIndex(req => req.id === requestId);
+            if (requestIndex === -1) {
+                console.warn(chalk.yellow(`[Admin:${socket.id}] Could not find request ${requestId} in the current queue.`));
+                socket.emit('updateSpotifyError', { requestId, message: 'Request not found in the queue.' });
+                return;
+            }
+
+            // Update the in-memory queue
+            state.queue[requestIndex].spotifyData = spotifyDetails;
+            // Update title/artist based on Spotify data? - Let's keep original for now, just update spotifyData
+            // state.queue[requestIndex].title = spotifyDetails.name;
+            // state.queue[requestIndex].artist = spotifyDetails.artists.join(', ');
+            console.log(chalk.green(`[Admin:${socket.id}] Updated in-memory Spotify data for request ${requestId}.`));
+
+            // Update the database
+            updateSongSpotifyDataInDbQueue(requestId, spotifyDetails);
+
+            // Broadcast the updated queue to all clients
+            io.emit('queueUpdate', state.queue);
+            console.log(chalk.cyan(`[Admin:${socket.id}] Broadcasted queue update after Spotify link change for ${requestId}.`));
+
+            // Send success confirmation back to the admin who made the change
+            socket.emit('updateSpotifySuccess', { requestId });
+
+        } catch (error) {
+            console.error(chalk.red(`[Admin:${socket.id}] Error processing adminUpdateSpotifyLink for ${requestId}:`), error);
+            socket.emit('updateSpotifyError', { requestId, message: 'An internal server error occurred.' });
+        }
+    }));
 
     // Handle clear queue
     socket.on('clearQueue', requireAdmin(() => {
         state.queue = [];
-        db.clearDbQueue(); // Clear DB
+        db.clearDbQueue(); // Clear the queue in the database as well
         io.emit('queueUpdate', state.queue);
         console.log(chalk.magenta(`[Admin:${socket.id}] Queue cleared via socket.`));
     }))

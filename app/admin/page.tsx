@@ -73,7 +73,8 @@ import {
   ChevronDown,
   Loader2,
   X,
-  GripVertical
+  GripVertical,
+  Edit
 } from "lucide-react"
 import { 
   SongRequest, 
@@ -122,7 +123,19 @@ export default function AdminDashboard() {
   const [newBlacklistType, setNewBlacklistType] = useState<BlacklistItem['type']>('keyword')
   const [requestType, setRequestType] = useState<'channelPoint' | 'donation'>('channelPoint')
   const [bypassRestrictions, setBypassRestrictions] = useState(false)
+  const [isSpotifyLinkDialogOpen, setIsSpotifyLinkDialogOpen] = useState(false)
+  const [editingRequestId, setEditingRequestId] = useState<string | null>(null)
+  const [currentSpotifyLink, setCurrentSpotifyLink] = useState<string>("")
+  const [spotifyLinkInput, setSpotifyLinkInput] = useState<string>("")
   const { toast } = useToast()
+
+  // Define closeSpotifyLinkDialog early so it can be used in useEffect
+  const closeSpotifyLinkDialog = useCallback(() => {
+    setIsSpotifyLinkDialogOpen(false);
+    setEditingRequestId(null);
+    setCurrentSpotifyLink("");
+    setSpotifyLinkInput("");
+  }, []); // This callback has no external dependencies
 
   // Socket Connection and Event Listeners
   useEffect(() => {
@@ -267,14 +280,60 @@ export default function AdminDashboard() {
     });
     */
     // --- END NEW ---
-    
+
+    // NEW: Listen for Spotify update results
+    // Define listener handlers within useEffect
+    const handleSpotifySuccess = ({ requestId }: { requestId: string }) => {
+      console.log(`Admin: Successfully updated Spotify link for ${requestId}`);
+      toast({
+        title: "Spotify Link Updated",
+        description: `Successfully updated Spotify link for request ${requestId.substring(0, 8)}...`,
+      });
+      // Close dialog if it was open for this request
+      // Use editingRequestId from state directly here
+      // Note: This check might be slightly delayed if state update isn't immediate
+      // A better approach might be to pass editingRequestId to the handler if possible,
+      // but this check inside works for most cases.
+      closeSpotifyLinkDialog(); // Call the memoized close function
+    };
+
+    const handleSpotifyError = ({ requestId, message }: { requestId: string; message: string }) => {
+      console.error(`Admin: Error updating Spotify link for ${requestId}: ${message}`);
+      toast({
+        title: "Spotify Update Error",
+        description: message || "An unknown error occurred.",
+      });
+      // Optionally close dialog on error too
+      // closeSpotifyLinkDialog();
+    };
+
+    socketInstance.on('updateSpotifySuccess', handleSpotifySuccess);
+    socketInstance.on('updateSpotifyError', handleSpotifyError);
+
     setSocket(socketInstance)
 
     return () => {
       console.log('Admin: Cleaning up socket connection')
+      socketInstance.off('connect');
+      socketInstance.off('disconnect');
+      socketInstance.off('initialState');
+      socketInstance.off('queueUpdate');
+      socketInstance.off('activeSong');
+      socketInstance.off('historyUpdate');
+      socketInstance.off('songFinished');
+      socketInstance.off('settingsUpdate');
+      socketInstance.off('blacklistUpdate');
+      socketInstance.off('blockedUsersUpdate');
+      socketInstance.off('allTimeStatsUpdate');
+      socketInstance.off('allTimeStatsError');
+      socketInstance.off('connect_error');
+      socketInstance.off('adminAuthenticated');
+      // NEW: Clean up new listeners
+      socketInstance.off('updateSpotifySuccess', handleSpotifySuccess);
+      socketInstance.off('updateSpotifyError', handleSpotifyError);
       socketInstance.disconnect()
     }
-  }, [])
+  }, [toast, closeSpotifyLinkDialog])
 
   // Load user from cookie
   useEffect(() => {
@@ -520,6 +579,32 @@ export default function AdminDashboard() {
   // Calculate total queue duration
   const { formatted: totalQueueDurationFormatted } = calculateTotalQueueDuration(appState.queue)
 
+  // NEW: Spotify Link Dialog Handlers
+  const openSpotifyLinkDialog = useCallback((request: SongRequest) => {
+    setEditingRequestId(request.id);
+    const initialLink = request.spotifyData?.url ?? "";
+    setCurrentSpotifyLink(initialLink);
+    setSpotifyLinkInput(initialLink);
+    setIsSpotifyLinkDialogOpen(true);
+  }, []); // No dependencies needed here
+
+  // handleSpotifyLinkSave uses state (socket, editingRequestId, spotifyLinkInput) and props (toast)
+  const handleSpotifyLinkSave = useCallback(() => {
+    if (socket && editingRequestId && spotifyLinkInput.trim()) {
+      console.log(`Admin: Emitting adminUpdateSpotifyLink for ${editingRequestId} with URL: ${spotifyLinkInput}`);
+      const payload: { requestId: string; spotifyUrl: string } = { 
+        requestId: editingRequestId, 
+        spotifyUrl: spotifyLinkInput.trim() 
+      };
+      socket.emit('adminUpdateSpotifyLink', payload);
+    } else if (!spotifyLinkInput.trim()) {
+       toast({
+          title: "Input Error",
+          description: "Spotify link cannot be empty.",
+       });
+    }
+  // Add necessary dependencies: socket, editingRequestId, spotifyLinkInput, toast
+  }, [socket, editingRequestId, spotifyLinkInput, toast]); 
 
   // Render Logic
   if (appState.isLoading && !socket) {
@@ -535,6 +620,42 @@ export default function AdminDashboard() {
   return (
     <div className="min-h-screen bg-gray-900 text-white p-6 rounded-lg shadow-xl max-w-7xl mx-auto">
       <Toaster />
+      
+      {/* NEW: Spotify Link Edit Dialog */}
+      <Dialog open={isSpotifyLinkDialogOpen} onOpenChange={setIsSpotifyLinkDialogOpen}>
+        <DialogContent className="sm:max-w-[425px] bg-gray-850 border-gray-700 text-white">
+          <DialogHeader>
+            <DialogTitle>Edit Spotify Link</DialogTitle>
+            <DialogDescription className="text-gray-400">
+              Enter the Spotify track URL for this request. This will fetch and update the associated Spotify data.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="spotify-link" className="text-right">
+                Spotify URL
+              </Label>
+              <Input
+                id="spotify-link"
+                value={spotifyLinkInput}
+                onChange={(e) => setSpotifyLinkInput(e.target.value)}
+                className="col-span-3 bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:border-purple-500 focus:ring-purple-500"
+                placeholder="https://open.spotify.com/track/..."
+              />
+            </div>
+            {currentSpotifyLink && (
+               <p className="text-xs text-muted-foreground col-span-4 px-3">
+                 Current link: <a href={currentSpotifyLink} target="_blank" rel="noopener noreferrer" className="underline hover:text-purple-300">{currentSpotifyLink}</a>
+               </p>
+            )}
+          </div>
+          <DialogFooter className="bg-gray-850">
+             <Button type="button" variant="outline" onClick={closeSpotifyLinkDialog}>Cancel</Button>
+             <Button type="button" onClick={handleSpotifyLinkSave} disabled={!isConnected || !spotifyLinkInput.trim()} className="bg-purple-600 hover:bg-purple-700">Save changes</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <header className="flex justify-between items-center mb-8">
         <h1 className="text-3xl font-bold text-white flex items-center">
            <Shield className="mr-3 h-8 w-8 text-purple-400" /> Song Request Admin Dashboard
@@ -834,18 +955,44 @@ export default function AdminDashboard() {
                                                 <span className="truncate">
                                                     {song.spotifyData.name} - {song.spotifyData.artists?.map((a: { name: string }) => a.name).join(', ')}
                                                 </span>
+                                                {/* Display URL link if it exists */}
+                                                {song.spotifyData.url && (
+                                                  <a 
+                                                    href={song.spotifyData.url} 
+                                                    target="_blank" 
+                                                    rel="noopener noreferrer" 
+                                                    title="Open on Spotify"
+                                                    className="ml-1 text-gray-500 hover:text-green-400 transition-colors"
+                                                    onClick={(e) => e.stopPropagation()} // Prevent triggering other actions
+                                                  >
+                                                    <LinkIcon size={12} />
+                                                  </a>
+                                                )}
                                             </div>
                                         )}
                                         {/* END: Added Spotify Details */}
                                      </div>
                                      <div className="flex-shrink-0 flex flex-col items-end">
-                                        <div className="flex space-x-1">
-                                           <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handlePlaySong(song)}>
+                                        <div className="flex space-x-1 items-center"> {/* Wrap buttons for alignment */}
+                                           {/* NEW: Edit Spotify Button */}
+                                           <Button 
+                                             variant="ghost" 
+                                             size="sm" 
+                                             className="h-8 w-8 p-0 text-gray-400 hover:text-white"
+                                             onClick={() => openSpotifyLinkDialog(song)}
+                                             title="Edit Spotify Link"
+                                             disabled={!isConnected} // Disable if not connected
+                                           >
+                                             <Edit size={14} />
+                                           </Button>
+                                           {/* Existing Play/Remove buttons */}
+                                           <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handlePlaySong(song)} title="Set Active" disabled={!isConnected}>
                                                <Play className="h-4 w-4 text-green-500 hover:text-green-400" />
                                            </Button>
-                                           <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handleRemoveSong(song.id)}>
+                                           <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handleRemoveSong(song.id)} title="Remove from Queue" disabled={!isConnected}>
                                              <Trash2 className="h-4 w-4 text-red-500 hover:text-red-400" />
                                            </Button>
+                                           {/* Existing YouTube/Spotify links */}
                                            {song.youtubeUrl && (
                                             <a href={song.youtubeUrl} target="_blank" rel="noopener noreferrer" aria-label="Watch on YouTube">
                                                   <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
@@ -964,6 +1111,19 @@ export default function AdminDashboard() {
                                         <span className="truncate">
                                             {song.spotifyData.name} - {song.spotifyData.artists?.map((a: { name: string }) => a.name).join(', ')}
                                         </span>
+                                        {/* Display URL link if it exists */}
+                                        {song.spotifyData.url && (
+                                          <a 
+                                            href={song.spotifyData.url} 
+                                            target="_blank" 
+                                            rel="noopener noreferrer" 
+                                            title="Open on Spotify"
+                                            className="ml-1 text-gray-500 hover:text-green-400 transition-colors"
+                                            onClick={(e) => e.stopPropagation()} // Prevent triggering other actions
+                                          >
+                                            <LinkIcon size={12} />
+                                          </a>
+                                        )}
                                     </div>
                                 )}
                                 {/* END: Added Spotify Details */}
