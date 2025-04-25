@@ -232,6 +232,7 @@ io.on('connection', (socket) => {
         }
         // Extract bypass flag, default to false if not provided
         const bypass = songRequestData.bypassRestrictions === true;
+        const isAdminAdd = songRequestData.source === 'admin'; // Check if it's an admin add
 
         // --- NEW: Check auth if bypassing ---
         if (bypass && !authenticatedAdminSockets.has(socket.id)) {
@@ -240,8 +241,46 @@ io.on('connection', (socket) => {
         }
         // --- END NEW ---
 
-        console.log(chalk.magenta(`[Admin:${bypass ? socket.id : 'N/A'}] Adding song via socket. Bypass: ${bypass}`));
-        await validateAndAddSong({ ...songRequestData, source: 'socket' }, bypass);
+        console.log(chalk.magenta(`[Admin:${bypass ? socket.id : 'N/A'}] Adding song via socket. Bypass: ${bypass}. Source: ${songRequestData.source || 'unknown'}`));
+        
+        // Generate an ID if not provided (useful for admin adds)
+        const finalRequestId = songRequestData.id || Date.now().toString();
+        const requestToAdd = { ...songRequestData, id: finalRequestId };
+
+        try {
+            await validateAndAddSong(requestToAdd, bypass);
+
+            // *** NEW: Force admin-added songs to the top ***
+            if (isAdminAdd) {
+                console.log(chalk.cyan(`[Admin Add] Forcing song ${finalRequestId} to top of queue.`));
+                const addedSongIndex = state.queue.findIndex(song => song.id === finalRequestId);
+
+                if (addedSongIndex !== -1) {
+                    // Song was successfully added by validateAndAddSong, now move it
+                    const [movedSong] = state.queue.splice(addedSongIndex, 1); // Remove from current position
+                    state.queue.unshift(movedSong); // Add to the beginning
+
+                    // Re-sync the database queue with the new order
+                    db.clearDbQueue();
+                    state.queue.forEach(song => db.addSongToDbQueue(song));
+                    console.log(chalk.cyan(`[Admin Add] DB re-synced after moving ${finalRequestId} to top.`));
+
+                    // Emit the final, corrected queue update
+                    io.emit('queueUpdate', state.queue);
+                    console.log(chalk.cyan(`[Admin Add] Final queue update emitted after forcing to top.`));
+                } else {
+                    // This case should ideally not happen if validateAndAddSong succeeded
+                    // but didn't actually add the song (maybe validation failed silently?)
+                    console.warn(chalk.yellow(`[Admin Add] Could not find song ${finalRequestId} in queue after validateAndAddSong, cannot force to top.`));
+                }
+            }
+             // *** END NEW ***
+
+        } catch (error) {
+             // If validateAndAddSong throws an error, log it
+             console.error(chalk.red(`[Admin Add Error] Error during validateAndAddSong for request from ${songRequestData.requester}:`), error);
+             // Optionally, inform the admin via socket if possible/needed
+        }
     })
 
     // Handle remove song
@@ -1180,20 +1219,51 @@ async function validateAndAddSong(request, bypassRestrictions = false) {
           }
 
       } else if (request.message) {
-          // This case should theoretically be handled by the calling functions (onTip/onRedemption)
-          // which call createSpotifyBasedRequest -> validateAndAddSong, but we add a safeguard.
-          console.warn(chalk.yellow(`[Queue] validateAndAddSong called with message but no youtubeUrl. This indicates a Spotify-based request was likely intended.`));
-          // If we reach here, it implies createSpotifyBasedRequest should have been called first.
-          // We'll assume the request object *already* has Spotify details populated by createSpotifyBasedRequest.
-          if (!request.title || !request.artist || !request.durationSeconds) {
-               console.error(chalk.red(`[Queue] validateAndAddSong received text-based request without pre-filled Spotify details. Cannot proceed.`));
-               sendChatMessage(`@${userName}, there was an internal error processing your text-based request.`);
-               return;
+          // Handle Spotify URL from Admin or Text Search from StreamElements
+          let isSpotifyUrlFromAdmin = false;
+          if (request.message.includes('open.spotify.com/track/') && !request.title) {
+               // Likely a Spotify URL added via Admin panel (message has URL, but no details yet)
+               console.log(chalk.blue('[Queue] Detected Spotify URL in message field, attempting direct fetch...'));
+               const trackId = extractSpotifyTrackId(request.message);
+               if (!trackId) {
+                   console.error(chalk.red(`[Spotify] Failed to extract track ID from admin-added URL: ${request.message}`));
+                   // Maybe send an error back to admin via socket if possible?
+                   return; // Cannot proceed without ID
+               }
+               const spotifyDetails = await getSpotifyTrackDetailsById(trackId);
+               if (!spotifyDetails) {
+                   console.error(chalk.red(`[Spotify] Failed to fetch details for admin-added Spotify track ID: ${trackId}`));
+                   // Maybe send an error back to admin via socket if possible?
+                   return; // Cannot proceed without details
+               }
+               console.log(chalk.green(`[Spotify] Successfully fetched details for admin-added URL: "${spotifyDetails.name}"`));
+               songTitle = spotifyDetails.name;
+               songArtist = spotifyDetails.artists?.map(a => a.name).join(', ') || 'Unknown Artist';
+               durationSeconds = Math.round(spotifyDetails.durationMs / 1000);
+               spotifyMatch = spotifyDetails; // Store the fetched details
+               // Need to get thumbnailUrl here as well
+               videoDetails = { thumbnailUrl: spotifyMatch?.album?.images?.[0]?.url || null }; // Use a placeholder videoDetails for thumbnail
+               isSpotifyUrlFromAdmin = true;
           }
-          songTitle = request.title;
-          songArtist = request.artist;
-          durationSeconds = request.durationSeconds;
-          spotifyMatch = request.spotifyData; // Assume it was populated earlier
+          
+          // If it wasn't a Spotify URL from admin, check if details are already populated (StreamElements text search flow)
+          if (!isSpotifyUrlFromAdmin) {
+               if (!request.title || !request.artist || !request.durationSeconds) {
+                    console.error(chalk.red(`[Queue] validateAndAddSong received request via message field without pre-filled details and it wasn't a Spotify URL. Cannot proceed. Request:`, request));
+                    // Send chat message only if not from admin source (avoid double messages)
+                    if (request.source !== 'socket' && request.source !== 'admin') { 
+                         sendChatMessage(`@${userName}, there was an internal error processing your text-based request.`);
+                    }
+                    return;
+               }
+               // If details ARE present, assume they came from createSpotifyBasedRequest (SE text search)
+               console.log(chalk.blue(`[Queue] Using pre-filled details for request from message: ${request.title}`));
+               songTitle = request.title;
+               songArtist = request.artist;
+               durationSeconds = request.durationSeconds;
+               spotifyMatch = request.spotifyData; // Assume it was populated earlier
+               videoDetails = { thumbnailUrl: spotifyMatch?.album?.images?.[0]?.url || null }; // Use a placeholder videoDetails for thumbnail
+          }
 
       } else {
            console.error(chalk.red(`[Queue] validateAndAddSong called without youtubeUrl or message.`));

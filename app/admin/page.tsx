@@ -101,7 +101,7 @@ interface TwitchUser {
 
 export default function AdminDashboard() {
   // State
-  const [videoUrl, setVideoUrl] = useState("")
+  const [songUrl, setSongUrl] = useState("")
   const [requesterUsername, setRequesterUsername] = useState("")
   const [user, setUser] = useState<TwitchUser | null>(null)
   const [isConnected, setIsConnected] = useState(false)
@@ -460,13 +460,30 @@ export default function AdminDashboard() {
     e.preventDefault()
     const finalRequesterUsername = requesterUsername.trim() === "" ? "CalaMariGold" : requesterUsername.trim()
 
-    if (!socket || !videoUrl || !finalRequesterUsername) {
-        toast({ title: "Missing Information", description: "Please provide a valid YouTube URL and requester name." });
+    if (!socket || !songUrl || !finalRequesterUsername) {
+        toast({ title: "Missing Information", description: "Please provide a valid YouTube or Spotify Track URL and requester name." });
         return
     }
 
+    // Basic client-side check for URL type
+    let requestYoutubeUrl: string | undefined = undefined;
+    let requestMessage: string | undefined = undefined;
+    const trimmedUrl = songUrl.trim();
+
+    if (trimmedUrl.includes("youtube.com/") || trimmedUrl.includes("youtu.be/")) {
+        requestYoutubeUrl = trimmedUrl;
+        console.log("Admin: Detected YouTube URL");
+    } else if (trimmedUrl.includes("open.spotify.com/track/")) {
+        requestMessage = trimmedUrl; // Send Spotify URL in the message field
+        console.log("Admin: Detected Spotify URL");
+    } else {
+        toast({ title: "Invalid URL", description: "Please enter a valid YouTube or Spotify Track URL." });
+        return;
+    }
+
     const songRequestData = {
-        youtubeUrl: videoUrl,
+        youtubeUrl: requestYoutubeUrl, // Now string | undefined
+        message: requestMessage,     // Now string | undefined
         requester: finalRequesterUsername,
         requestType: requestType,
         donationInfo: requestType === 'donation' ? { amount: 5, currency: 'USD' } : undefined,
@@ -475,10 +492,11 @@ export default function AdminDashboard() {
     }
 
     console.log("Admin: Manually adding song:", songRequestData)
-    socket.emit('addSong', songRequestData as Partial<SongRequest> & { youtubeUrl: string; requester: string })
+    // Adjusted type assertion to better match potential backend expectation (optional fields)
+    socket.emit('addSong', songRequestData as Partial<SongRequest> & { requester: string; youtubeUrl?: string; message?: string })
 
-    toast({ title: "Song Submitted", description: `Attempting to add: ${videoUrl}` })
-    setVideoUrl("")
+    toast({ title: "Song Submitted", description: `Attempting to add: ${trimmedUrl}` })
+    setSongUrl("") // Clear the renamed state
     setRequesterUsername("")
   }
 
@@ -1196,9 +1214,9 @@ export default function AdminDashboard() {
               <form onSubmit={handleSubmit} className="space-y-4">
                 <Input
                   type="text"
-                  placeholder="YouTube Video URL"
-                  value={videoUrl}
-                  onChange={(e) => setVideoUrl(e.target.value)}
+                  placeholder="YouTube or Spotify Track URL"
+                  value={songUrl}
+                  onChange={(e) => setSongUrl(e.target.value)}
                    // Consistent input style
                   className="bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:border-purple-500 focus:ring-purple-500"
                   required
