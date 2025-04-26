@@ -579,6 +579,106 @@ io.on('connection', (socket) => {
         }
     });
 
+    // Handle user editing Spotify link for their own request
+    socket.on('editMySongSpotify', async (data) => {
+        const { requestId, spotifyUrl, userLogin } = data;
+        if (!requestId || !spotifyUrl || !userLogin) {
+            console.warn(chalk.yellow('[Socket.IO] Received invalid editMySongSpotify data:'), data);
+            socket.emit('editSpotifyError', { 
+                requestId,
+                message: 'Invalid request data. Please provide Spotify track URL and try again.' 
+            });
+            return;
+        }
+
+        const songIndex = state.queue.findIndex(song => song.id === requestId);
+        if (songIndex === -1) {
+            console.warn(chalk.yellow(`[User] Attempted to edit non-existent song ID: ${requestId}`));
+            socket.emit('editSpotifyError', { 
+                requestId,
+                message: 'This song is no longer in the queue.' 
+            });
+            return;
+        }
+
+        const songToEdit = state.queue[songIndex];
+        // Verify ownership
+        if (!songToEdit.requesterLogin || songToEdit.requesterLogin.toLowerCase() !== userLogin.toLowerCase()) {
+            console.warn(chalk.yellow(`[Security] User ${userLogin} attempted to edit song ${requestId} owned by ${songToEdit.requesterLogin}`));
+            socket.emit('editSpotifyError', { 
+                requestId,
+                message: 'You can only edit your own song requests.' 
+            });
+            return;
+        }
+
+        try {
+            // Extract Spotify track ID and fetch details
+            const trackId = spotify.extractSpotifyTrackId(spotifyUrl);
+            if (!trackId) {
+                console.warn(chalk.yellow(`[User] Invalid Spotify URL provided by ${userLogin} for song ${requestId}: ${spotifyUrl}`));
+                socket.emit('editSpotifyError', { 
+                    requestId,
+                    message: 'Invalid Spotify track URL. Please provide a valid Spotify track link.' 
+                });
+                return;
+            }
+
+            const spotifyDetails = await spotify.getSpotifyTrackDetailsById(trackId);
+            if (!spotifyDetails) {
+                console.warn(chalk.yellow(`[User] Spotify track not found for ID ${trackId} provided by ${userLogin} for song ${requestId}`));
+                socket.emit('editSpotifyError', { 
+                    requestId,
+                    message: 'Spotify track not found. Please check the URL and try again.' 
+                });
+                return;
+            }
+
+            // Update the in-memory state with Spotify data, title, artist, thumbnail, duration
+            state.queue[songIndex].spotifyData = spotifyDetails;
+            state.queue[songIndex].title = spotifyDetails.name || songToEdit.title;
+            const updatedArtist = spotifyDetails.artists && spotifyDetails.artists.length > 0 
+                ? spotifyDetails.artists[0].name 
+                : (songToEdit.artist || 'Unknown Artist');
+            state.queue[songIndex].artist = updatedArtist;
+            const newThumbnailUrl = spotifyDetails.album?.images?.[0]?.url || songToEdit.thumbnailUrl;
+            const newDurationSeconds = spotifyDetails.durationMs ? Math.round(spotifyDetails.durationMs / 1000) : songToEdit.durationSeconds;
+            state.queue[songIndex].thumbnailUrl = newThumbnailUrl;
+            state.queue[songIndex].durationSeconds = newDurationSeconds;
+
+            // Update the database using the comprehensive update function
+            await db.updateSongSpotifyDataAndDetailsInDbQueue(
+                requestId, 
+                spotifyDetails, 
+                spotifyDetails.name, 
+                updatedArtist, 
+                newThumbnailUrl, 
+                newDurationSeconds
+            );
+            
+            // Broadcast updated queue to all clients
+            io.emit('queueUpdate', state.queue);
+            
+            // Send success response to the user
+            socket.emit('editSpotifySuccess', { 
+                requestId,
+                message: 'Song details updated successfully from Spotify!' 
+            });
+            
+            console.log(chalk.cyan(`[User] Song details updated by ${userLogin} for request ${requestId}: ${spotifyDetails.name} by ${updatedArtist}`));
+            
+            // NEW: Send Twitch chat confirmation message
+            sendChatMessage(`@${userLogin} updated their request to: "${spotifyDetails.name}" by ${updatedArtist}. https://calamarigoldrequests.com/`);
+            
+        } catch (error) {
+            console.error(chalk.red(`[Error] Error updating Spotify details for song ${requestId}:`), error);
+            socket.emit('editSpotifyError', { 
+                requestId,
+                message: 'An error occurred while updating the song details. Please try again.' 
+            });
+        }
+    });
+
     // Handle getAllTimeStats request
     socket.on('getAllTimeStats', () => {
         try {

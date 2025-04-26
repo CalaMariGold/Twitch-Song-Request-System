@@ -6,7 +6,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Input } from "@/components/ui/input"
-import { Search, Music, Clock, History, Loader2, Youtube, User, ListPlus, Trash2, GripVertical, Save, Plus } from "lucide-react"
+import { Search, Music, Clock, History, Loader2, Youtube, User, ListPlus, Trash2, GripVertical, Save, Plus, Link as LinkIcon, Edit } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { motion, AnimatePresence } from "framer-motion"
 import { ErrorBoundary } from "@/components/ErrorBoundary"
@@ -57,6 +57,11 @@ export default function SongRequestQueue() {
   const [hasMoreHistory, setHasMoreHistory] = useState(true)
   const [totalHistoryCount, setTotalHistoryCount] = useState(0)
   const [totalQueueCount, setTotalQueueCount] = useState(0)
+  const [isEditSpotifyDialogOpen, setIsEditSpotifyDialogOpen] = useState(false)
+  const [editingSongId, setEditingSongId] = useState<string | null>(null)
+  const [currentSpotifyUrl, setCurrentSpotifyUrl] = useState('')
+  const [editSpotifyError, setEditSpotifyError] = useState<string | null>(null)
+  const [editSpotifySuccess, setEditSpotifySuccess] = useState(false)
 
   // Calculate total queue duration
   const { formatted: totalQueueDurationFormatted } = calculateTotalQueueDuration(state.queue)
@@ -303,13 +308,23 @@ export default function SongRequestQueue() {
     state, 
     searchTerm,
     isLoading,
-    socket
+    socket,
+    setEditingSongId,
+    setCurrentSpotifyUrl,
+    setIsEditSpotifyDialogOpen,
+    setEditSpotifyError,
+    setEditSpotifySuccess
   }: { 
     currentUser: { id?: string, login?: string } | null,
     state: AppState,
     searchTerm: string,
     isLoading: boolean,
-    socket: Socket | null
+    socket: Socket | null,
+    setEditingSongId: React.Dispatch<React.SetStateAction<string | null>>,
+    setCurrentSpotifyUrl: React.Dispatch<React.SetStateAction<string>>,
+    setIsEditSpotifyDialogOpen: React.Dispatch<React.SetStateAction<boolean>>,
+    setEditSpotifyError: React.Dispatch<React.SetStateAction<string | null>>,
+    setEditSpotifySuccess: React.Dispatch<React.SetStateAction<boolean>>
   }) {
     // Filter for user's queue songs
     const myQueueSongs = currentUser?.login
@@ -373,7 +388,17 @@ export default function SongRequestQueue() {
               <Music size={16} className="text-brand-purple-light" />
               <h3 className="text-sm font-medium text-brand-purple-light">In Queue ({myQueueSongs.length})</h3>
             </div>
-            <SongList songs={myQueueSongs} isHistory={false} currentUser={currentUser} socket={socket} />
+            <SongList 
+              songs={myQueueSongs} 
+              isHistory={false} 
+              currentUser={currentUser} 
+              socket={socket} 
+              setEditingSongId={setEditingSongId}
+              setCurrentSpotifyUrl={setCurrentSpotifyUrl}
+              setIsEditSpotifyDialogOpen={setIsEditSpotifyDialogOpen}
+              setEditSpotifyError={setEditSpotifyError}
+              setEditSpotifySuccess={setEditSpotifySuccess}
+            />
           </div>
         )}
         
@@ -387,7 +412,12 @@ export default function SongRequestQueue() {
               <History size={16} className="text-brand-purple-light/80" />
               <h3 className="text-sm font-medium text-brand-purple-light/80">Previously Requested ({myHistorySongs.length})</h3>
             </div>
-            <SongList songs={myHistorySongs} isHistory={true} currentUser={currentUser} socket={socket} />
+            <SongList 
+              songs={myHistorySongs} 
+              isHistory={true} 
+              currentUser={currentUser} 
+              socket={socket}
+            />
           </div>
         )}
       </div>
@@ -641,6 +671,40 @@ export default function SongRequestQueue() {
     socket.emit('getMoreHistory', { offset, limit: pageSize });
   }, [socket, historyPage, isLoadingMoreHistory, hasMoreHistory]);
 
+  // Add socket listeners for the edit Spotify response 
+  useEffect(() => {
+    if (!socket) return;
+
+    // New socket event listeners for editing Spotify link
+    socket.on(socketEvents.EDIT_SPOTIFY_SUCCESS, (data) => {
+      const { requestId, message } = data;
+      if (requestId === editingSongId) {
+        setEditSpotifySuccess(true);
+        setEditSpotifyError(null);
+        // Auto-close after success
+        setTimeout(() => {
+          setIsEditSpotifyDialogOpen(false);
+          setEditSpotifySuccess(false); 
+          setEditingSongId(null);
+          setCurrentSpotifyUrl('');
+        }, 1500);
+      }
+    });
+
+    socket.on(socketEvents.EDIT_SPOTIFY_ERROR, (data) => {
+      const { requestId, message } = data;
+      if (requestId === editingSongId) {
+        setEditSpotifyError(message || 'Error updating Spotify link');
+        setEditSpotifySuccess(false);
+      }
+    });
+
+    return () => {
+      socket.off(socketEvents.EDIT_SPOTIFY_SUCCESS);
+      socket.off(socketEvents.EDIT_SPOTIFY_ERROR);
+    };
+  }, [socket, editingSongId]);
+
   return (
     <ErrorBoundary>
       <div className="w-full max-w-4xl mx-auto p-6 bg-brand-purple-deep/70 text-white rounded-lg shadow-xl border border-brand-purple-neon/20 backdrop-blur-md shadow-glow-purple">
@@ -703,6 +767,11 @@ export default function SongRequestQueue() {
                 isHistory={false} 
                 currentUser={currentUser}
                 socket={socket}
+                setEditingSongId={setEditingSongId}
+                setCurrentSpotifyUrl={setCurrentSpotifyUrl}
+                setIsEditSpotifyDialogOpen={setIsEditSpotifyDialogOpen}
+                setEditSpotifyError={setEditSpotifyError}
+                setEditSpotifySuccess={setEditSpotifySuccess}
               />
             </ErrorBoundary>
           </TabsContent>
@@ -711,7 +780,7 @@ export default function SongRequestQueue() {
               <SongList 
                 songs={filteredHistory()} 
                 isHistory={true} 
-                currentUser={currentUser} 
+                currentUser={currentUser}
                 socket={socket}
               />
               
@@ -752,6 +821,11 @@ export default function SongRequestQueue() {
                 searchTerm={searchTerm} 
                 isLoading={state.isLoading} 
                 socket={socket}
+                setEditingSongId={setEditingSongId}
+                setCurrentSpotifyUrl={setCurrentSpotifyUrl}
+                setIsEditSpotifyDialogOpen={setIsEditSpotifyDialogOpen}
+                setEditSpotifyError={setEditSpotifyError}
+                setEditSpotifySuccess={setEditSpotifySuccess}
               />
             </ErrorBoundary>
           </TabsContent>
@@ -769,6 +843,22 @@ export default function SongRequestQueue() {
             </ErrorBoundary>
           </TabsContent>
         </Tabs>
+
+        {/* Add the EditSpotifyDialog */}
+        <EditSpotifyDialog
+          isOpen={isEditSpotifyDialogOpen}
+          onOpenChange={setIsEditSpotifyDialogOpen}
+          currentUser={currentUser}
+          socket={socket}
+          songId={editingSongId}
+          initialUrl={currentSpotifyUrl}
+          isSuccess={editSpotifySuccess}
+          error={editSpotifyError}
+          onReset={() => {
+            setEditSpotifyError(null);
+            setEditSpotifySuccess(false);
+          }}
+        />
       </div>
     </ErrorBoundary>
   )
@@ -865,7 +955,7 @@ function ActiveSong({ song, isLoading }: { song: SongRequest | null, isLoading: 
           <div className="flex space-x-1">
             {song.youtubeUrl && (
               <a href={song.youtubeUrl} target="_blank" rel="noopener noreferrer" aria-label="Watch on YouTube">
-                <Button variant="ghost" className="p-2 text-red-500 hover:text-red-400 hover:bg-red-500/10 rounded-full transition-all">
+                <Button variant="ghost" className="p-2 text-red-500 hover:text-red-400">
                   <Youtube className="h-6 w-6" />
                 </Button>
               </a>
@@ -873,7 +963,7 @@ function ActiveSong({ song, isLoading }: { song: SongRequest | null, isLoading: 
             
             {song.spotifyData && song.spotifyData.url && (
               <a href={String(song.spotifyData.url)} target="_blank" rel="noopener noreferrer" aria-label="Listen on Spotify">
-                <Button variant="ghost" className="p-2 text-green-500 hover:text-green-400 hover:bg-green-500/10 rounded-full transition-all">
+                <Button variant="ghost" className="p-2 text-green-500 hover:text-green-400">
                   <SpotifyIcon className="h-5 w-5" />
                 </Button>
               </a>
@@ -887,7 +977,27 @@ function ActiveSong({ song, isLoading }: { song: SongRequest | null, isLoading: 
   )
 }
 
-function SongList({ songs, isHistory, currentUser, socket }: { songs: SongRequest[], isHistory: boolean, currentUser: { id?: string, login?: string } | null, socket: Socket | null }) {
+function SongList({ 
+  songs, 
+  isHistory, 
+  currentUser, 
+  socket,
+  setEditingSongId,
+  setCurrentSpotifyUrl,
+  setIsEditSpotifyDialogOpen,
+  setEditSpotifyError,
+  setEditSpotifySuccess
+}: { 
+  songs: SongRequest[], 
+  isHistory: boolean, 
+  currentUser: { id?: string, login?: string } | null, 
+  socket: Socket | null,
+  setEditingSongId?: React.Dispatch<React.SetStateAction<string | null>>,
+  setCurrentSpotifyUrl?: React.Dispatch<React.SetStateAction<string>>,
+  setIsEditSpotifyDialogOpen?: React.Dispatch<React.SetStateAction<boolean>>,
+  setEditSpotifyError?: React.Dispatch<React.SetStateAction<string | null>>,
+  setEditSpotifySuccess?: React.Dispatch<React.SetStateAction<boolean>>
+}) {
   // Sorting is now handled in filteredHistory callback
   const sortedSongs = isHistory ? songs : songs; // Just use the passed songs
 
@@ -1015,26 +1125,50 @@ function SongList({ songs, isHistory, currentUser, socket }: { songs: SongReques
                       </Button>
                     </a>
                   )}
-                  {/* Delete button */}
-                  {/* Ensure all conditions are met before rendering the button */}
-                  {!isHistory && currentUser && currentUser.login && song.requesterLogin && song.requesterLogin.toLowerCase() === currentUser.login.toLowerCase() && socket && (
+
+                  {/* NEW: Edit Spotify button */}
+                  {!isHistory && isOwnRequest && socket && 
+                   setEditingSongId && setCurrentSpotifyUrl && setIsEditSpotifyDialogOpen && 
+                   setEditSpotifyError && setEditSpotifySuccess && (
                      <Button
                         variant="ghost"
                         size="icon"
-                        className="text-brand-purple-light/60 hover:text-red-500 hover:bg-red-500/10 rounded-full transition-all"
+                        className="text-brand-purple-light/60 hover:text-green-500 hover:bg-green-500/10 rounded-full transition-all"
                         onClick={() => {
-                          const currentLogin = currentUser.login; // Assign after null check
-                          if (socket && currentLogin) {
-                            socket.emit(socketEvents.DELETE_MY_REQUEST, { 
-                              requestId: song.id,
-                              userLogin: currentLogin
-                            });
+                          if (socket && currentUser?.login) {
+                            // Open the edit dialog and set the current song ID and Spotify URL
+                            setEditingSongId(song.id);
+                            setCurrentSpotifyUrl(song.spotifyData?.url || '');
+                            setIsEditSpotifyDialogOpen(true);
+                            setEditSpotifyError(null);
+                            setEditSpotifySuccess(false);
                           }
                         }}
-                        title="Delete my request"
+                        title="Edit Spotify link"
                       >
-                        <Trash2 size={18} />
-                     </Button>
+                        <Edit size={18} />
+                   </Button>
+                  )}
+
+                  {/* Delete button (existing) */}
+                  {!isHistory && isOwnRequest && socket && (
+                   <Button
+                      variant="ghost"
+                      size="icon"
+                      className="text-brand-purple-light/60 hover:text-red-500 hover:bg-red-500/10 rounded-full transition-all"
+                      onClick={() => {
+                        const currentLogin = currentUser?.login; // Assign after null check
+                        if (socket && currentLogin) {
+                          socket.emit(socketEvents.DELETE_MY_REQUEST, { 
+                            requestId: song.id,
+                            userLogin: currentLogin
+                          });
+                        }
+                      }}
+                      title="Delete my request"
+                    >
+                      <Trash2 size={18} />
+                   </Button>
                   )}
                 </div>
                 
@@ -1160,6 +1294,112 @@ function AddToPlanDialog({
             >
               {isAdding ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
               {isAdding ? "Adding..." : "Add to Plan"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function EditSpotifyDialog({ 
+  isOpen, 
+  onOpenChange, 
+  currentUser, 
+  socket, 
+  songId,
+  initialUrl,
+  isSuccess,
+  error,
+  onReset 
+}: { 
+  isOpen: boolean; 
+  onOpenChange: (open: boolean) => void; 
+  currentUser: { id?: string, login?: string } | null;
+  socket: Socket | null;
+  songId: string | null;
+  initialUrl: string;
+  isSuccess: boolean;
+  error: string | null;
+  onReset: () => void;
+}) {
+  // Use local state for the input
+  const [inputValue, setInputValue] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Reset form when dialog opens or initialUrl changes
+  useEffect(() => {
+    if (isOpen) {
+      setInputValue(initialUrl);
+      setIsSubmitting(false);
+      onReset();
+    }
+  }, [isOpen, initialUrl, onReset]);
+
+  // Focus the input when dialog opens
+  useEffect(() => {
+    if (isOpen && inputRef.current) {
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 100);
+    }
+  }, [isOpen]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!inputValue || !currentUser?.login || !socket || !songId) {
+      return;
+    }
+    
+    setIsSubmitting(true);
+    
+    // Emit to server to update the Spotify link
+    socket.emit(socketEvents.EDIT_MY_SONG_SPOTIFY, { 
+      requestId: songId,
+      spotifyUrl: inputValue,
+      userLogin: currentUser.login
+    });
+
+    // Reset submitting state immediately after emitting.
+    // Feedback (success/error) will come via props from parent.
+    setIsSubmitting(false);
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={(open) => {
+      if (!isSubmitting) { // Only allow closing if not in the middle of submitting
+        onOpenChange(open);
+      }
+    }}>
+      <DialogContent className="bg-brand-black/95 backdrop-blur border-brand-purple-neon/50 text-brand-purple-light">
+        <DialogHeader>
+          <DialogTitle className="text-brand-purple-light">Edit Spotify Link</DialogTitle>
+          <DialogDescription className="text-brand-purple-light/70">
+            IMPORTANT: Currently only supports changing/adding a Spotify link!
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+          <Input 
+            ref={inputRef}
+            value={inputValue} 
+            onChange={(e) => setInputValue(e.target.value)}
+            placeholder="https://open.spotify.com/track/..." 
+            className="bg-brand-black/60 text-white border-brand-purple-neon/30 focus-visible:ring-brand-purple-neon/70 placeholder:text-brand-purple-light/50"
+            autoComplete="off"
+            disabled={isSubmitting || isSuccess}
+          />
+          {error && <p className="text-red-500 text-sm">{error}</p>}
+          {isSuccess && <p className="text-green-500 text-sm">Spotify link updated successfully!</p>}
+          <DialogFooter>
+            <Button
+              type="submit"
+              className="bg-brand-pink-neon hover:bg-brand-pink-dark text-brand-black font-semibold hover:shadow-glow-pink transition-all"
+              disabled={isSubmitting || isSuccess || !inputValue || !inputValue.includes('spotify.com/track/')}
+            >
+              {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <SpotifyIcon className="mr-2 h-4 w-4" />}
+              {isSubmitting ? "Updating..." : isSuccess ? "Updated!" : "Update Spotify Link"}
             </Button>
           </DialogFooter>
         </form>
