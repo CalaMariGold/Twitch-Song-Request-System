@@ -244,6 +244,7 @@ function extractArtistAndTitle(youtubeTitle, channelTitle) {
       if (!potentialArtist && channelTitle && channelTitle.toLowerCase().includes('topic')) {
         // If we didn't find ANY separator ('-', '|', 'by'), whole cleaned title might be song title
         // and channel name (minus ' - Topic') might be the artist.
+        const pipePattern = /^(.*?)\s*[|]\s*(.*)$/;
         if (!dashMatch && !youtubeTitle.match(pipePattern) && !originalCleanedTitle.match(/\s+by\s+/i)) { 
             potentialArtist = channelTitle.replace(/ - Topic$/i, '').trim();
             potentialTitle = originalCleanedTitle;
@@ -670,12 +671,34 @@ async function findSpotifyTrackBySearchQuery(query) {
  */
 function extractSpotifyTrackId(url) {
   try {
-    const urlObj = new URL(url);
-    if (urlObj.hostname !== 'open.spotify.com' || !urlObj.pathname.startsWith('/track/')) {
+    // First trim the URL to handle cases where users might add text after the link
+    const trimmedUrl = url.split(/\s+/)[0];
+    
+    const urlObj = new URL(trimmedUrl);
+    if (urlObj.hostname !== 'open.spotify.com') {
       return null;
     }
-    const parts = urlObj.pathname.split('/');
-    return parts[2] || null; // ID is usually the 3rd part, e.g., /track/TRACK_ID
+    
+    // Check for both regular and international format paths
+    // Regular: /track/ID
+    // International: /intl-XX/track/ID
+    const pathParts = urlObj.pathname.split('/').filter(part => part);
+    
+    let trackId = null;
+    if (pathParts[0] === 'track') {
+      // Regular format: /track/ID
+      trackId = pathParts[1];
+    } else if (pathParts[0].startsWith('intl-') && pathParts[1] === 'track') {
+      // International format: /intl-XX/track/ID
+      trackId = pathParts[2];
+    }
+    
+    // Spotify IDs are always 22 characters long
+    if (trackId && trackId.length >= 22) {
+      return trackId.substring(0, 22);
+    }
+    
+    return null; // Not a valid track URL format
   } catch (error) {
     console.error(chalk.yellow(`[Spotify] Invalid URL format: ${url}`), error);
     return null;

@@ -116,10 +116,11 @@ function extractYouTubeUrlFromText(text) {
  */
 function extractSpotifyUrlFromText(text) {
     if (!text) return null;
-    // Regex to find Spotify track URLs
-    const regex = /(https?:\/\/open\.spotify\.com\/track\/([a-zA-Z0-9]+))/i;
+    // Improved regex to find Spotify track URLs even when surrounded by text without spaces
+    // This looks for the core pattern 'open.spotify.com' and extracts the full URL
+    const regex = /(https?:\/\/open\.spotify\.com\/(?:intl-[a-z]{2}\/)?track\/[a-zA-Z0-9]{22})/i;
     const match = text.match(regex);
-    return match ? match[0] : null; // Return the full matched URL
+    return match ? match[1] : null;
 }
 
 /**

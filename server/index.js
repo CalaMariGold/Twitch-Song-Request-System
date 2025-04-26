@@ -10,6 +10,7 @@ const {
   formatDuration,
   extractVideoId,
   extractYouTubeUrlFromText,
+  extractSpotifyUrlFromText,
   analyzeRequestText,
   checkBlacklist,
   validateDuration
@@ -788,12 +789,14 @@ async function startServer() {
       } else if (analysisResult.type === 'spotifyUrl') {
         // Process as a Spotify URL request
         try {
+            console.log(chalk.blue(`[Spotify] Processing donation with Spotify URL: ${analysisResult.value}`));
             const trackId = extractSpotifyTrackId(analysisResult.value);
             if (!trackId) {
                 console.warn(chalk.yellow(`[Spotify] Invalid Spotify URL in donation: ${analysisResult.value}`));
                 sendChatMessage(`@${userName} Thanks for the donation! The Spotify link you provided doesn't look right. Please use a valid track link. https://calamarigoldrequests.com/`);
                 return;
             }
+            console.log(chalk.blue(`[Spotify] Successfully extracted track ID from donation: ${trackId}`));
 
             const spotifyDetails = await getSpotifyTrackDetailsById(trackId);
             if (spotifyDetails) {
@@ -947,12 +950,14 @@ async function startServer() {
       } else if (analysisResult.type === 'spotifyUrl') {
          // Process as a Spotify URL request
         try {
+            console.log(chalk.blue(`[Spotify] Processing channel point with Spotify URL: ${analysisResult.value}`));
             const trackId = extractSpotifyTrackId(analysisResult.value);
             if (!trackId) {
                 console.warn(chalk.yellow(`[Spotify] Invalid Spotify URL in redemption: ${analysisResult.value}`));
                 sendChatMessage(`@${userName}, the Spotify link you provided doesn't look right. Please use a valid track link. https://calamarigoldrequests.com/`);
                 return;
             }
+            console.log(chalk.blue(`[Spotify] Successfully extracted track ID from channel point: ${trackId}`));
 
             const spotifyDetails = await getSpotifyTrackDetailsById(trackId);
             if (spotifyDetails) {
@@ -1216,18 +1221,22 @@ async function validateAndAddSong(request, bypassRestrictions = false) {
       } else if (request.message) {
           // Handle Spotify URL from Admin or Text Search from StreamElements
           let isSpotifyUrlFromAdmin = false;
-          if (request.message.includes('open.spotify.com/track/') && !request.title) {
+          // Use the broader check for Spotify URLs to handle international links
+          if (request.message.includes('open.spotify.com/') && request.message.includes('track/') && !request.title) {
                // Likely a Spotify URL added via Admin panel (message has URL, but no details yet)
                console.log(chalk.blue('[Queue] Detected Spotify URL in message field, attempting direct fetch...'));
+               console.log(chalk.blue(`[Spotify] Processing URL: ${request.message}`));
                const trackId = extractSpotifyTrackId(request.message);
                if (!trackId) {
-                   console.error(chalk.red(`[Spotify] Failed to extract track ID from admin-added URL: ${request.message}`));
+                   console.error(chalk.red(`[Spotify] Failed to extract track ID from URL: ${request.message}`));
                    // Maybe send an error back to admin via socket if possible?
                    return; // Cannot proceed without ID
                }
+               console.log(chalk.blue(`[Spotify] Successfully extracted track ID: ${trackId}`));
+               
                const spotifyDetails = await getSpotifyTrackDetailsById(trackId);
                if (!spotifyDetails) {
-                   console.error(chalk.red(`[Spotify] Failed to fetch details for admin-added Spotify track ID: ${trackId}`));
+                   console.error(chalk.red(`[Spotify] Failed to fetch details for Spotify track ID: ${trackId}`));
                    // Maybe send an error back to admin via socket if possible?
                    return; // Cannot proceed without details
                }

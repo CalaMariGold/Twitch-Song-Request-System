@@ -508,7 +508,8 @@ export default function AdminDashboard() {
     if (trimmedUrl.includes("youtube.com/") || trimmedUrl.includes("youtu.be/")) {
         requestYoutubeUrl = trimmedUrl;
         console.log("Admin: Detected YouTube URL");
-    } else if (trimmedUrl.includes("open.spotify.com/track/")) {
+    } else if (trimmedUrl.includes("open.spotify.com/") && trimmedUrl.includes("track/")) {
+        // This will match both standard and international Spotify links
         requestMessage = trimmedUrl; // Send Spotify URL in the message field
         console.log("Admin: Detected Spotify URL");
     } else {
