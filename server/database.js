@@ -818,6 +818,28 @@ function getTotalHistoryCount() {
     }
 }
 
+/**
+ * Gets the number of songs played today (since midnight).
+ * @returns {number} The count of songs played today.
+ */
+function getTodayHistoryCount() {
+    if (!db) {
+        console.error(chalk.red('[Database] Database not initialized. Cannot get today\'s history count.'));
+        return 0;
+    }
+    try {
+        // Get today's date in ISO format (YYYY-MM-DD)
+        const today = new Date().toISOString().split('T')[0];
+        // Query for songs completed today (completedAt starts with today's date)
+        const result = db.prepare("SELECT COUNT(*) as count FROM song_history WHERE completedAt LIKE ?").get(`${today}%`);
+        console.log(chalk.blue(`[Database] Got today's history count for ${today}: ${result.count || 0}`));
+        return result.count || 0;
+    } catch (err) {
+        console.error(chalk.red('[Database] Failed to get today\'s history count:'), err);
+        return 0;
+    }
+}
+
 function loadInitialState() {
     console.log(chalk.blue('[Database] Loading initial state...'));
     let loadedState = { queue: [], settings: {}, blacklist: [], blockedUsers: [], activeSong: null };
@@ -992,5 +1014,6 @@ module.exports = {
     getDb,
     updateSongSpotifyDataInDbQueue,
     getHistoryWithOffset,
-    getTotalHistoryCount
+    getTotalHistoryCount,
+    getTodayHistoryCount
 }; 

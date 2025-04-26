@@ -29,6 +29,7 @@ export default function PublicDashboard() {
   const [isLoadingStats, setIsLoadingStats] = useState(true)
   const [totalQueueCount, setTotalQueueCount] = useState(0)
   const [totalHistoryCount, setTotalHistoryCount] = useState(0)
+  const [songsPlayedToday, setSongsPlayedToday] = useState(0)
   
 
   // Socket Connection & State Fetching
@@ -119,6 +120,12 @@ export default function PublicDashboard() {
       setTotalQueueCount(counts.queue);
     });
     
+    // NEW: Listen for today's count update
+    socketInstance.on('todaysCountUpdate', (data: { count: number }) => {
+      console.log('Public: Received today\'s count:', data);
+      setSongsPlayedToday(data.count);
+    });
+    
     // Request initial state
     socketInstance.emit('getState')
     
@@ -127,6 +134,7 @@ export default function PublicDashboard() {
     return () => {
       // NEW: Clean up count listener
       socketInstance.off('totalCountsUpdate');
+      socketInstance.off('todaysCountUpdate');
       socketInstance.disconnect()
     }
   }, [])
@@ -315,8 +323,8 @@ export default function PublicDashboard() {
                       </p>
                     </div>
                     <div className="bg-brand-purple-dark/50 p-4 rounded-lg text-center border border-brand-purple-neon/20">
-                      <p className="text-xs text-brand-purple-light/80">Songs Played</p>
-                      <p className="text-2xl font-bold text-white">{totalHistoryCount}</p>
+                      <p className="text-xs text-brand-purple-light/80">Songs Played Today</p>
+                      <p className="text-2xl font-bold text-white">{songsPlayedToday}</p>
                     </div>
                   </div>
                 )}

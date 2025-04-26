@@ -181,6 +181,7 @@ io.on('connection', (socket) => {
     })
     // Also send total counts on initial connection
     broadcastTotalCounts(); 
+    broadcastTodaysCount(); // NEW: Send today's count too
     
     // Handle explicit getState request
     socket.on('getState', () => {
@@ -192,6 +193,7 @@ io.on('connection', (socket) => {
         });
         // Also send total counts on explicit request
         broadcastTotalCounts();
+        broadcastTodaysCount(); // NEW: Send today's count too
     })
     
     // Get YouTube video details (for Request Plan feature)
@@ -597,6 +599,7 @@ io.on('connection', (socket) => {
             // Send empty history to all clients
             io.emit('historyUpdate', []);
             broadcastTotalCounts(); // Broadcast counts after clearing history
+            broadcastTodaysCount(); // NEW: Broadcast today's count
             console.log(chalk.magenta(`[Admin:${socket.id}] History cleared via socket.`));
             
             // After clearing history, refresh and broadcast all-time stats
@@ -619,6 +622,7 @@ io.on('connection', (socket) => {
             const recentHistory = db.getRecentHistory();
                 io.emit('historyUpdate', recentHistory);
                 broadcastTotalCounts(); // Broadcast counts after deleting history item
+                broadcastTodaysCount(); // NEW: Broadcast today's count
                 console.log(chalk.magenta(`[Admin:${socket.id}] History item ${id} deleted via socket.`));
                 
                 // After deleting history item, refresh and broadcast all-time stats
@@ -676,6 +680,7 @@ io.on('connection', (socket) => {
         const recentHistory = db.getRecentHistory();
         io.emit('historyUpdate', recentHistory);
         broadcastTotalCounts(); // Broadcast counts after skipping song
+        broadcastTodaysCount(); // NEW: Broadcast today's count
         console.log(chalk.blue(`[History] Broadcast updated history (${recentHistory.length} items) after skipping song.`));
 
          // Also update statistics
@@ -1522,6 +1527,7 @@ function handleMarkSongAsFinished() {
     io.emit('activeSong', null); // Explicitly send null for active song
     io.emit('historyUpdate', recentHistory); // Send updated history
     broadcastTotalCounts(); // Broadcast counts after marking song finished
+    broadcastTodaysCount(); // NEW: Broadcast today's count
 
     return finishedSong;
 }
@@ -1608,6 +1614,17 @@ function broadcastTotalCounts() {
         io.emit('totalCountsUpdate', { history: totalHistory, queue: totalQueue });
     } catch (error) {
         console.error(chalk.red('[Counts] Error broadcasting total counts:'), error);
+    }
+}
+// --- END NEW ---
+
+// --- NEW: Helper to broadcast today's played count ---
+function broadcastTodaysCount() {
+    try {
+        const todaysCount = db.getTodayHistoryCount();
+        io.emit('todaysCountUpdate', { count: todaysCount });
+    } catch (error) {
+        console.error(chalk.red('[Counts] Error broadcasting today\'s count:'), error);
     }
 }
 // --- END NEW ---

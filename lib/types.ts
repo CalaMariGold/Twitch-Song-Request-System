@@ -148,6 +148,7 @@ export interface SocketEvents {
     moreHistoryData: (historyChunk: SongRequest[]) => void;
     // --- Total Count Update Event ---
     totalCountsUpdate: (counts: { history: number; queue: number }) => void;
+    todaysCountUpdate: (counts: { todaysCount: number }) => void;
     // --- Spotify Update Events --- 
     updateSpotifySuccess: (payload: { requestId: string }) => void;
     updateSpotifyError: (payload: { requestId: string; message: string }) => void;
@@ -184,6 +185,7 @@ export interface SocketEvents {
     getYouTubeDetails: (youtubeUrl: string, callback: (error: { message: string } | null, details?: YouTubeVideoDetails) => void) => void;
     deleteMyRequest?: (data: { requestId: string; userLogin?: string }) => void; // Make userLogin optional if client might not send it
     getMyRequests?: () => void; // Optional user-specific feature
+
 }
 
 /**
