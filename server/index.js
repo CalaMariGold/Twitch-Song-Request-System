@@ -94,7 +94,7 @@ const tmiClient = initTwitchChat({
 
 // Initialize database first, before we setup any routes or connections
 db.initDatabase(dbPath);
-const { updateSongSpotifyDataInDbQueue } = require('./database');
+const { updateSongSpotifyDataAndDetailsInDbQueue } = require('./database');
 
 // Server state - Initial state will be loaded from DB
 const state = {
@@ -355,13 +355,25 @@ io.on('connection', (socket) => {
 
             // Update the in-memory queue with the pruned data
             state.queue[requestIndex].spotifyData = prunedSpotifyData;
-            // Update title/artist based on Spotify data? - Let's keep original for now, just update spotifyData
-            // state.queue[requestIndex].title = spotifyDetails.name;
-            // state.queue[requestIndex].artist = spotifyDetails.artists.join(', ');
-            console.log(chalk.green(`[Admin:${socket.id}] Updated in-memory Spotify data for request ${requestId}.`));
+            
+            // Update title and artist based on Spotify data as requested
+            state.queue[requestIndex].title = spotifyDetails.name;
+            // Use only the first artist's name
+            const updatedArtist = spotifyDetails.artists && spotifyDetails.artists.length > 0 
+                ? spotifyDetails.artists[0].name 
+                : 'Unknown Artist';
+            state.queue[requestIndex].artist = updatedArtist;
+            
+            // NEW: Update thumbnail and duration
+            const newThumbnailUrl = spotifyDetails.album?.images?.[0]?.url || state.queue[requestIndex].thumbnailUrl; 
+            const newDurationSeconds = spotifyDetails.durationMs ? Math.round(spotifyDetails.durationMs / 1000) : state.queue[requestIndex].durationSeconds; // Fallback to existing duration
+            state.queue[requestIndex].thumbnailUrl = newThumbnailUrl;
+            state.queue[requestIndex].durationSeconds = newDurationSeconds;
+            
+            console.log(chalk.green(`[Admin:${socket.id}] Updated in-memory Spotify data, title, artist (first only), thumbnail, and duration for request ${requestId}.`));
 
-            // Update the database with the pruned data
-            updateSongSpotifyDataInDbQueue(requestId, prunedSpotifyData);
+            // Update the database with the pruned data and updated title/artist/thumbnail/duration
+            updateSongSpotifyDataAndDetailsInDbQueue(requestId, prunedSpotifyData, spotifyDetails.name, updatedArtist, newThumbnailUrl, newDurationSeconds);
 
             // Broadcast the updated queue to all clients
             io.emit('queueUpdate', state.queue);
@@ -1214,7 +1226,10 @@ async function validateAndAddSong(request, bypassRestrictions = false) {
           if (spotifyMatch) {
               console.log(chalk.green(`[Spotify] Found confident match: "${spotifyMatch.name}" by ${spotifyMatch.artists.map(a => a.name).join(', ')}`));
               songTitle = spotifyMatch.name;
-              songArtist = spotifyMatch.artists.map(a => a.name).join(', '); // Use Spotify artist(s)
+              // Use only the first artist's name
+              songArtist = spotifyMatch.artists && spotifyMatch.artists.length > 0 
+                ? spotifyMatch.artists[0].name 
+                : 'Unknown Artist'; 
               durationSeconds = Math.round(spotifyMatch.durationMs / 1000); // Use Spotify duration
           } else {
               console.log(chalk.yellow(`[Spotify] No confident match found. Using YouTube details.`));
