@@ -195,17 +195,24 @@ export function saveRequestPlan(userId: string, plan: PlannedRequest[]): void {
 /**
  * Add song to request plan
  */
-export function addToRequestPlan(userId: string, song: Partial<PlannedRequest> & { youtubeUrl: string }): PlannedRequest[] {
+export function addToRequestPlan(userId: string, song: Partial<PlannedRequest> & { youtubeUrl?: string | null | undefined }): PlannedRequest[] {
   const currentPlan = getRequestPlan(userId)
   
   // Check if song already exists in plan
-  const exists = currentPlan.some(item => item.youtubeUrl === song.youtubeUrl)
+  // Now check based on source type and appropriate identifier
+  let exists = false;
+  if (song.youtubeUrl) {
+    exists = currentPlan.some(item => item.youtubeUrl === song.youtubeUrl);
+  } else if (song.spotifyData?.id) {
+    exists = currentPlan.some(item => item.spotifyData?.id === song.spotifyData?.id);
+  }
+  
   if (exists) return currentPlan
   
   // Create new planned request with defaults
   const newPlannedRequest: PlannedRequest = {
     id: Date.now().toString(),
-    youtubeUrl: song.youtubeUrl,
+    youtubeUrl: song.youtubeUrl || null,
     title: song.title || 'Unknown Title',
     artist: song.artist || 'Unknown Artist',
     channelId: song.channelId,
@@ -213,7 +220,8 @@ export function addToRequestPlan(userId: string, song: Partial<PlannedRequest> &
     durationSeconds: song.durationSeconds,
     thumbnailUrl: song.thumbnailUrl,
     addedAt: new Date().toISOString(),
-    spotifyData: song.spotifyData
+    spotifyData: song.spotifyData,
+    sourceType: song.sourceType || 'youtube' // Default to youtube for backward compatibility
   }
   
   // Add to plan and save

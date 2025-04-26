@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { io, Socket } from "socket.io-client"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -51,9 +51,6 @@ export default function SongRequestQueue() {
   const [isConnected, setIsConnected] = useState(false)
   const [currentUser, setCurrentUser] = useState<{id?: string, login?: string} | null>(null)
   const [requestPlan, setRequestPlan] = useState<PlannedRequest[]>([])
-  const [youtubeUrl, setYoutubeUrl] = useState("")
-  const [isAddingToRequestPlan, setIsAddingToRequestPlan] = useState(false)
-  const [addUrlError, setAddUrlError] = useState<string | null>(null)
   const [isYoutubeDialogOpen, setIsYoutubeDialogOpen] = useState(false)
   const [historyPage, setHistoryPage] = useState(1)
   const [isLoadingMoreHistory, setIsLoadingMoreHistory] = useState(false)
@@ -74,43 +71,6 @@ export default function SongRequestQueue() {
     
     setRequestPlan(items);
     saveRequestPlan(currentUser.id, items);
-  };
-
-  // Function to manually add a YouTube URL to request plan
-  const handleAddToRequestPlan = async () => {
-    if (!youtubeUrl || !currentUser?.id || !socket) {
-      setAddUrlError("Please enter a valid YouTube URL");
-      return;
-    }
-    
-    setAddUrlError(null);
-    setIsAddingToRequestPlan(true);
-    
-    // Emit to server to get YouTube details
-    socket.emit('getYouTubeDetails', youtubeUrl, (error: any, details: any) => {
-      setIsAddingToRequestPlan(false);
-      
-      if (error) {
-        console.error('Error fetching video details:', error);
-        setAddUrlError(error.error || "Failed to load video details. Please check the URL.");
-        return;
-      }
-      
-      const newSong: Partial<PlannedRequest> & { youtubeUrl: string } = {
-        youtubeUrl,
-        title: details.title,
-        artist: details.channelTitle,
-        channelId: details.channelId,
-        duration: details.duration,
-        durationSeconds: details.durationSeconds,
-        thumbnailUrl: details.thumbnailUrl
-      };
-      
-      const updatedPlan = addToRequestPlan(currentUser.id!, newSong);
-      setRequestPlan(updatedPlan);
-      setYoutubeUrl('');
-      setIsYoutubeDialogOpen(false); // Close dialog on success
-    });
   };
   
   // Function to handle removing a song from the request plan
@@ -187,70 +147,18 @@ export default function SongRequestQueue() {
     return (
       <div className="space-y-4">
         <div className="flex items-center gap-2 mb-4">
-          <Dialog open={isYoutubeDialogOpen} onOpenChange={setIsYoutubeDialogOpen}>
-            <DialogTrigger asChild>
-              <Button 
-                variant="outline" 
-                className="flex gap-2 bg-brand-pink-neon/10 hover:bg-brand-pink-neon/20 text-brand-pink-light border-brand-pink-neon/40 hover:shadow-glow-pink-sm transition-shadow"
-                onClick={() => {
-                  setAddUrlError(null);
-                  setYoutubeUrl('');
-                }}
-              >
-                <Plus size={16} />
-                Add to Plan
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-md bg-brand-purple-deep border-brand-purple-neon/30 text-white shadow-glow-purple" onPointerDownOutside={(e) => e.preventDefault()}>
-              <DialogHeader>
-                <DialogTitle className="text-brand-pink-light">Add to Request Plan</DialogTitle>
-                <DialogDescription className="text-brand-purple-light/80">
-                  Paste a YouTube URL to add it to your request plan.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="flex items-center space-x-2">
-                <div className="grid flex-1 gap-2">
-                  <div className="flex">
-                    <Input
-                      className="bg-brand-purple-dark/50 border-brand-purple-neon/20 text-white flex-1 rounded-r-none focus:ring-brand-pink-neon focus:border-brand-pink-neon"
-                      placeholder="YouTube URL (e.g. https://www.youtube.com/watch?v=...)"
-                      value={youtubeUrl}
-                      onChange={(e) => setYoutubeUrl(e.target.value)}
-                      onPaste={(e) => {
-                        e.preventDefault();
-                        const pastedText = e.clipboardData.getData('text');
-                        setYoutubeUrl(pastedText);
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          handleAddToRequestPlan();
-                        }
-                        if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
-                          e.stopPropagation();
-                        }
-                      }}
-                    />
-                  </div>
-                  {addUrlError && (
-                    <div className="text-red-400 text-sm mt-1">
-                      {addUrlError}
-                    </div>
-                  )}
-                </div>
-              </div>
-              <DialogFooter>
-                <Button
-                  type="submit"
-                  className="bg-brand-pink-neon hover:bg-brand-pink-dark text-brand-black font-semibold hover:shadow-glow-pink transition-all"
-                  onClick={handleAddToRequestPlan}
-                  disabled={isAddingToRequestPlan || !youtubeUrl}
-                >
-                  {isAddingToRequestPlan ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
-                  {isAddingToRequestPlan ? "Adding..." : "Add to Plan"}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+          <AddToPlanDialog 
+            isOpen={isYoutubeDialogOpen}
+            onOpenChange={setIsYoutubeDialogOpen}
+            currentUser={currentUser}
+            socket={socket}
+            onAddToRequestPlan={(newSong) => {
+              if (currentUser?.id) {
+                const updatedPlan = addToRequestPlan(currentUser.id, newSong);
+                setRequestPlan(updatedPlan);
+              }
+            }}
+          />
           
           <p className="text-sm text-brand-purple-light/80 flex-1">
             {filteredPlan.length === 0 
@@ -340,12 +248,14 @@ export default function SongRequestQueue() {
                           
                           <div className="flex flex-col items-start sm:items-end space-y-1 flex-shrink-0 w-full sm:w-auto">
                             <div className="flex space-x-1 items-center">
-                              {/* Youtube button */}
-                              <a href={song.youtubeUrl} target="_blank" rel="noopener noreferrer" aria-label="Watch on YouTube">
-                                <Button variant="ghost" className="p-1 text-red-500 hover:text-red-400">
-                                  <Youtube className="h-5 w-5" />
-                                </Button>
-                              </a>
+                              {/* Youtube button - Only show if youtubeUrl exists */}
+                              {song.youtubeUrl && (
+                                <a href={song.youtubeUrl} target="_blank" rel="noopener noreferrer" aria-label="Watch on YouTube">
+                                  <Button variant="ghost" className="p-1 text-red-500 hover:text-red-400">
+                                    <Youtube className="h-5 w-5" />
+                                  </Button>
+                                </a>
+                              )}
                               
                               {/* Spotify Link Button - Only show if Spotify data exists */}
                               {song.spotifyData && song.spotifyData.url && (
@@ -1105,17 +1015,19 @@ function SongList({ songs, isHistory, currentUser, socket }: { songs: SongReques
                       </Button>
                     </a>
                   )}
-                  {/* Add Delete button */} 
-                  {!isHistory && currentUser && song.requesterLogin && currentUser.login && song.requesterLogin.toLowerCase() === currentUser.login.toLowerCase() && socket && (
+                  {/* Delete button */}
+                  {/* Ensure all conditions are met before rendering the button */}
+                  {!isHistory && currentUser && currentUser.login && song.requesterLogin && song.requesterLogin.toLowerCase() === currentUser.login.toLowerCase() && socket && (
                      <Button
                         variant="ghost"
                         size="icon"
                         className="text-brand-purple-light/60 hover:text-red-500 hover:bg-red-500/10 rounded-full transition-all"
                         onClick={() => {
-                          if (socket) {
+                          const currentLogin = currentUser.login; // Assign after null check
+                          if (socket && currentLogin) {
                             socket.emit(socketEvents.DELETE_MY_REQUEST, { 
                               requestId: song.id,
-                              userLogin: currentUser.login 
+                              userLogin: currentLogin
                             });
                           }
                         }}
@@ -1136,4 +1048,122 @@ function SongList({ songs, isHistory, currentUser, socket }: { songs: SongReques
       })}
     </AnimatePresence>
   )
+}
+
+function AddToPlanDialog({ 
+  isOpen, 
+  onOpenChange, 
+  currentUser, 
+  socket, 
+  onAddToRequestPlan 
+}: { 
+  isOpen: boolean; 
+  onOpenChange: (open: boolean) => void; 
+  currentUser: { id?: string, login?: string } | null;
+  socket: Socket | null;
+  onAddToRequestPlan: (song: Partial<PlannedRequest>) => void;
+}) {
+  // Use local state for the input
+  const [inputValue, setInputValue] = useState("");
+  const [isAdding, setIsAdding] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Reset form when dialog opens
+  useEffect(() => {
+    if (isOpen) {
+      setInputValue("");
+      setError(null);
+    }
+  }, [isOpen]);
+
+  // Focus the input when dialog opens
+  useEffect(() => {
+    if (isOpen && inputRef.current) {
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 100);
+    }
+  }, [isOpen]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!inputValue || !currentUser?.id || !socket) {
+      setError("Please enter a song URL or search text");
+      return;
+    }
+    
+    setError(null);
+    setIsAdding(true);
+    
+    // Emit to server to get song details
+    socket.emit('getSongDetailsForPlan', inputValue, (error: any, details: any) => {
+      setIsAdding(false);
+      
+      if (error) {
+        console.error('Error fetching song details:', error);
+        setError(error.error || "Failed to load song details. Please check your input.");
+        return;
+      }
+      
+      const newSong: Partial<PlannedRequest> = {
+        youtubeUrl: details.youtubeUrl || null,
+        title: details.title,
+        artist: details.artist,
+        channelId: details.channelId,
+        duration: details.duration,
+        durationSeconds: details.durationSeconds,
+        thumbnailUrl: details.thumbnailUrl,
+        spotifyData: details.spotifyData,
+        sourceType: details.sourceType
+      };
+      
+      onAddToRequestPlan(newSong);
+      onOpenChange(false); // Close dialog on success
+    });
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onOpenChange}>
+      <DialogTrigger asChild>
+        <Button 
+          variant="outline" 
+          className="flex gap-2 bg-brand-pink-neon/10 hover:bg-brand-pink-neon/20 text-brand-pink-light border-brand-pink-neon/40 hover:shadow-glow-pink-sm transition-shadow"
+        >
+          <Plus size={16} />
+          Add to Plan
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="bg-brand-black/95 backdrop-blur border-brand-purple-neon/50 text-brand-purple-light">
+        <DialogHeader>
+          <DialogTitle className="text-brand-purple-light">Add to Request Plan</DialogTitle>
+          <DialogDescription className="text-brand-purple-light/70">
+            Enter a YouTube URL, Spotify URL, or simply type the artist and song name
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+          <Input 
+            ref={inputRef}
+            value={inputValue} 
+            onChange={(e) => setInputValue(e.target.value)}
+            placeholder="YouTube URL, Spotify URL, or Artist - Song Title" 
+            className="bg-brand-black/60 text-white border-brand-purple-neon/30 focus-visible:ring-brand-purple-neon/70 placeholder:text-brand-purple-light/50"
+            autoComplete="off"
+          />
+          {error && <p className="text-red-500 text-sm">{error}</p>}
+          <DialogFooter>
+            <Button
+              type="submit"
+              className="bg-brand-pink-neon hover:bg-brand-pink-dark text-brand-black font-semibold hover:shadow-glow-pink transition-all"
+              disabled={isAdding || !inputValue}
+            >
+              {isAdding ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
+              {isAdding ? "Adding..." : "Add to Plan"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
 }

@@ -216,7 +216,7 @@ export interface PlannedRequest {
   /** Unique identifier for the planned request */
   id: string
   /** Full YouTube URL of the song */
-  youtubeUrl: string
+  youtubeUrl?: string | null | undefined
   /** Title of the song (from YouTube) */
   title?: string
   /** Artist/channel name (from YouTube) */
@@ -233,6 +233,8 @@ export interface PlannedRequest {
   addedAt: string
   /** Alternative property name for Spotify data, used in some parts of code */
   spotifyData?: SpotifyTrackData | null
+  /** Source type of the planned request */
+  sourceType: 'youtube' | 'spotify' | 'text'
 }
 
 // Interface for Spotify track data (as received from backend or used in frontend)

@@ -212,6 +212,135 @@ io.on('connection', (socket) => {
       }
     })
     
+    // Get song details for Request Plan (handles YouTube URLs, Spotify URLs, and text search)
+    socket.on('getSongDetailsForPlan', async (userInput, callback) => {
+      try {
+        if (!userInput || userInput.trim() === '') {
+          return callback({ error: 'Please enter a valid URL or song name' });
+        }
+
+        // Use existing analyzeRequestText function to determine input type
+        const analysisResult = analyzeRequestText(userInput);
+        
+        if (analysisResult.type === 'none') {
+          return callback({ error: 'Please enter a valid URL or song name' });
+        }
+        
+        if (analysisResult.type === 'youtube') {
+          // Process as YouTube URL
+          const videoId = extractVideoId(analysisResult.value);
+          if (!videoId) {
+            return callback({ error: 'Invalid YouTube URL' });
+          }
+          
+          const videoDetails = await fetchYouTubeDetails(videoId);
+          
+          // Optionally try to find Spotify match (same as validateAndAddSong)
+          let spotifyMatch = null;
+          let artistName = videoDetails.channelTitle; // Default to YouTube channel
+          
+          try {
+            spotifyMatch = await spotify.getSpotifyEquivalent({
+              title: videoDetails.title,
+              artist: videoDetails.channelTitle,
+              durationSeconds: videoDetails.durationSeconds
+            });
+            
+            // If Spotify match found, use Spotify artist instead of YouTube channel
+            if (spotifyMatch && spotifyMatch.artists && spotifyMatch.artists.length > 0) {
+              // Use only the first artist's name, just like in validateAndAddSong
+              artistName = spotifyMatch.artists[0].name;
+              console.log(chalk.green(`[Spotify] Using Spotify artist "${artistName}" for Request Plan instead of YouTube channel "${videoDetails.channelTitle}"`));
+            }
+          } catch (spotifyError) {
+            console.log(chalk.yellow(`[Spotify] Error finding match for plan: ${spotifyError.message}`));
+            // Continue without Spotify match
+          }
+          
+          // Return formatted result
+          callback(null, {
+            sourceType: 'youtube',
+            youtubeUrl: analysisResult.value,
+            title: spotifyMatch ? spotifyMatch.name : videoDetails.title,
+            artist: artistName,
+            channelId: videoDetails.channelId,
+            duration: videoDetails.duration,
+            durationSeconds: videoDetails.durationSeconds,
+            thumbnailUrl: spotifyMatch?.album?.images?.[0]?.url || videoDetails.thumbnailUrl,
+            spotifyData: spotifyMatch
+          });
+        } else if (analysisResult.type === 'spotifyUrl') {
+          // Process as Spotify URL
+          const trackId = extractSpotifyTrackId(analysisResult.value);
+          if (!trackId) {
+            return callback({ error: 'Invalid Spotify URL' });
+          }
+          
+          const spotifyDetails = await getSpotifyTrackDetailsById(trackId);
+          if (!spotifyDetails) {
+            return callback({ error: 'Could not find Spotify track' });
+          }
+          
+          // Get artist name from the first artist
+          const artistName = spotifyDetails.artists && spotifyDetails.artists.length > 0 
+            ? spotifyDetails.artists[0].name 
+            : 'Unknown Artist';
+          
+          // Get thumbnail URL from album image
+          const thumbnailUrl = spotifyDetails.album && spotifyDetails.album.images && spotifyDetails.album.images.length > 0
+            ? spotifyDetails.album.images[0].url
+            : null;
+          
+          // Return formatted result
+          callback(null, {
+            sourceType: 'spotify',
+            youtubeUrl: null,
+            title: spotifyDetails.name,
+            artist: artistName,
+            channelId: null,
+            duration: formatDurationFromSeconds(Math.round(spotifyDetails.durationMs / 1000)),
+            durationSeconds: Math.round(spotifyDetails.durationMs / 1000),
+            thumbnailUrl: thumbnailUrl,
+            spotifyData: spotifyDetails
+          });
+        } else if (analysisResult.type === 'text') {
+          // Process as text search
+          const searchQuery = analysisResult.value;
+          const spotifyTrack = await spotify.findSpotifyTrackBySearchQuery(searchQuery);
+          
+          if (!spotifyTrack) {
+            return callback({ error: 'Could not find a matching song on Spotify' });
+          }
+          
+          // Get artist name from the first artist
+          const artistName = spotifyTrack.artists && spotifyTrack.artists.length > 0 
+            ? spotifyTrack.artists[0].name 
+            : 'Unknown Artist';
+          
+          // Get thumbnail URL from album image
+          const thumbnailUrl = spotifyTrack.album && spotifyTrack.album.images && spotifyTrack.album.images.length > 0
+            ? spotifyTrack.album.images[0].url
+            : null;
+          
+          // Return formatted result
+          callback(null, {
+            sourceType: 'text',
+            youtubeUrl: null,
+            title: spotifyTrack.name,
+            artist: artistName,
+            channelId: null,
+            duration: formatDurationFromSeconds(Math.round(spotifyTrack.durationMs / 1000)),
+            durationSeconds: Math.round(spotifyTrack.durationMs / 1000),
+            thumbnailUrl: thumbnailUrl,
+            spotifyData: spotifyTrack
+          });
+        }
+      } catch (error) {
+        console.error('Error processing song details for plan:', error);
+        callback({ error: error.message || 'Failed to process song details' });
+      }
+    })
+    
     // Handle queue updates
     socket.on('updateQueue', requireAdmin((updatedQueue) => {
         // Update in-memory queue first

@@ -43,17 +43,41 @@ export const constants = {
  * Socket.IO event names
  */
 export const socketEvents = {
-  NEW_SONG_REQUEST: 'newSongRequest',
+  // Server -> Client events
+  INITIAL_STATE: 'initialState',
   QUEUE_UPDATE: 'queueUpdate',
+  HISTORY_UPDATE: 'historyUpdate',
   ACTIVE_SONG: 'activeSong',
-  CONNECT: 'connect',
-  DISCONNECT: 'disconnect',
-  ERROR: 'error',
-  UPDATE_BLOCKED_USERS: 'updateBlockedUsers',
-  GET_ALL_TIME_STATS: 'getAllTimeStats',
+  NEW_SONG_REQUEST: 'newSongRequest',
+  SONG_FINISHED: 'songFinished',
+  SETTINGS_UPDATE: 'settingsUpdate',
+  BLACKLIST_UPDATE: 'blacklistUpdate',
+  BLOCKED_USERS_UPDATE: 'blockedUsersUpdate',
   ALL_TIME_STATS_UPDATE: 'allTimeStatsUpdate',
   ALL_TIME_STATS_ERROR: 'allTimeStatsError',
+  MORE_HISTORY_DATA: 'moreHistoryData',
+  TOTAL_COUNTS_UPDATE: 'totalCountsUpdate',
+  TODAYS_COUNT_UPDATE: 'todaysCountUpdate',
+  SONG_DETAILS_FOR_PLAN_RESPONSE: 'songDetailsForPlanResponse',
+  
+  // Client -> Server events
+  GET_STATE: 'getState',
+  GET_YOUTUBE_DETAILS: 'getYouTubeDetails',
+  UPDATE_QUEUE: 'updateQueue',
+  ADD_SONG: 'addSong',
+  REMOVE_SONG: 'removeSong',
+  CLEAR_QUEUE: 'clearQueue',
+  RESET_SYSTEM: 'resetSystem',
+  SET_MAX_DURATION: 'setMaxDuration',
+  UPDATE_ACTIVE_SONG: 'updateActiveSong',
+  MARK_SONG_AS_FINISHED: 'markSongAsFinished',
+  RETURN_TO_QUEUE: 'returnToQueue',
+  UPDATE_BLACKLIST: 'updateBlacklist',
+  UPDATE_BLOCKED_USERS: 'updateBlockedUsers',
+  GET_ALL_TIME_STATS: 'getAllTimeStats',
   CLEAR_HISTORY: 'clearHistory',
   DELETE_HISTORY_ITEM: 'deleteHistoryItem',
-  DELETE_MY_REQUEST: 'deleteMyRequest'
+  GET_MORE_HISTORY: 'getMoreHistory',
+  DELETE_MY_REQUEST: 'deleteMyRequest',
+  GET_SONG_DETAILS_FOR_PLAN: 'getSongDetailsForPlan'
 } as const 
