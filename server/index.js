@@ -179,9 +179,6 @@ io.on('connection', (socket) => {
         ...state,
         history: recentHistory // Include history from DB
     })
-    // Also send total counts on initial connection
-    broadcastTotalCounts(); 
-    broadcastTodaysCount(); // NEW: Send today's count too
     
     // Handle explicit getState request
     socket.on('getState', () => {
@@ -191,9 +188,10 @@ io.on('connection', (socket) => {
             ...state,
             history: recentHistory // Overwrite in-memory history with recent DB history
         });
+
         // Also send total counts on explicit request
         broadcastTotalCounts();
-        broadcastTodaysCount(); // NEW: Send today's count too
+        broadcastTodaysCount();
     })
     
     // Get YouTube video details (for Request Plan feature)
@@ -739,8 +737,8 @@ io.on('connection', (socket) => {
         if (success) {
             // Send empty history to all clients
             io.emit('historyUpdate', []);
-            broadcastTotalCounts(); // Broadcast counts after clearing history
-            broadcastTodaysCount(); // NEW: Broadcast today's count
+            broadcastTotalCounts();
+            broadcastTodaysCount();
             console.log(chalk.magenta(`[Admin:${socket.id}] History cleared via socket.`));
             
             // After clearing history, refresh and broadcast all-time stats
@@ -762,8 +760,8 @@ io.on('connection', (socket) => {
             // Fetch and send updated history to all clients
             const recentHistory = db.getRecentHistory();
                 io.emit('historyUpdate', recentHistory);
-                broadcastTotalCounts(); // Broadcast counts after deleting history item
-                broadcastTodaysCount(); // NEW: Broadcast today's count
+                broadcastTotalCounts();
+                broadcastTodaysCount();
                 console.log(chalk.magenta(`[Admin:${socket.id}] History item ${id} deleted via socket.`));
                 
                 // After deleting history item, refresh and broadcast all-time stats
@@ -820,8 +818,8 @@ io.on('connection', (socket) => {
         // Fetch and broadcast updated history
         const recentHistory = db.getRecentHistory();
         io.emit('historyUpdate', recentHistory);
-        broadcastTotalCounts(); // Broadcast counts after skipping song
-        broadcastTodaysCount(); // NEW: Broadcast today's count
+        broadcastTotalCounts();
+        broadcastTodaysCount();
         console.log(chalk.blue(`[History] Broadcast updated history (${recentHistory.length} items) after skipping song.`));
 
          // Also update statistics
@@ -1670,8 +1668,8 @@ function handleMarkSongAsFinished() {
     io.emit('songFinished', finishedSong); // Notify about the finished song
     io.emit('activeSong', null); // Explicitly send null for active song
     io.emit('historyUpdate', recentHistory); // Send updated history
-    broadcastTotalCounts(); // Broadcast counts after marking song finished
-    broadcastTodaysCount(); // NEW: Broadcast today's count
+    broadcastTotalCounts();
+    broadcastTodaysCount();
 
     return finishedSong;
 }

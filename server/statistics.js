@@ -45,7 +45,6 @@ function fetchAllTimeStats(db) {
             topArtists
         };
         
-        console.log(chalk.blue(`[Statistics] Successfully retrieved stats: ${topRequesters.length} requesters, ${topSongs.length} songs, ${topArtists.length} artists`));
         return stats;
     } catch (error) {
         console.error(chalk.red('[Statistics] Error fetching all-time statistics:'), error);

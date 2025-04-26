@@ -18,6 +18,7 @@ import { useEffect, useState } from "react"
 import { useSearchParams, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
+import { format } from 'date-fns-tz'
 
 interface HeaderProps {
   isConnected: boolean
@@ -44,6 +45,7 @@ export function Header({ isConnected }: HeaderProps) {
   const searchParams = useSearchParams()
   const pathname = usePathname()
   const isAdminPage = pathname?.includes('/admin')
+  const [currentTimeEst, setCurrentTimeEst] = useState('')
 
   const readUserFromCookie = () => {
     const cookies = document.cookie.split(';').reduce((acc, cookie) => {
@@ -87,6 +89,18 @@ export function Header({ isConnected }: HeaderProps) {
     readUserFromCookie()
   }, [searchParams])
 
+  useEffect(() => {
+    const updateTime = () => {
+      const estTime = format(new Date(), 'hh:mm a', { timeZone: 'America/New_York' })
+      setCurrentTimeEst(estTime)
+    }
+
+    updateTime() // Initial update
+    const intervalId = setInterval(updateTime, 1000) // Update every second
+
+    return () => clearInterval(intervalId) // Cleanup interval on unmount
+  }, [])
+
   return (
     <div className="w-full">
       {error && (
@@ -97,18 +111,25 @@ export function Header({ isConnected }: HeaderProps) {
       )}
       <div className="flex flex-col sm:flex-row items-center sm:justify-between py-3 px-4 bg-gradient-to-r from-brand-purple-dark/70 to-brand-purple-deep/70 backdrop-blur-sm rounded-lg mb-6 border border-brand-purple-neon/20 shadow-md gap-3 sm:gap-0">
         <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto justify-center sm:justify-start">
-          <Link href="/" className="flex items-center gap-2 text-brand-pink-light hover:text-white hover:text-glow-pink transition-all duration-200 group">
-            <h1 className="text-lg sm:text-2xl font-bold whitespace-nowrap">🥁 CalaMariGold Requests</h1>
-            <div className="relative w-4 h-4 sm:w-5 sm:h-5 -ml-1 group-hover:animate-pulse flex-shrink-0">
-              <Image 
-                src="/shiny.png" 
-                alt="Shiny emoji" 
-                fill
-                sizes="20px"
-                className="object-contain transform -rotate-12 group-hover:rotate-0 transition-transform duration-300"
-              />
-            </div>
-          </Link>
+          <div className="flex flex-col items-center sm:items-start">
+            <Link href="/" className="flex items-center gap-2 text-brand-pink-light hover:text-white hover:text-glow-pink transition-all duration-200 group">
+              <h1 className="text-lg sm:text-2xl font-bold whitespace-nowrap">🥁 CalaMariGold Requests</h1>
+              <div className="relative w-4 h-4 sm:w-5 sm:h-5 -ml-1 group-hover:animate-pulse flex-shrink-0">
+                <Image 
+                  src="/shiny.png" 
+                  alt="Shiny emoji" 
+                  fill
+                  sizes="20px"
+                  className="object-contain transform -rotate-12 group-hover:rotate-0 transition-transform duration-300"
+                />
+              </div>
+            </Link>
+            {currentTimeEst && (
+              <div className="text-xs text-gray-400 mt-1 font-mono tracking-wider">
+                Mari's Time: {currentTimeEst} EST
+              </div>
+            )}
+          </div>
           <ConnectionStatus isConnected={isConnected} />
         </div>
         

@@ -3,6 +3,8 @@ const path = require('path');
 const Database = require('better-sqlite3');
 const { formatDurationFromSeconds } = require('./helpers');
 const fs = require('fs');
+const { startOfDay, formatISO } = require('date-fns');
+const { toZonedTime, fromZonedTime } = require('date-fns-tz');
 
 let db = null;
 let insertHistoryStmt, insertQueueStmt, deleteQueueStmt, clearQueueStmt;
@@ -805,37 +807,46 @@ function getHistoryWithOffset(limit, offset) {
  * @returns {number} The total count of history items.
  */
 function getTotalHistoryCount() {
-    if (!db) {
-        console.error(chalk.red('[Database] Database not initialized. Cannot get total history count.'));
-        return 0;
-    }
     try {
-        const result = db.prepare('SELECT COUNT(*) as count FROM song_history').get();
+        const stmt = db.prepare('SELECT COUNT(*) AS count FROM song_history');
+        const result = stmt.get();
         return result.count || 0;
-    } catch (err) {
-        console.error(chalk.red('[Database] Failed to get total history count:'), err);
+    } catch (error) {
+        console.error(chalk.red('[Database] Error getting total history count:'), error);
         return 0;
     }
 }
 
 /**
- * Gets the number of songs played today (since midnight).
- * @returns {number} The count of songs played today.
+ * Gets the count of songs completed today based on the 'America/New_York' timezone.
+ * @returns {number}
  */
 function getTodayHistoryCount() {
-    if (!db) {
-        console.error(chalk.red('[Database] Database not initialized. Cannot get today\'s history count.'));
-        return 0;
-    }
     try {
-        // Get today's date in ISO format (YYYY-MM-DD)
-        const today = new Date().toISOString().split('T')[0];
-        // Query for songs completed today (completedAt starts with today's date)
-        const result = db.prepare("SELECT COUNT(*) as count FROM song_history WHERE completedAt LIKE ?").get(`${today}%`);
-        console.log(chalk.blue(`[Database] Got today's history count for ${today}: ${result.count || 0}`));
+        const timeZone = 'America/New_York';
+        const now = new Date(); // Current time in UTC
+
+        // 1. Convert current UTC time to the equivalent local time in the target timezone
+        const zonedNow = toZonedTime(now, timeZone);
+
+        // 2. Get the start of the day (midnight) for that local time in the target timezone
+        const startOfTodayZoned = startOfDay(zonedNow);
+
+        // 3. Convert the start of the day in the target timezone back to its equivalent UTC time
+        const startOfTodayUtc = fromZonedTime(startOfTodayZoned, timeZone);
+
+        // 4. Format the UTC timestamp for SQLite comparison
+        const startOfTodaySqliteFormat = formatISO(startOfTodayUtc).replace('T', ' ').substring(0, 19);
+
+        const stmt = db.prepare(`
+            SELECT COUNT(*) AS count
+            FROM song_history
+            WHERE completedAt >= ?
+        `);
+        const result = stmt.get(startOfTodaySqliteFormat);
         return result.count || 0;
-    } catch (err) {
-        console.error(chalk.red('[Database] Failed to get today\'s history count:'), err);
+    } catch (error) {
+        console.error(chalk.red('[Database] Error getting today\'s history count:'), error);
         return 0;
     }
 }
