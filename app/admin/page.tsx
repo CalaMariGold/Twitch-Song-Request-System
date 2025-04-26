@@ -801,8 +801,8 @@ export default function AdminDashboard() {
                               </Button>
                             </a>
                           )}
-                          {appState.activeSong.spotifyData && appState.activeSong.spotifyData.externalUrl && (
-                            <a href={appState.activeSong.spotifyData.externalUrl} target="_blank" rel="noopener noreferrer" aria-label="Listen on Spotify">
+                          {appState.activeSong.spotifyData && appState.activeSong.spotifyData.url && (
+                            <a href={appState.activeSong.spotifyData.url} target="_blank" rel="noopener noreferrer" aria-label="Listen on Spotify">
                               <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
                                 <SpotifyIcon className="h-5 w-5 text-green-500 hover:text-green-400 transition-colors" />
                               </Button>
@@ -847,9 +847,9 @@ export default function AdminDashboard() {
                               <SpotifyIcon className="h-4 w-4 mr-2" /> Play on Spotify
                             </a>
                           )}
-                          {appState.activeSong.spotifyData.externalUrl && (
+                          {appState.activeSong.spotifyData.url && (
                             <a 
-                              href={appState.activeSong.spotifyData.externalUrl || `https://open.spotify.com/track/${appState.activeSong.spotifyData.id}`}
+                              href={appState.activeSong.spotifyData.url || `https://open.spotify.com/track/${appState.activeSong.spotifyData.id}`}
                               target="_blank" 
                               rel="noopener noreferrer" 
                               className="bg-gray-700 text-white px-3 py-2 rounded-full hover:bg-gray-600 transition-colors flex items-center text-sm"
@@ -1024,8 +1024,8 @@ export default function AdminDashboard() {
                                                   </Button>
                                              </a>
                                            )}
-                                           {song.spotifyData && song.spotifyData.externalUrl && (
-                                             <a href={song.spotifyData.externalUrl} target="_blank" rel="noopener noreferrer" aria-label="Listen on Spotify">
+                                           {song.spotifyData && song.spotifyData.url && (
+                                             <a href={song.spotifyData.url} target="_blank" rel="noopener noreferrer" aria-label="Listen on Spotify">
                                                <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
                                                  <SpotifyIcon className="h-4 w-4 text-green-500 hover:text-green-400" />
                                                </Button>
@@ -1167,8 +1167,8 @@ export default function AdminDashboard() {
                                   </Button>
                                  </a>
                                 )}
-                                {song.spotifyData && song.spotifyData.externalUrl && (
-                                  <a href={song.spotifyData.externalUrl} target="_blank" rel="noopener noreferrer" aria-label="Listen on Spotify">
+                                {song.spotifyData && song.spotifyData.url && (
+                                  <a href={song.spotifyData.url} target="_blank" rel="noopener noreferrer" aria-label="Listen on Spotify">
                                     <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
                                       <SpotifyIcon className="h-4 w-4 text-green-500 hover:text-green-400" />
                                     </Button>

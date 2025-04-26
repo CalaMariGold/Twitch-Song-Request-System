@@ -1273,7 +1273,17 @@ async function validateAndAddSong(request, bypassRestrictions = false) {
       donationInfo: request.donationInfo, // Include if it was a donation
       timestamp: request.timestamp || new Date().toISOString(),
       addedAt: new Date().toISOString(),
-      spotifyData: spotifyMatch // Store Spotify match data if found
+      spotifyData: spotifyMatch ? {
+          id: spotifyMatch.id,
+          name: spotifyMatch.name,
+          artists: spotifyMatch.artists?.map(a => ({ name: a.name })) || [], // Only keep name
+          album: spotifyMatch.album?.images?.[0] ? {
+            images: [{ url: spotifyMatch.album.images[0].url }] // Only keep first image URL
+          } : { images: [] },
+          durationMs: spotifyMatch.durationMs,
+          uri: spotifyMatch.uri,
+          url: spotifyMatch.url
+      } : null // Store null if no spotifyMatch found
   };
 
 
@@ -1364,16 +1374,17 @@ async function createSpotifyBasedRequest(spotifyTrack, request) {
       source: 'spotify_search',
       // Pass through donation info if present
       donationInfo: request.donationInfo || null,
-      // Add Spotify-specific fields
+      // Prune Spotify-specific fields before storing
       spotifyData: {
         id: spotifyTrack.id,
         uri: spotifyTrack.uri,
         name: spotifyTrack.name,
-        artists: spotifyTrack.artists,
-        externalUrl: spotifyTrack.externalUrl,
-        previewUrl: spotifyTrack.previewUrl,
-        albumName: spotifyTrack.album.name,
-        albumImages: spotifyTrack.album.images
+        artists: spotifyTrack.artists?.map(a => ({ name: a.name })) || [], // Only keep name
+        album: spotifyTrack.album?.images?.[0] ? {
+            images: [{ url: spotifyTrack.album.images[0].url }] // Only keep first image URL
+          } : { images: [] },
+        durationMs: spotifyTrack.durationMs,
+        url: spotifyTrack.url
       }
     };
     

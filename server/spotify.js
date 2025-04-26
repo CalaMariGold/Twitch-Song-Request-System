@@ -518,25 +518,19 @@ async function getSpotifyEquivalent(song) {
     if (finalMatch) {
        const finalSelectedScore = bestScoringMatches.find(m => m.track.id === finalMatch.id)?.score || 0; // Get the original overall score
        const firstArtist = finalMatch.artists && finalMatch.artists.length > 0 ? finalMatch.artists[0] : null;
+       const firstImage = finalMatch.album?.images?.[0]; // Get the first image if available
        return {
          id: finalMatch.id,
          name: finalMatch.name,
-         artists: firstArtist ? [{ // ** Return only the first artist **
-           id: firstArtist.id,
+         artists: firstArtist ? [{ // Only include name for the first artist
            name: firstArtist.name
-         }] : [], // Return empty array if no artists
-         album: {
-           id: finalMatch.album.id,
-           name: finalMatch.album.name,
-           releaseDate: finalMatch.album.release_date,
-           images: finalMatch.album.images // Keep original images array
-         },
+         }] : [],
+         album: firstImage ? { // Only include images array with the first image's URL
+           images: [{ url: firstImage.url }]
+         } : { images: [] }, // Return empty images array if none found
          durationMs: finalMatch.duration_ms,
-         previewUrl: finalMatch.preview_url,
-         externalUrl: finalMatch.external_urls.spotify,
          uri: finalMatch.uri,
-         matchScore: finalSelectedScore // Return the overall match score
-         // We could add artistSimilarityTiebreakerScore here if needed for debugging
+         url: finalMatch.external_urls?.spotify
        };
     } else {
        // Should not happen if potentialMatches had items, but as a safeguard
@@ -649,24 +643,19 @@ async function findSpotifyTrackBySearchQuery(query) {
     
     // Format the result the same way as getSpotifyEquivalent
     const firstArtist = bestMatch.artists && bestMatch.artists.length > 0 ? bestMatch.artists[0] : null;
+    const firstImage = bestMatch.album?.images?.[0]; // Get the first image if available
     return {
       id: bestMatch.id,
       name: bestMatch.name,
-      artists: firstArtist ? [{ // ** Return only the first artist **
-        id: firstArtist.id,
+      artists: firstArtist ? [{ // Only include name for the first artist
         name: firstArtist.name
       }] : [],
-      album: {
-        id: bestMatch.album.id,
-        name: bestMatch.album.name,
-        releaseDate: bestMatch.album.release_date,
-        images: bestMatch.album.images
-      },
+      album: firstImage ? { // Only include images array with the first image's URL
+        images: [{ url: firstImage.url }]
+      } : { images: [] }, // Return empty images array if none found
       durationMs: bestMatch.duration_ms,
-      previewUrl: bestMatch.preview_url,
-      externalUrl: bestMatch.external_urls.spotify,
       uri: bestMatch.uri,
-      matchScore: scoredTracks[0].score
+      url: bestMatch.external_urls?.spotify
     };
   } catch (error) {
     console.error(chalk.red(`[Spotify] Error finding track by query "${query}"`), error);
@@ -727,25 +716,20 @@ async function getSpotifyTrackDetailsById(trackId) {
 
     // Format the data to match SpotifyTrackData structure
     const firstArtist = trackData.artists && trackData.artists.length > 0 ? trackData.artists[0] : null;
+    const firstImage = trackData.album?.images?.[0]; // Get the first image if available
 
     return {
       id: trackData.id,
       name: trackData.name,
-      // Return artists array in the expected format (using only first artist for consistency here)
-      artists: firstArtist ? [{ id: firstArtist.id, name: firstArtist.name }] : [],
-      // Return album object in the expected format
-      album: trackData.album ? {
-        id: trackData.album.id,
-        name: trackData.album.name,
-        releaseDate: trackData.album.release_date,
-        images: trackData.album.images
-      } : null,
+      // Return artists array in the expected format (using only first artist's name)
+      artists: firstArtist ? [{ name: firstArtist.name }] : [],
+      // Return album object in the expected format (only images with first URL)
+      album: firstImage ? {
+        images: [{ url: firstImage.url }]
+      } : { images: [] },
       durationMs: trackData.duration_ms,
-      previewUrl: trackData.preview_url,
-      externalUrl: trackData.external_urls.spotify, // Consistent naming
-      url: trackData.external_urls.spotify, // Add the url field explicitly
       uri: trackData.uri,
-      // Note: matchScore is not applicable here
+      url: trackData.external_urls?.spotify
     };
   } catch (error) {
     console.error(chalk.red(`[Spotify] Exception fetching track ${trackId}:`), error);

@@ -343,8 +343,8 @@ export default function SongRequestQueue() {
                               </a>
                               
                               {/* Spotify Link Button - Only show if Spotify data exists */}
-                              {song.spotifyData && song.spotifyData.externalUrl && (
-                                <a href={String(song.spotifyData.externalUrl)} target="_blank" rel="noopener noreferrer" aria-label="Listen on Spotify">
+                              {song.spotifyData && song.spotifyData.url && (
+                                <a href={String(song.spotifyData.url)} target="_blank" rel="noopener noreferrer" aria-label="Listen on Spotify">
                                   <Button variant="ghost" className="p-1 text-green-500 hover:text-green-400">
                                     <SpotifyIcon className="h-5 w-5" />
                                   </Button>
@@ -882,8 +882,8 @@ function ActiveSong({ song, isLoading }: { song: SongRequest | null, isLoading: 
               </a>
             )}
             
-            {song.spotifyData && song.spotifyData.externalUrl && (
-              <a href={String(song.spotifyData.externalUrl)} target="_blank" rel="noopener noreferrer" aria-label="Listen on Spotify">
+            {song.spotifyData && song.spotifyData.url && (
+              <a href={String(song.spotifyData.url)} target="_blank" rel="noopener noreferrer" aria-label="Listen on Spotify">
                 <Button variant="ghost" className="p-2 text-green-500 hover:text-green-400 hover:bg-green-500/10 rounded-full transition-all">
                   <SpotifyIcon className="h-5 w-5" />
                 </Button>
@@ -1019,8 +1019,8 @@ function SongList({ songs, isHistory, currentUser, socket }: { songs: SongReques
                     </a>
                   )}
                   
-                  {song.spotifyData && song.spotifyData.externalUrl && (
-                    <a href={String(song.spotifyData.externalUrl)} target="_blank" rel="noopener noreferrer" aria-label="Listen on Spotify">
+                  {song.spotifyData && song.spotifyData.url && (
+                    <a href={String(song.spotifyData.url)} target="_blank" rel="noopener noreferrer" aria-label="Listen on Spotify">
                       <Button variant="ghost" className="p-1 text-green-500 hover:text-green-400 hover:bg-green-500/10 rounded-full transition-all">
                          <SpotifyIcon className="h-5 w-5" />
                       </Button>

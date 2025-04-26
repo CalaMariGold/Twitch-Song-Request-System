@@ -240,7 +240,6 @@ export interface SpotifyTrackData {
   };
   durationMs?: number;
   previewUrl?: string | null;
-  externalUrl?: string; // For linking to web player - might be same as url
   url?: string; // Explicitly add the url property for Spotify links
   uri?: string; // Spotify URI
   matchScore?: number; // Score from YouTube matching
