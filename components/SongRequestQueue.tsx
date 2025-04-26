@@ -55,6 +55,11 @@ export default function SongRequestQueue() {
   const [isAddingToRequestPlan, setIsAddingToRequestPlan] = useState(false)
   const [addUrlError, setAddUrlError] = useState<string | null>(null)
   const [isYoutubeDialogOpen, setIsYoutubeDialogOpen] = useState(false)
+  const [historyPage, setHistoryPage] = useState(1)
+  const [isLoadingMoreHistory, setIsLoadingMoreHistory] = useState(false)
+  const [hasMoreHistory, setHasMoreHistory] = useState(true)
+  const [totalHistoryCount, setTotalHistoryCount] = useState(0)
+  const [totalQueueCount, setTotalQueueCount] = useState(0)
 
   // Calculate total queue duration
   const { formatted: totalQueueDurationFormatted } = calculateTotalQueueDuration(state.queue)
@@ -627,6 +632,37 @@ export default function SongRequestQueue() {
       }))
     })
 
+    // Add a listener for moreHistoryData events
+    newSocket.on('moreHistoryData', (historyChunk: SongRequest[]) => {
+      console.log('Received more history data:', historyChunk);
+      
+      if (historyChunk.length === 0) {
+        // No more history to load
+        setHasMoreHistory(false);
+      } else {
+        setState((prev: AppState) => ({
+          ...prev,
+          // Append new history items to the existing ones instead of replacing
+          history: [...prev.history, ...historyChunk],
+          // Update queue count just in case it changed
+          queue: prev.queue // Keep queue as is, count comes from totalCountsUpdate
+        }));
+        // Increment the page counter
+        setHistoryPage(prevPage => prevPage + 1);
+      }
+      
+      setIsLoadingMoreHistory(false);
+    });
+
+    // NEW: Listen for total count updates
+    newSocket.on('totalCountsUpdate', (counts: { history: number; queue: number }) => {
+      console.log('Received total counts:', counts);
+      setTotalHistoryCount(counts.history);
+      setTotalQueueCount(counts.queue);
+      // Update queue state length for UI consistency if needed, though queue itself is handled by queueUpdate
+      // setState(prev => ({...prev, queue: prev.queue.slice(0, counts.queue) })); // Example, might not be needed
+    });
+
     setSocket(newSocket)
 
     // Request initial state on mount (will emit again on connect)
@@ -682,6 +718,19 @@ export default function SongRequestQueue() {
     ? myRequests()
     : 0
 
+  // Function to load more history data
+  const loadMoreHistory = useCallback(() => {
+    if (!socket || isLoadingMoreHistory || !hasMoreHistory) return;
+    
+    setIsLoadingMoreHistory(true);
+    
+    const pageSize = 20;
+    const offset = historyPage * pageSize;
+    
+    console.log(`Requesting more history (offset: ${offset}, limit: ${pageSize})`);
+    socket.emit('getMoreHistory', { offset, limit: pageSize });
+  }, [socket, historyPage, isLoadingMoreHistory, hasMoreHistory]);
+
   return (
     <ErrorBoundary>
       <div className="w-full max-w-4xl mx-auto p-6 bg-brand-purple-deep/70 text-white rounded-lg shadow-xl border border-brand-purple-neon/20 backdrop-blur-md shadow-glow-purple">
@@ -708,7 +757,8 @@ export default function SongRequestQueue() {
                 <Image src="/shiny.png" alt="" fill sizes="12px" className="object-contain"/>
               </div>
               <Music className="mr-1 sm:mr-1.5" size={16} />
-              <span className="truncate">Queue ({state.queue.length})</span>
+              {/* Use totalQueueCount for display */}
+              <span className="truncate">Queue ({totalQueueCount})</span>
             </TabsTrigger>
             <TabsTrigger value="history" className="data-[state=active]:bg-brand-purple-dark data-[state=active]:text-brand-pink-light data-[state=active]:shadow-md data-[state=active]:shadow-brand-black/30 text-brand-purple-light/80 hover:bg-brand-purple-dark/70 hover:text-white transition-all rounded-md data-[state=active]:border data-[state=active]:border-brand-pink-neon/50 data-[state=active]:text-glow-pink relative group text-xs sm:text-sm">
               {/* Add shiny icon to active state */}
@@ -716,7 +766,8 @@ export default function SongRequestQueue() {
                 <Image src="/shiny.png" alt="" fill sizes="12px" className="object-contain"/>
               </div>
               <History className="mr-1 sm:mr-1.5" size={16} />
-              <span className="truncate">History ({state.history.length})</span>
+              {/* Use totalHistoryCount for display */}
+              <span className="truncate">History ({totalHistoryCount})</span>
             </TabsTrigger>
             <TabsTrigger value="myrequests" className="data-[state=active]:bg-brand-purple-dark data-[state=active]:text-brand-pink-light data-[state=active]:shadow-md data-[state=active]:shadow-brand-black/30 text-brand-purple-light/80 hover:bg-brand-purple-dark/70 hover:text-white transition-all rounded-md data-[state=active]:border data-[state=active]:border-brand-pink-neon/50 data-[state=active]:text-glow-pink disabled:opacity-50 disabled:pointer-events-none relative group text-xs sm:text-sm" disabled={!currentUser}>
               {/* Add shiny icon to active state */}
@@ -753,6 +804,34 @@ export default function SongRequestQueue() {
                 currentUser={currentUser} 
                 socket={socket}
               />
+              
+              {/* Add a "Load More" button for history if there's potentially more to load */}
+              {hasMoreHistory && state.history.length > 0 && (
+                <div className="mt-6 flex justify-center">
+                  <Button
+                    variant="outline"
+                    className="bg-brand-purple-dark/50 border-brand-purple-neon/20 text-brand-purple-light hover:bg-brand-purple-dark/70 hover:border-brand-purple-neon/40 hover:text-white transition-all"
+                    onClick={loadMoreHistory}
+                    disabled={isLoadingMoreHistory}
+                  >
+                    {isLoadingMoreHistory ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Loading...
+                      </>
+                    ) : (
+                      <>Load More History</>
+                    )}
+                  </Button>
+                </div>
+              )}
+              
+              {/* Show message when there's no more history to load */}
+              {!hasMoreHistory && state.history.length > 0 && (
+                <div className="mt-4 text-center text-brand-purple-light/60 text-sm">
+                  End of history reached
+                </div>
+              )}
             </ErrorBoundary>
           </TabsContent>
           <TabsContent value="myrequests" className="mt-4">

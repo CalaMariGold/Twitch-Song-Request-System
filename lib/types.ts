@@ -144,6 +144,10 @@ export interface SocketEvents {
     adminAuthenticated: () => void;
     adminAuthFailed?: () => void; // Optional: If server sends this
     adminError?: (payload: { message: string }) => void; // Optional: Generic admin error
+    // --- History Pagination Event ---
+    moreHistoryData: (historyChunk: SongRequest[]) => void;
+    // --- Total Count Update Event ---
+    totalCountsUpdate: (counts: { history: number; queue: number }) => void;
     // --- Spotify Update Events --- 
     updateSpotifySuccess: (payload: { requestId: string }) => void;
     updateSpotifyError: (payload: { requestId: string; message: string }) => void;
@@ -173,6 +177,8 @@ export interface SocketEvents {
     skipSong: () => void;
     // --- Admin Spotify Update Action --- 
     adminUpdateSpotifyLink: (payload: { requestId: string; spotifyUrl: string }) => void;
+    // --- History Pagination Request ---
+    getMoreHistory: (data: { offset: number; limit: number }) => void;
     
     // --- Public/User Actions --- 
     getYouTubeDetails: (youtubeUrl: string, callback: (error: { message: string } | null, details?: YouTubeVideoDetails) => void) => void;

@@ -178,6 +178,8 @@ io.on('connection', (socket) => {
         ...state,
         history: recentHistory // Include history from DB
     })
+    // Also send total counts on initial connection
+    broadcastTotalCounts(); 
     
     // Handle explicit getState request
     socket.on('getState', () => {
@@ -187,6 +189,8 @@ io.on('connection', (socket) => {
             ...state,
             history: recentHistory // Overwrite in-memory history with recent DB history
         });
+        // Also send total counts on explicit request
+        broadcastTotalCounts();
     })
     
     // Get YouTube video details (for Request Plan feature)
@@ -250,6 +254,8 @@ io.on('connection', (socket) => {
 
         try {
             await validateAndAddSong(requestToAdd, bypass);
+            // Broadcast counts after potentially adding a song
+            broadcastTotalCounts(); 
 
             // *** NEW: Force admin-added songs to the top ***
             if (isAdminAdd) {
@@ -291,6 +297,7 @@ io.on('connection', (socket) => {
             state.queue = state.queue.filter(song => song.id !== songId);
             db.removeSongFromDbQueue(songId); // Ensure db module exports this function
             io.emit('queueUpdate', state.queue);
+            broadcastTotalCounts(); // Broadcast counts after removing song
             console.log(chalk.magenta(`[Admin:${socket.id}] Song removed via socket: ${songId}`));
         } else {
             console.warn(chalk.yellow(`[Admin:${socket.id}] Attempted to remove non-existent song via socket: ${songId}`));
@@ -330,15 +337,28 @@ io.on('connection', (socket) => {
                 return;
             }
 
-            // Update the in-memory queue
-            state.queue[requestIndex].spotifyData = spotifyDetails;
+            // Prune the spotifyDetails object to match the structure used elsewhere
+            const prunedSpotifyData = spotifyDetails ? {
+                id: spotifyDetails.id,
+                name: spotifyDetails.name,
+                artists: spotifyDetails.artists?.map(a => ({ name: a.name })) || [],
+                album: spotifyDetails.album?.images?.[0] ? {
+                  images: [{ url: spotifyDetails.album.images[0].url }]
+                } : { images: [] },
+                durationMs: spotifyDetails.durationMs,
+                uri: spotifyDetails.uri,
+                url: spotifyDetails.url
+            } : null;
+
+            // Update the in-memory queue with the pruned data
+            state.queue[requestIndex].spotifyData = prunedSpotifyData;
             // Update title/artist based on Spotify data? - Let's keep original for now, just update spotifyData
             // state.queue[requestIndex].title = spotifyDetails.name;
             // state.queue[requestIndex].artist = spotifyDetails.artists.join(', ');
             console.log(chalk.green(`[Admin:${socket.id}] Updated in-memory Spotify data for request ${requestId}.`));
 
-            // Update the database
-            updateSongSpotifyDataInDbQueue(requestId, spotifyDetails);
+            // Update the database with the pruned data
+            updateSongSpotifyDataInDbQueue(requestId, prunedSpotifyData);
 
             // Broadcast the updated queue to all clients
             io.emit('queueUpdate', state.queue);
@@ -358,6 +378,7 @@ io.on('connection', (socket) => {
         state.queue = [];
         db.clearDbQueue(); // Clear the queue in the database as well
         io.emit('queueUpdate', state.queue);
+        broadcastTotalCounts(); // Broadcast counts after clearing queue
         console.log(chalk.magenta(`[Admin:${socket.id}] Queue cleared via socket.`));
     }))
 
@@ -376,7 +397,8 @@ io.on('connection', (socket) => {
         // Emit updates to all clients
         io.emit('queueUpdate', state.queue)
         io.emit('activeSong', state.activeSong)
-        io.emit('historyUpdate', state.history)
+        io.emit('historyUpdate', state.history) // Note: history is [] here
+        broadcastTotalCounts(); // Broadcast counts after system reset
         console.log(chalk.magenta(`[Admin:${socket.id}] System reset via socket.`));
     }))
 
@@ -401,6 +423,7 @@ io.on('connection', (socket) => {
                 db.removeSongFromDbQueue(requestId);
                 // Broadcast updated queue
                 io.emit('queueUpdate', state.queue);
+                broadcastTotalCounts(); // Broadcast counts after user deletes own request
                 console.log(chalk.cyan(`[User] Song removed by requester ${userLogin}: ${requestId}`));
             } else {
                 console.warn(chalk.yellow(`[Security] User ${userLogin} attempted to delete song ${requestId} owned by ${songToDelete.requesterLogin}`));
@@ -448,8 +471,8 @@ io.on('connection', (socket) => {
             
             // Send history update immediately for the previously active song
             const recentHistory = db.getRecentHistory();
-            state.history = recentHistory; // Update cache
             io.emit('historyUpdate', recentHistory);
+            broadcastTotalCounts(); // Broadcast counts after a song moves to history
         }
 
 
@@ -560,6 +583,7 @@ io.on('connection', (socket) => {
         
         // Add to DB queue (addSongToDbQueue will now use the priority set above)
         db.addSongToDbQueue(newSong);
+        broadcastTotalCounts(); // Broadcast counts after returning song to queue
 
         // Emit queue update to all clients
         io.emit('queueUpdate', state.queue);
@@ -571,6 +595,7 @@ io.on('connection', (socket) => {
         if (success) {
             // Send empty history to all clients
             io.emit('historyUpdate', []);
+            broadcastTotalCounts(); // Broadcast counts after clearing history
             console.log(chalk.magenta(`[Admin:${socket.id}] History cleared via socket.`));
             
             // After clearing history, refresh and broadcast all-time stats
@@ -592,6 +617,7 @@ io.on('connection', (socket) => {
             // Fetch and send updated history to all clients
             const recentHistory = db.getRecentHistory();
                 io.emit('historyUpdate', recentHistory);
+                broadcastTotalCounts(); // Broadcast counts after deleting history item
                 console.log(chalk.magenta(`[Admin:${socket.id}] History item ${id} deleted via socket.`));
                 
                 // After deleting history item, refresh and broadcast all-time stats
@@ -648,6 +674,7 @@ io.on('connection', (socket) => {
         // Fetch and broadcast updated history
         const recentHistory = db.getRecentHistory();
         io.emit('historyUpdate', recentHistory);
+        broadcastTotalCounts(); // Broadcast counts after skipping song
         console.log(chalk.blue(`[History] Broadcast updated history (${recentHistory.length} items) after skipping song.`));
 
          // Also update statistics
@@ -661,6 +688,31 @@ io.on('connection', (socket) => {
 
         console.log(chalk.magenta(`[Admin:${socket.id}] Song skipped. New active song: ${nextSong ? nextSong.title : 'None'}`));
     }))
+
+    // --- NEW: Handle History Pagination --- 
+    socket.on('getMoreHistory', (data) => {
+        const limit = data?.limit || 20; // Default limit changed to 20
+        const offset = data?.offset || 0; // Default offset
+
+        if (typeof limit !== 'number' || limit <= 0 || typeof offset !== 'number' || offset < 0) {
+            console.warn(chalk.yellow(`[Socket.IO] Invalid pagination request from ${socket.id}: limit=${limit}, offset=${offset}`));
+            // Optionally send error back to client
+            // socket.emit('moreHistoryError', { message: 'Invalid limit or offset.' });
+            return;
+        }
+        
+        try {
+            console.log(chalk.blue(`[Socket.IO] Client ${socket.id} requested more history (limit: ${limit}, offset: ${offset})`));
+            const historyChunk = db.getHistoryWithOffset(limit, offset);
+            // Send the chunk back to the specific client that requested it
+            socket.emit('moreHistoryData', historyChunk);
+        } catch (error) {
+            console.error(chalk.red(`[Socket.IO] Error fetching history chunk for ${socket.id}:`), error);
+            // Optionally send error back to client
+            // socket.emit('moreHistoryError', { message: 'Failed to fetch history data.' });
+        }
+    });
+    // --- END NEW --- 
 })
 
 // Start the server and load initial data
@@ -671,6 +723,7 @@ async function startServer() {
   state.blacklist = loadedState.blacklist;
   state.blockedUsers = loadedState.blockedUsers;
   state.activeSong = loadedState.activeSong; // Set the activeSong state from loaded data
+  state.history = []; // Initialize history as empty, it's loaded on demand
 
   // Log the activeSong state for debugging
   console.log(chalk.blue(`[Server] Loaded activeSong: ${state.activeSong ? state.activeSong.title : 'null'}`));
@@ -1451,7 +1504,6 @@ function handleMarkSongAsFinished() {
     // Update state
     state.activeSong = null;
     const recentHistory = db.getRecentHistory(); // Get updated history
-    state.history = recentHistory; // Update in-memory cache (optional, but good practice)
 
     // Clear active song from DB
     db.clearActiveSongFromDB();
@@ -1460,6 +1512,7 @@ function handleMarkSongAsFinished() {
     io.emit('songFinished', finishedSong); // Notify about the finished song
     io.emit('activeSong', null); // Explicitly send null for active song
     io.emit('historyUpdate', recentHistory); // Send updated history
+    broadcastTotalCounts(); // Broadcast counts after marking song finished
 
     return finishedSong;
 }
@@ -1535,5 +1588,17 @@ if (tmiClient) {
     });
 } else {
      console.warn(chalk.yellow('[Twitch Command] TMI client not initialized, admin chat commands disabled.'));
+}
+// --- END NEW ---
+
+// --- NEW: Helper to broadcast total counts ---
+function broadcastTotalCounts() {
+    try {
+        const totalHistory = db.getTotalHistoryCount();
+        const totalQueue = state.queue.length; // Queue count is from in-memory state
+        io.emit('totalCountsUpdate', { history: totalHistory, queue: totalQueue });
+    } catch (error) {
+        console.error(chalk.red('[Counts] Error broadcasting total counts:'), error);
+    }
 }
 // --- END NEW ---

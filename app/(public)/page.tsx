@@ -27,6 +27,8 @@ export default function PublicDashboard() {
   const [isConnected, setIsConnected] = useState(false) // Optional: For showing connection status
   const [allTimeStats, setAllTimeStats] = useState<AllTimeStats | null>(null)
   const [isLoadingStats, setIsLoadingStats] = useState(true)
+  const [totalQueueCount, setTotalQueueCount] = useState(0)
+  const [totalHistoryCount, setTotalHistoryCount] = useState(0)
   
 
   // Socket Connection & State Fetching
@@ -110,12 +112,21 @@ export default function PublicDashboard() {
       setIsLoadingStats(false)
     })
     
+    // NEW: Listen for total count updates
+    socketInstance.on('totalCountsUpdate', (counts: { history: number; queue: number }) => {
+      console.log('Public: Received total counts:', counts);
+      setTotalHistoryCount(counts.history);
+      setTotalQueueCount(counts.queue);
+    });
+    
     // Request initial state
     socketInstance.emit('getState')
     
     setSocket(socketInstance)
     
     return () => {
+      // NEW: Clean up count listener
+      socketInstance.off('totalCountsUpdate');
       socketInstance.disconnect()
     }
   }, [])
@@ -294,7 +305,7 @@ export default function PublicDashboard() {
                     {/* Update stat item backgrounds */}
                     <div className="bg-brand-purple-dark/50 p-4 rounded-lg text-center border border-brand-purple-neon/20">
                       <p className="text-xs text-brand-purple-light/80">In Queue</p>
-                      <p className="text-2xl font-bold text-white">{queueState.queue.length}</p>
+                      <p className="text-2xl font-bold text-white">{totalQueueCount}</p>
                     </div>
                     <div className="bg-brand-purple-dark/50 p-4 rounded-lg text-center border border-brand-purple-neon/20">
                       <p className="text-xs text-brand-purple-light/80">Total Duration</p>
@@ -305,7 +316,7 @@ export default function PublicDashboard() {
                     </div>
                     <div className="bg-brand-purple-dark/50 p-4 rounded-lg text-center border border-brand-purple-neon/20">
                       <p className="text-xs text-brand-purple-light/80">Songs Played</p>
-                      <p className="text-2xl font-bold text-white">{queueState.history.length}</p>
+                      <p className="text-2xl font-bold text-white">{totalHistoryCount}</p>
                     </div>
                   </div>
                 )}

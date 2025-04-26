@@ -127,6 +127,11 @@ export default function AdminDashboard() {
   const [editingRequestId, setEditingRequestId] = useState<string | null>(null)
   const [currentSpotifyLink, setCurrentSpotifyLink] = useState<string>("")
   const [spotifyLinkInput, setSpotifyLinkInput] = useState<string>("")
+  const [historyPage, setHistoryPage] = useState(1)
+  const [isLoadingMoreHistory, setIsLoadingMoreHistory] = useState(false)
+  const [hasMoreHistory, setHasMoreHistory] = useState(true)
+  const [totalHistoryCount, setTotalHistoryCount] = useState(0)
+  const [totalQueueCount, setTotalQueueCount] = useState(0)
   const { toast } = useToast()
 
   // Define closeSpotifyLinkDialog early so it can be used in useEffect
@@ -310,6 +315,33 @@ export default function AdminDashboard() {
     socketInstance.on('updateSpotifySuccess', handleSpotifySuccess);
     socketInstance.on('updateSpotifyError', handleSpotifyError);
 
+    // NEW: Add listener for moreHistoryData event
+    socketInstance.on('moreHistoryData', (historyChunk: SongRequest[]) => {
+      console.log('Admin: Received more history data:', historyChunk);
+      
+      if (historyChunk.length === 0) {
+        // No more history to load
+        setHasMoreHistory(false);
+      } else {
+        setAppState(prev => ({
+          ...prev,
+          // Append new history items to the existing ones instead of replacing
+          history: [...prev.history, ...historyChunk]
+        }));
+        // Increment the page counter
+        setHistoryPage(prevPage => prevPage + 1);
+      }
+      
+      setIsLoadingMoreHistory(false);
+    });
+
+    // NEW: Listen for total count updates
+    socketInstance.on('totalCountsUpdate', (counts: { history: number; queue: number }) => {
+      console.log('Admin: Received total counts:', counts);
+      setTotalHistoryCount(counts.history);
+      setTotalQueueCount(counts.queue);
+    });
+
     setSocket(socketInstance)
 
     return () => {
@@ -331,6 +363,9 @@ export default function AdminDashboard() {
       // NEW: Clean up new listeners
       socketInstance.off('updateSpotifySuccess', handleSpotifySuccess);
       socketInstance.off('updateSpotifyError', handleSpotifyError);
+      socketInstance.off('moreHistoryData');
+      // NEW: Clean up count listener
+      socketInstance.off('totalCountsUpdate');
       socketInstance.disconnect()
     }
   }, [toast, closeSpotifyLinkDialog])
@@ -624,6 +659,19 @@ export default function AdminDashboard() {
   // Add necessary dependencies: socket, editingRequestId, spotifyLinkInput, toast
   }, [socket, editingRequestId, spotifyLinkInput, toast]); 
 
+  // NEW: Add function to load more history
+  const loadMoreHistory = useCallback(() => {
+    if (!socket || isLoadingMoreHistory || !hasMoreHistory) return;
+    
+    setIsLoadingMoreHistory(true);
+    
+    const pageSize = 20;
+    const offset = historyPage * pageSize;
+    
+    console.log(`Admin: Requesting more history (offset: ${offset}, limit: ${pageSize})`);
+    socket.emit('getMoreHistory', { offset, limit: pageSize });
+  }, [socket, historyPage, isLoadingMoreHistory, hasMoreHistory]);
+
   // Render Logic
   if (appState.isLoading && !socket) {
     return (
@@ -871,10 +919,10 @@ export default function AdminDashboard() {
           <Tabs defaultValue="queue" className="w-full">
             <TabsList className="grid w-full grid-cols-2 bg-gray-800">
               <TabsTrigger value="queue" className="data-[state=active]:bg-gray-700 data-[state=active]:text-white">
-                  <List className="mr-2 h-4 w-4" /> Current Queue ({appState.queue.length}) - <Clock className="inline-block mx-1" size={14} /> {totalQueueDurationFormatted}
+                  <List className="mr-2 h-4 w-4" /> Current Queue ({totalQueueCount}) - <Clock className="inline-block mx-1" size={14} /> {totalQueueDurationFormatted}
               </TabsTrigger>
               <TabsTrigger value="history" className="data-[state=active]:bg-gray-700 data-[state=active]:text-white">
-                  <History className="mr-2 h-4 w-4" /> History ({appState.history.length})
+                  <History className="mr-2 h-4 w-4" /> History ({totalHistoryCount})
               </TabsTrigger>
             </TabsList>
             <TabsContent value="queue">
@@ -1188,6 +1236,34 @@ export default function AdminDashboard() {
                       <p className="text-gray-400 italic text-center py-10">No song history available.</p>
                     )}
                   </ScrollArea>
+
+                  {/* NEW: Add Load More Button for history pagination */}
+                  {hasMoreHistory && appState.history.length > 0 && (
+                    <div className="mt-6 flex justify-center">
+                      <Button
+                        variant="outline"
+                        className="bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600 hover:border-gray-500"
+                        onClick={loadMoreHistory}
+                        disabled={isLoadingMoreHistory}
+                      >
+                        {isLoadingMoreHistory ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Loading...
+                          </>
+                        ) : (
+                          <>Load More History</>
+                        )}
+                      </Button>
+                    </div>
+                  )}
+                  
+                  {/* Show message when there's no more history to load */}
+                  {!hasMoreHistory && appState.history.length > 0 && (
+                    <div className="mt-4 text-center text-gray-500 text-sm">
+                      End of history reached
+                    </div>
+                  )}
             </TabsContent>
           </Tabs>
 

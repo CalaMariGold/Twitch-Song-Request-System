@@ -685,7 +685,7 @@ function deleteHistoryItem(id) {
  */
 function getRecentHistory() {
     try {
-        const historyItems = db.prepare('SELECT * FROM song_history ORDER BY id DESC').all();
+        const historyItems = db.prepare('SELECT * FROM song_history ORDER BY id DESC LIMIT 20').all();
         
         return historyItems.map(item => {
             let spotifyData = null;
@@ -730,6 +730,91 @@ function getRecentHistory() {
     } catch (err) {
         console.error(chalk.red('[Database] Failed to retrieve song history:'), err);
         return [];
+    }
+}
+
+/**
+ * Retrieves a chunk of history items with an offset and limit.
+ * @param {number} limit - The maximum number of items to fetch.
+ * @param {number} offset - The number of items to skip.
+ * @returns {SongRequest[]} An array of history items, formatted as SongRequest objects.
+ */
+function getHistoryWithOffset(limit, offset) {
+    if (!db) {
+        console.error(chalk.red('[Database] Database not initialized. Cannot get history chunk.'));
+        return [];
+    }
+    if (typeof limit !== 'number' || limit <= 0 || typeof offset !== 'number' || offset < 0) {
+        console.warn(chalk.yellow(`[Database] Invalid limit (${limit}) or offset (${offset}) for getHistoryWithOffset.`));
+        return [];
+    }
+
+    try {
+        // Use placeholders for safety
+        const stmt = db.prepare('SELECT * FROM song_history ORDER BY id DESC LIMIT ? OFFSET ?');
+        const historyItems = stmt.all(limit, offset);
+
+        return historyItems.map(item => {
+            let spotifyData = null;
+            if (item.spotifyData) {
+                try {
+                    spotifyData = JSON.parse(item.spotifyData);
+                } catch (e) {
+                    console.error(chalk.red('[Database] Failed to parse Spotify data for history item (offset): '), e);
+                }
+            }
+
+            let timestamp = item.completedAt;
+            try {
+                if (timestamp && !timestamp.includes('T')) {
+                    const date = new Date(timestamp);
+                    if (!isNaN(date.getTime())) {
+                        timestamp = date.toISOString();
+                    }
+                }
+            } catch (err) {
+                console.error(chalk.red('[Database] Error formatting timestamp (offset): '), err);
+            }
+
+            return {
+                id: item.id.toString(),
+                youtubeUrl: item.youtubeUrl,
+                title: item.title,
+                artist: item.artist,
+                channelId: item.channelId,
+                requester: item.requester,
+                requesterLogin: item.requesterLogin,
+                requesterAvatar: item.requesterAvatar,
+                timestamp: timestamp,
+                duration: item.durationSeconds ? formatDurationFromSeconds(item.durationSeconds) : null,
+                durationSeconds: item.durationSeconds,
+                thumbnailUrl: item.thumbnailUrl,
+                requestType: item.requestType,
+                source: 'database_history_paged',
+                spotifyData: spotifyData
+            };
+        });
+    } catch (err) {
+        console.error(chalk.red(`[Database] Failed to retrieve history chunk (limit: ${limit}, offset: ${offset}):`), err);
+        return [];
+    }
+}
+
+/**
+ * Gets the total number of items in the song history.
+ * @returns {number} The total count of history items.
+ */
+function getTotalHistoryCount() {
+    if (!db) {
+        console.error(chalk.red('[Database] Database not initialized. Cannot get total history count.'));
+        return 0;
+    }
+    try {
+        const result = db.prepare('SELECT COUNT(*) as count FROM song_history').get();
+        return result.count || 0;
+    } catch (err) {
+        console.error(chalk.red('[Database] Failed to get total history count:'), err);
+        return 0;
     }
 }
 
@@ -905,5 +990,7 @@ module.exports = {
     closeDatabase,
     
     getDb,
-    updateSongSpotifyDataInDbQueue
+    updateSongSpotifyDataInDbQueue,
+    getHistoryWithOffset,
+    getTotalHistoryCount
 }; 
