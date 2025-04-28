@@ -1575,7 +1575,7 @@ async function validateAndAddSong(request, bypassRestrictions = false) {
       channelId: videoDetails?.channelId, // Only available for YouTube requests
       durationSeconds: durationSeconds,
       thumbnailUrl: spotifyMatch?.album?.images?.[0]?.url || videoDetails?.thumbnailUrl || null, // Prefer Spotify image
-      requester: userName,
+      requester: requesterInfo?.display_name || userName, // Use Twitch display_name if available, else fallback
       requesterLogin: requesterInfo?.login || userName.toLowerCase(), 
       requesterAvatar: requesterInfo?.profile_image_url || null,
       requestType: request.requestType,
@@ -1640,10 +1640,11 @@ async function createSpotifyBasedRequest(spotifyTrack, request) {
     // Get requester Twitch profile (same as validateAndAddSong)
     let requesterAvatar = 'https://static-cdn.jtvnw.net/user-default-pictures-uv/ebe4cd89-b4f4-4cd9-adac-2f30151b4209-profile_image-300x300.png';
     let requesterLogin = request.requester.toLowerCase();
+    let twitchProfile;
     
     try {
         // Fetch Twitch profile for the requester (same as in validateAndAddSong)
-        const twitchProfile = await getTwitchUser(request.requester);
+        twitchProfile = await getTwitchUser(request.requester);
         if (twitchProfile) {
             if (twitchProfile.profile_image_url) {
                 requesterAvatar = twitchProfile.profile_image_url;
@@ -1672,7 +1673,7 @@ async function createSpotifyBasedRequest(spotifyTrack, request) {
       // No channelId for Spotify-only requests
       channelId: null,
       durationSeconds: durationSeconds,
-      requester: request.requester,
+      requester: twitchProfile?.display_name || request.requester, // Use Twitch display_name if available, else fallback
       requesterLogin: requesterLogin,
       requesterAvatar: requesterAvatar,
       thumbnailUrl: thumbnailUrl,

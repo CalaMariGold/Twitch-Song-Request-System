@@ -10,9 +10,9 @@ function fetchAllTimeStats(db) {
         
         // Define the queries for each statistic
         const topRequestersQuery = `
-            SELECT requester, COUNT(*) as request_count 
+            SELECT MIN(requester) as requester, COUNT(*) as request_count 
             FROM song_history 
-            GROUP BY requester 
+            GROUP BY LOWER(requesterLogin) 
             ORDER BY request_count DESC 
             LIMIT 20
         `;
