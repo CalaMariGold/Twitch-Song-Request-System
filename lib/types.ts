@@ -173,7 +173,6 @@ export interface SocketEvents {
     updateBlacklist: (newBlacklist: BlacklistItem[]) => void; // Assuming full list update based on frontend code
     updateBlockedUsers: (newBlockedUsers: BlockedUser[]) => void; // Assuming full list update based on frontend code
     getAllTimeStats: () => void;
-    clearHistory: () => void;
     deleteHistoryItem: (id: string) => void;
     markSongAsFinished: (song: SongRequest) => void; // Frontend seems to send the song object
     returnToQueue: (song: SongRequest) => void; // Frontend seems to send the song object

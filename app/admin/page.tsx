@@ -650,13 +650,22 @@ export default function AdminDashboard() {
   }
 
   const handleRemoveFromHistory = (id: string) => {
-    if (!socket) return
-    const songToRemove = appState.history.find(song => song.id === id)
-    console.log(`Admin: Removing song ${id} from history`)
-    socket.emit('deleteHistoryItem', id)
-    if (songToRemove) {
-        toast({ title: "Song Removed from History", description: `Removed: ${songToRemove.title}` })
-    }
+    if (!socket) return;
+    
+    const songToRemove = historyList.find(song => song.id === id); // Find song in the local list
+
+    console.log(`Admin: Requesting removal of history item ${id}`);
+    socket.emit('deleteHistoryItem', id);
+
+    // Optimistically remove the item from the local state
+    setHistoryList(prevList => prevList.filter(song => song.id !== id));
+
+    // Show toast confirming the action initiated
+    toast({ 
+        title: "History Item Removed", 
+        description: `Removed: ${songToRemove?.title || 'Item'}.`, 
+        duration: 2000 
+    });
   }
 
   // Calculate total queue duration
@@ -1185,15 +1194,6 @@ export default function AdminDashboard() {
             <TabsContent value="history">
                <div className="flex justify-between items-center mb-3 px-1">
                   <h3 className="text-lg font-semibold text-white">Played History</h3>
-                  <Button variant="destructive" size="sm" onClick={() => {
-                    if (!socket) return;
-                    if (confirm('Are you sure you want to clear all history? This cannot be undone.')) {
-                      socket.emit('clearHistory');
-                      toast({ title: "History Cleared", description: "All history records have been deleted." });
-                    }
-                  }} disabled={historyList.length === 0} className="h-8 text-xs">
-                    <Trash2 className="mr-1 h-3 w-3" /> Clear History
-                  </Button>
                </div>
                {/* --- Modified History List for DND --- */} 
                <ScrollArea className="h-[80vh] w-full rounded-md border border-gray-700 p-4 bg-gray-800">

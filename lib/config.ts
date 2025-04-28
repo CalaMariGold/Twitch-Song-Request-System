@@ -77,7 +77,6 @@ export const socketEvents = {
   UPDATE_BLACKLIST: 'updateBlacklist',
   UPDATE_BLOCKED_USERS: 'updateBlockedUsers',
   GET_ALL_TIME_STATS: 'getAllTimeStats',
-  CLEAR_HISTORY: 'clearHistory',
   DELETE_HISTORY_ITEM: 'deleteHistoryItem',
   GET_MORE_HISTORY: 'getMoreHistory',
   DELETE_MY_REQUEST: 'deleteMyRequest',

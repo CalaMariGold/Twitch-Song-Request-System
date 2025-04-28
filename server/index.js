@@ -833,28 +833,6 @@ io.on('connection', (socket) => {
         io.emit('queueUpdate', state.queue);
     }))
 
-    // Add handler for clearing history
-    socket.on('clearHistory', requireAdmin(() => {
-        const success = db.clearDbHistory();
-        if (success) {
-            // Send empty history to all clients
-            io.emit('historyUpdate', []);
-            broadcastTotalCounts();
-            broadcastTodaysCount();
-            console.log(chalk.magenta(`[Admin:${socket.id}] History cleared via socket.`));
-            
-            // After clearing history, refresh and broadcast all-time stats
-            try {
-                const updatedStats = fetchAllTimeStats(db.getDb());
-                io.emit('allTimeStatsUpdate', updatedStats);
-                console.log(chalk.blue('[Statistics] Refreshed all-time stats after history clear'));
-            } catch (error) {
-                console.error(chalk.red('[Statistics] Error refreshing stats after history clear:'), error);
-                socket.emit('allTimeStatsError', { message: 'Failed to refresh statistics after clearing history' });
-            }
-        }
-    }))
-
     // Add handler for deleting individual history items
     socket.on('deleteHistoryItem', requireAdmin((id) => {
         const success = db.deleteHistoryItem(id);
