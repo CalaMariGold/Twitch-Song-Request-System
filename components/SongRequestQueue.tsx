@@ -603,14 +603,26 @@ export default function SongRequestQueue() {
       // setState(prev => ({...prev, queue: prev.queue.slice(0, counts.queue) })); // Example, might not be needed
     });
 
+    // --- NEW: Listen for history order change signal --- 
+    newSocket.on('historyOrderChanged', () => {
+      console.log('History order changed signal received. Refetching state.');
+      // Refetch the initial state to get the latest ordered history
+      newSocket.emit('getState'); 
+      // Reset pagination for history if needed
+      // setHistoryPage(1); 
+      // setHasMoreHistory(true);
+    });
+    // --- END NEW --- 
+
     setSocket(newSocket)
 
-    // Request initial state on mount (will emit again on connect)
-    // newSocket.emit('getState'); // Moved to on(connect)
 
     return () => {
       console.log('Disconnecting socket...');
-      newSocket.disconnect();
+      // --- NEW: Clean up history order listener --- 
+      newSocket.off('historyOrderChanged');
+      // --- END NEW --- 
+      newSocket.disconnect()
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []) // Empty dependency array ensures this runs only once on mount
@@ -630,7 +642,7 @@ export default function SongRequestQueue() {
       song.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       song.artist?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       song.requester.toLowerCase().includes(searchTerm.toLowerCase())
-    ).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()), // Sort by timestamp (numeric comparison)
+    ),
     [state.history, searchTerm]
   )
   
@@ -998,10 +1010,9 @@ function SongList({
   setEditSpotifyError?: React.Dispatch<React.SetStateAction<string | null>>,
   setEditSpotifySuccess?: React.Dispatch<React.SetStateAction<boolean>>
 }) {
-  // Sorting is now handled in filteredHistory callback
-  const sortedSongs = isHistory ? songs : songs; // Just use the passed songs
-
-  if (sortedSongs.length === 0) {
+  // Use the songs as provided without any additional sorting
+  
+  if (songs.length === 0) {
     // Message is handled in the parent TabsContent now
     return null;
   }
@@ -1010,7 +1021,7 @@ function SongList({
 
   return (
     <AnimatePresence>
-      {sortedSongs.map((song, index) => {
+      {songs.map((song, index) => {
         const isOwnRequest = !!userLogin && 
                              (song.requesterLogin?.toLowerCase() === userLogin || 
                               song.requester?.toLowerCase() === userLogin);

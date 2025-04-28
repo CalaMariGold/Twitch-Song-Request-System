@@ -355,6 +355,7 @@ io.on('connection', (socket) => {
 
         // Inform ALL clients (including sender) of the updated queue
         io.emit('queueUpdate', state.queue);
+        broadcastTotalCounts(); // Broadcast total counts after queue reordering
         console.log(chalk.magenta(`[Admin:${socket.id}] Queue updated and DB re-synced via socket.`));
     }))
 
@@ -745,6 +746,7 @@ io.on('connection', (socket) => {
         // Broadcast the change to all clients
         io.emit('activeSong', state.activeSong);
         io.emit('queueUpdate', state.queue); // Also update queue in case a song was removed
+        broadcastTotalCounts(); // Broadcast counts after updating active song
 
     }));
 
@@ -957,6 +959,37 @@ io.on('connection', (socket) => {
             // socket.emit('moreHistoryError', { message: 'Failed to fetch history data.' });
         }
     });
+    // --- END NEW --- 
+
+    // --- NEW: Handle History Reordering --- 
+    socket.on('updateHistoryOrder', requireAdmin((orderedIds) => {
+        if (!Array.isArray(orderedIds)) {
+            console.warn(chalk.yellow(`[Admin:${socket.id}] Received invalid data for updateHistoryOrder:`), orderedIds);
+            // Optionally emit error back
+            return;
+        }
+        
+        console.log(chalk.magenta(`[Admin:${socket.id}] Received updateHistoryOrder request for ${orderedIds.length} items.`));
+
+        try {
+            const success = db.updateHistoryDisplayOrder(orderedIds);
+            if (success) {
+                // Fetch and broadcast the *updated* recent history to ALL clients
+                const recentHistory = db.getRecentHistory();
+                io.emit('historyUpdate', recentHistory);
+                // --- NEW: Emit a signal that order has changed --- 
+                io.emit('historyOrderChanged'); 
+                // --- END NEW --- 
+                console.log(chalk.cyan(`[Admin:${socket.id}] Successfully updated history order and broadcasted update/signal.`));
+            } else {
+                // Log error or maybe inform admin?
+                console.error(chalk.red(`[Admin:${socket.id}] Failed to update history order in database.`));
+            }
+        } catch (error) {
+            console.error(chalk.red(`[Admin:${socket.id}] Error processing updateHistoryOrder:`), error);
+            // Optionally emit error back
+        }
+    }));
     // --- END NEW --- 
 })
 
@@ -1732,6 +1765,10 @@ function addSongToQueue(song) {
     // Add to database
     db.addSongToDbQueue(song);
     
+    // Emit queue update and broadcast counts
+    io.emit('queueUpdate', state.queue);
+    broadcastTotalCounts();
+    
     return insertIndex; // Return the position where it was added (0-indexed)
   } catch (error) {
     console.error(chalk.red('[Queue] Error adding song to queue:'), error);
@@ -1796,12 +1833,14 @@ function handleSkipSong() {
         // Emit updates
         io.emit('activeSong', state.activeSong);
         io.emit('queueUpdate', state.queue);
+        broadcastTotalCounts();
 
         return { skippedSong, nextSong: state.activeSong };
     } else {
         console.log(chalk.grey('[Control] Queue is empty after finishing song, nothing to skip to.'));
         // Active song is already null from handleMarkSongAsFinished
         io.emit('queueUpdate', state.queue); // Still emit queue update (it's empty)
+        broadcastTotalCounts();
         return { skippedSong, nextSong: null };
     }
 }

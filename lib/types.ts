@@ -133,6 +133,7 @@ export interface SocketEvents {
     initialState: (state: AppState) => void;
     queueUpdate: (queue: SongRequest[]) => void;
     historyUpdate: (history: SongRequest[]) => void;
+    historyOrderChanged: () => void;
     activeSong: (song: SongRequest | null) => void;
     newSongRequest: (request: SongRequest) => void;
     settingsUpdate: (settings: Settings) => void;
@@ -162,6 +163,7 @@ export interface SocketEvents {
     getState: () => void;
     authenticateAdmin: (data: { login: string }) => void;
     updateQueue: (updatedQueue: SongRequest[]) => void;
+    updateHistoryOrder: (orderedIds: string[]) => void;
     addSong: (songRequestData: Partial<SongRequest> & { youtubeUrl?: string; message?: string; requester: string; bypassRestrictions?: boolean }) => void;
     removeSong: (songId: string) => void;
     clearQueue: () => void;

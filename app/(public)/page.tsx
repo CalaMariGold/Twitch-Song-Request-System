@@ -86,6 +86,12 @@ export default function PublicDashboard() {
       // The server will also send historyUpdate so we don't need to update history directly here
     })
     
+    // Add listener for history order changes
+    socketInstance.on('historyOrderChanged', () => {
+      console.log('Public page: History order changed signal received')
+      // No need to do anything here as we'll get a historyUpdate event with the new order
+    })
+    
     // Handle initial state - critical for loading history correctly on first connection
     socketInstance.on('initialState', (initialState: any) => {
       console.log('Received initial state on public page:', 
@@ -135,6 +141,7 @@ export default function PublicDashboard() {
       // NEW: Clean up count listener
       socketInstance.off('totalCountsUpdate');
       socketInstance.off('todaysCountUpdate');
+      socketInstance.off('historyOrderChanged');
       socketInstance.disconnect()
     }
   }, [])

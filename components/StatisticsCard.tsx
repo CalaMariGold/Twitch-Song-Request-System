@@ -122,7 +122,7 @@ export function StatisticsCard({
                         </span>
                       </div>
                     </li>
-                  )) : <p className="text-brand-purple-light/70 italic text-center py-6 col-span-2">No song data yet.</p>}
+                  )) : <p className="text-brand-purple-light/70 italic text-center py-6 col-span-2">No songs with 2 or more plays yet.</p>}
                 </div>
               </ScrollArea>
             </TabsContent>
@@ -142,7 +142,7 @@ export function StatisticsCard({
                         {a.play_count} {a.play_count === 1 ? 'play' : 'plays'}
                       </div>
                     </li>
-                  )) : <p className="text-brand-purple-light/70 italic text-center py-6 col-span-2">No artist data yet.</p>}
+                  )) : <p className="text-brand-purple-light/70 italic text-center py-6 col-span-2">No artists with 2 or more plays yet.</p>}
                 </div>
               </ScrollArea>
             </TabsContent>

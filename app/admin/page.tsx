@@ -132,6 +132,7 @@ export default function AdminDashboard() {
   const [hasMoreHistory, setHasMoreHistory] = useState(true)
   const [totalHistoryCount, setTotalHistoryCount] = useState(0)
   const [totalQueueCount, setTotalQueueCount] = useState(0)
+  const [historyList, setHistoryList] = useState<SongRequest[]>([])
   const { toast } = useToast()
 
   // Define closeSpotifyLinkDialog early so it can be used in useEffect
@@ -204,6 +205,9 @@ export default function AdminDashboard() {
         isLoading: false,
         error: null
       }))
+      // --- Initialize local history state --- 
+      setHistoryList(initialServerState.history || []);
+      // --- END --- 
     })
 
     socketInstance.on('queueUpdate', (queue: SongRequest[]) => {
@@ -219,6 +223,9 @@ export default function AdminDashboard() {
     socketInstance.on('historyUpdate', (history: SongRequest[]) => {
       console.log('Admin: History updated', history)
       setAppState(prev => ({ ...prev, history }))
+      // --- Update local history state on broadcast --- 
+      setHistoryList(history);
+      // --- END --- 
     })
     
     socketInstance.on('songFinished', (finishedSong: SongRequest) => {
@@ -340,6 +347,13 @@ export default function AdminDashboard() {
       console.log('Admin: Received total counts:', counts);
       setTotalHistoryCount(counts.history);
       setTotalQueueCount(counts.queue);
+    });
+
+    // --- Add a listener for history order changed signal ---
+    socketInstance.on('historyOrderChanged', () => {
+      console.log('Admin: History order changed signal received');
+      // Don't update the local historyList here, as it's already been updated
+      // This is just for notifying other clients
     });
 
     setSocket(socketInstance)
@@ -659,6 +673,58 @@ export default function AdminDashboard() {
     }
   // Add necessary dependencies: socket, editingRequestId, spotifyLinkInput, toast
   }, [socket, editingRequestId, spotifyLinkInput, toast]); 
+
+  // --- NEW: DND Handler for History --- 
+  const onHistoryDragEnd = (result: DropResult) => {
+    const { source, destination } = result;
+
+    // Dropped outside the list
+    if (!destination) {
+      return;
+    }
+
+    // No change in position
+    if (destination.droppableId === source.droppableId && destination.index === source.index) {
+        return;
+    }
+
+    // Reorder the local historyList state for immediate feedback
+    const items = Array.from(historyList);
+    const [reorderedItem] = items.splice(source.index, 1);
+    items.splice(destination.index, 0, reorderedItem);
+
+    setHistoryList(items);
+
+    // Extract the IDs in the new order (ensure they are strings)
+    const orderedIds = items.map((item) => String(item.id)); // Convert ID to string explicitly
+
+    // Emit the update to the backend
+    if (socket) {
+      // Use properly typed event emission
+      socket.emit("updateHistoryOrder", orderedIds);
+      console.log("Emitted updateHistoryOrder:", orderedIds); // For debugging
+      
+      // Show initial toast
+      toast({
+        title: "Updating History Order", 
+        description: "Saving new order...",
+        duration: 3000
+      });
+      
+      // Listen for the broadcast update once for this specific reorder operation
+      const updateListener = () => {
+        toast({
+          title: "History Order Updated",
+          description: "The new order has been saved.",
+          duration: 2000
+        });
+        socket?.off('historyOrderChanged', updateListener);
+      };
+      
+      socket.once('historyOrderChanged', updateListener);
+    }
+  };
+  // --- END NEW --- 
 
   // NEW: Add function to load more history
   const loadMoreHistory = useCallback(() => {
@@ -1103,143 +1169,183 @@ export default function AdminDashboard() {
             </TabsContent>
             <TabsContent value="history">
                <div className="flex justify-between items-center mb-3 px-1">
-                  <h3 className="text-lg font-semibold text-white">Played History (Recent)</h3>
+                  <h3 className="text-lg font-semibold text-white">Played History</h3>
                   <Button variant="destructive" size="sm" onClick={() => {
                     if (!socket) return;
                     if (confirm('Are you sure you want to clear all history? This cannot be undone.')) {
                       socket.emit('clearHistory');
                       toast({ title: "History Cleared", description: "All history records have been deleted." });
                     }
-                  }} disabled={appState.history.length === 0} className="h-8 text-xs">
+                  }} disabled={historyList.length === 0} className="h-8 text-xs">
                     <Trash2 className="mr-1 h-3 w-3" /> Clear History
                   </Button>
                </div>
+               {/* --- Modified History List for DND --- */} 
                <ScrollArea className="h-[80vh] w-full rounded-md border border-gray-700 p-4 bg-gray-800">
                     {appState.isLoading ? (
                        <div className="flex items-center justify-center h-full"><Loader2 className="w-8 h-8 animate-spin text-gray-400" /></div>
-                    ) : appState.history.length > 0 ? (
-                      <ul className="space-y-2">
-                        {appState.history.map((song, index) => (
-                           <li key={song.id} className="flex items-center space-x-3 p-3 rounded-md bg-gray-800 hover:bg-gray-700/80 transition mb-2 group">
-                             <div className="flex-shrink-0 font-semibold text-gray-400 w-6 text-center">
-                               {index + 1}.
-                             </div>
-                             <div className="relative w-16 h-9 rounded-md overflow-hidden flex-shrink-0">
-                              {song.thumbnailUrl ? (
-                                <img 
-                                  src={song.thumbnailUrl} 
-                                  alt={song.title || 'Video thumbnail'}
-                                  className="w-full h-full object-cover"
-                                />
-                              ) : (
-                                <div className="w-full h-full rounded-md bg-gray-700 flex items-center justify-center">
-                                  <Music size={20} className="text-gray-400"/>
-                                </div>
-                              )}
-                             </div>
-                            <div className="flex-1 min-w-0 overflow-hidden">
-                               <p className="font-medium text-white truncate overflow-hidden whitespace-nowrap" title={song.title}>{song.title || 'Unknown Title'}</p>
-                               <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1">
-                                  {song.channelId ? (
-                                    <Link href={`https://www.youtube.com/channel/${song.channelId}`} target="_blank" rel="noopener noreferrer" className="hover:text-purple-300 transition-colors group/artist">
-                                      <Badge variant="outline" className="text-xs font-normal cursor-pointer group-hover/artist:border-purple-400 group-hover/artist:text-purple-300 transition-colors">
-                                        {song.artist || 'Unknown Artist'}
-                                      </Badge>
-                                    </Link>
-                                  ) : (
-                                    <Badge variant="outline" className="text-xs font-normal">
-                                      {song.artist || 'Unknown Artist'}
-                                    </Badge>
-                                  )}
-                                  <span className="text-xs text-gray-400 flex items-center">
-                                    <Clock className="inline-block mr-1" size={12} />
-                                    {formatDuration(song.durationSeconds) || '?:??'}
-                                  </span>
-                                  <div className="text-xs text-gray-400 flex items-center gap-1">
-                                    by{' '}
-                                    <Avatar className="w-3 h-3 rounded-full inline-block">
-                                      <AvatarImage src={song.requesterAvatar ?? undefined} alt={song.requester} />
-                                      <AvatarFallback className="text-[8px]">{song.requester.slice(0,1)}</AvatarFallback>
-                                    </Avatar>
-                                    <Link href={`https://www.twitch.tv/${song.requesterLogin || song.requester.toLowerCase()}`} target="_blank" rel="noopener noreferrer" className="hover:text-gray-300 underline transition-colors">
-                                      {song.requester}
-                                    </Link>
-                                  </div>
-                                   {/* Request type badges */}
-                                   {song.requestType === 'donation' && (
-                                     <Badge variant="secondary" className="px-1.5 py-0.5 text-xs bg-green-800 text-green-200 border-green-700">
-                                       Dono
-                                     </Badge>
-                                   )}
-                                   {song.requestType === 'channelPoint' && (
-                                     <Badge variant="outline" className="px-1.5 py-0.5 text-xs bg-purple-800 text-purple-200 border-purple-700">
-                                       Points
-                                     </Badge>
-                                   )}
-                                </div>
-                                {/* START: Added Spotify Details */}
-                                {song.spotifyData && (
-                                    <div className="mt-1 text-xs flex items-center text-gray-400 gap-1.5" title={`Spotify: ${song.spotifyData.name} by ${song.spotifyData.artists?.map(a => a.name).join(', ')}`}>
-                                        <SpotifyIcon className="h-3 w-3 text-green-500 flex-shrink-0" />
-                                        <span className="truncate">
-                                            {song.spotifyData.name} - {song.spotifyData.artists?.map((a: { name: string }) => a.name).join(', ')}
-                                        </span>
-                                        {/* Display URL link if it exists */}
-                                        {song.spotifyData.url && (
-                                          <a 
-                                            href={song.spotifyData.url} 
-                                            target="_blank" 
-                                            rel="noopener noreferrer" 
-                                            title="Open on Spotify"
-                                            className="ml-1 text-gray-500 hover:text-green-400 transition-colors"
-                                            onClick={(e) => e.stopPropagation()} // Prevent triggering other actions
-                                          >
-                                            <LinkIcon size={12} />
-                                          </a>
-                                        )}
-                                    </div>
-                                )}
-                                {/* END: Added Spotify Details */}
-                            </div>
-                            <div className="flex-shrink-0 flex flex-col items-end">
-                              <div className="flex space-x-1">
-                                <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handleReturnToQueue(song)}>
-                                  <Play className="h-4 w-4 text-green-500 hover:text-green-400" />
-                                </Button>
-                                <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handleRemoveFromHistory(song.id)}>
-                                  <Trash2 className="h-4 w-4 text-red-500 hover:text-red-400" />
-                                </Button>
-                                {song.youtubeUrl && (
-                                 <a href={song.youtubeUrl} target="_blank" rel="noopener noreferrer" aria-label="Watch on YouTube">
-                                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                                    <Youtube className="h-4 w-4 text-red-600 hover:text-red-500" />
-                                  </Button>
-                                 </a>
-                                )}
-                                {song.spotifyData && song.spotifyData.url && (
-                                  <a href={song.spotifyData.url} target="_blank" rel="noopener noreferrer" aria-label="Listen on Spotify">
-                                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                                      <SpotifyIcon className="h-4 w-4 text-green-500 hover:text-green-400" />
-                                    </Button>
-                                  </a>
-                                )}
-                              </div>
-                              {song.timestamp && (
-                                <span className="text-xs text-gray-500 mt-1">
-                                  Completed: {formatTimestamp(song.timestamp)}
-                                </span>
-                              )}
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
+                    ) : historyList.length > 0 ? (
+                      <DragDropContext onDragEnd={onHistoryDragEnd}>
+                        <Droppable droppableId="historyDroppable">
+                          {(provided) => (
+                             <ul 
+                                className="space-y-2"
+                                {...provided.droppableProps}
+                                ref={provided.innerRef}
+                             >
+                                {historyList.map((song, index) => (
+                                  <Draggable key={song.id} draggableId={String(song.id)} index={index}>
+                                    {(provided, snapshot) => (
+                                      <li 
+                                        ref={provided.innerRef}
+                                        {...provided.draggableProps}
+                                        // Drag handle is now a separate element below
+                                        className={`flex items-center space-x-3 p-3 rounded-md bg-gray-800 hover:bg-gray-700/80 transition mb-2 group ${snapshot.isDragging ? 'opacity-70 border border-purple-500 shadow-lg' : ''}`}
+                                        style={provided.draggableProps.style} // Apply DND styles
+                                      >
+                                        {/* Drag Handle */} 
+                                        <div 
+                                          {...provided.dragHandleProps}
+                                          className="flex-shrink-0 w-6 text-center cursor-grab text-gray-500 hover:text-gray-300 transition-colors"
+                                          title="Drag to reorder"
+                                        >
+                                            <GripVertical size={20} />
+                                        </div>
+                                        
+                                        {/* Index (Visual Only) */} 
+                                        <div className="flex-shrink-0 font-semibold text-gray-400 w-6 text-center">
+                                          {index + 1}. 
+                                        </div>
+                                        
+                                        {/* Existing Thumbnail */} 
+                                        <div className="relative w-16 h-9 rounded-md overflow-hidden flex-shrink-0 border border-gray-700">
+                                          {song.thumbnailUrl ? (
+                                            <img 
+                                              src={song.thumbnailUrl} 
+                                              alt={song.title || 'Video thumbnail'}
+                                              className="w-full h-full object-cover"
+                                            />
+                                          ) : (
+                                            <div className="w-full h-full rounded-md bg-gray-700 flex items-center justify-center">
+                                              <Music size={20} className="text-gray-400"/>
+                                            </div>
+                                          )}
+                                        </div>
+                                        
+                                        {/* Existing Song Info */} 
+                                        <div className="flex-1 min-w-0 overflow-hidden">
+                                           <p className="font-medium text-white truncate overflow-hidden whitespace-nowrap" title={song.title}>{song.title || 'Unknown Title'}</p>
+                                           <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1">
+                                              {/* ... Artist Badge, Duration, Requester Info ... */} 
+                                              {song.channelId ? (
+                                                <Link href={`https://www.youtube.com/channel/${song.channelId}`} target="_blank" rel="noopener noreferrer" className="hover:text-purple-300 transition-colors group/artist">
+                                                  <Badge variant="outline" className="text-xs font-normal cursor-pointer group-hover/artist:border-purple-400 group-hover/artist:text-purple-300 transition-colors">
+                                                    {song.artist || 'Unknown Artist'}
+                                                  </Badge>
+                                                </Link>
+                                              ) : (
+                                                <Badge variant="outline" className="text-xs font-normal">
+                                                  {song.artist || 'Unknown Artist'}
+                                                </Badge>
+                                              )}
+                                              <span className="text-xs text-gray-400 flex items-center">
+                                                <Clock className="inline-block mr-1" size={12} />
+                                                {formatDuration(song.durationSeconds) || '?:??'}
+                                              </span>
+                                              <div className="text-xs text-gray-400 flex items-center gap-1">
+                                                by{' '}
+                                                <Avatar className="w-3 h-3 rounded-full inline-block">
+                                                  <AvatarImage src={song.requesterAvatar ?? undefined} alt={song.requester} />
+                                                  <AvatarFallback className="text-[8px]">{song.requester.slice(0,1)}</AvatarFallback>
+                                                </Avatar>
+                                                <Link href={`https://www.twitch.tv/${song.requesterLogin || song.requester.toLowerCase()}`} target="_blank" rel="noopener noreferrer" className="hover:text-gray-300 underline transition-colors">
+                                                  {song.requester}
+                                                </Link>
+                                              </div>
+                                               {/* Request type badges */} 
+                                               {song.requestType === 'donation' && (
+                                                 <Badge variant="secondary" className="px-1.5 py-0.5 text-xs bg-green-800 text-green-200 border-green-700">
+                                                   Dono
+                                                 </Badge>
+                                               )}
+                                               {song.requestType === 'channelPoint' && (
+                                                 <Badge variant="outline" className="px-1.5 py-0.5 text-xs bg-purple-800 text-purple-200 border-purple-700">
+                                                   Points
+                                                 </Badge>
+                                               )}
+                                            </div>
+                                            {/* START: Added Spotify Details */} 
+                                            {song.spotifyData && (
+                                                <div className="mt-1 text-xs flex items-center text-gray-400 gap-1.5" title={`Spotify: ${song.spotifyData.name} by ${song.spotifyData.artists?.map((a: {name: string}) => a.name).join(', ')}`}>
+                                                    <SpotifyIcon className="h-3 w-3 text-green-500 flex-shrink-0" />
+                                                    <span className="truncate">
+                                                        {song.spotifyData.name} - {song.spotifyData.artists?.map((a: { name: string }) => a.name).join(', ')}
+                                                    </span>
+                                                    {/* Display URL link if it exists */} 
+                                                    {song.spotifyData.url && (
+                                                      <a 
+                                                        href={song.spotifyData.url} 
+                                                        target="_blank" 
+                                                        rel="noopener noreferrer" 
+                                                        title="Open on Spotify"
+                                                        className="ml-1 text-gray-500 hover:text-green-400 transition-colors"
+                                                        onClick={(e) => e.stopPropagation()} // Prevent triggering other actions
+                                                      >
+                                                        <LinkIcon size={12} />
+                                                      </a>
+                                                    )}
+                                                </div>
+                                            )}
+                                            {/* END: Added Spotify Details */} 
+                                        </div>
+                                        
+                                        {/* Existing Actions & Timestamp */} 
+                                        <div className="flex-shrink-0 flex flex-col items-end">
+                                           <div className="flex space-x-1">
+                                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handleReturnToQueue(song)}>
+                                                <Play className="h-4 w-4 text-green-500 hover:text-green-400" />
+                                              </Button>
+                                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handleRemoveFromHistory(song.id)}>
+                                                <Trash2 className="h-4 w-4 text-red-500 hover:text-red-400" />
+                                              </Button>
+                                              {song.youtubeUrl && (
+                                               <a href={song.youtubeUrl} target="_blank" rel="noopener noreferrer" aria-label="Watch on YouTube">
+                                                <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                                                  <Youtube className="h-4 w-4 text-red-600 hover:text-red-500" />
+                                                </Button>
+                                               </a>
+                                              )}
+                                              {song.spotifyData && song.spotifyData.url && (
+                                                <a href={song.spotifyData.url} target="_blank" rel="noopener noreferrer" aria-label="Listen on Spotify">
+                                                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                                                    <SpotifyIcon className="h-4 w-4 text-green-500 hover:text-green-400" />
+                                                  </Button>
+                                                </a>
+                                              )}
+                                            </div>
+                                            {song.timestamp && (
+                                              <span className="text-xs text-gray-500 mt-1">
+                                                Completed: {formatTimestamp(song.timestamp)}
+                                              </span>
+                                            )}
+                                          </div>
+                                      </li>
+                                    )}
+                                  </Draggable>
+                                ))}
+                                {provided.placeholder}
+                             </ul>
+                           )}
+                         </Droppable>
+                       </DragDropContext>
                     ) : (
                       <p className="text-gray-400 italic text-center py-10">No song history available.</p>
                     )}
-                  </ScrollArea>
+                 </ScrollArea>
+                  {/* --- END Modified History List --- */} 
 
-                  {/* NEW: Add Load More Button for history pagination */}
-                  {hasMoreHistory && appState.history.length > 0 && (
+                  {/* NEW: Add Load More Button for history pagination */} 
+                  {hasMoreHistory && historyList.length > 0 && (
                     <div className="mt-6 flex justify-center">
                       <Button
                         variant="outline"
@@ -1260,7 +1366,7 @@ export default function AdminDashboard() {
                   )}
                   
                   {/* Show message when there's no more history to load */}
-                  {!hasMoreHistory && appState.history.length > 0 && (
+                  {!hasMoreHistory && historyList.length > 0 && (
                     <div className="mt-4 text-center text-gray-500 text-sm">
                       End of history reached
                     </div>
