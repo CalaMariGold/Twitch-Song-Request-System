@@ -220,12 +220,30 @@ export default function AdminDashboard() {
       setAppState(prev => ({ ...prev, activeSong: song }))
     })
 
-    socketInstance.on('historyUpdate', (history: SongRequest[]) => {
-      console.log('Admin: History updated', history)
-      setAppState(prev => ({ ...prev, history }))
-      // --- Update local history state on broadcast --- 
-      setHistoryList(history);
-      // --- END --- 
+    socketInstance.on('historyUpdate', (updatedRecentHistory: SongRequest[]) => {
+      console.log('Admin: Received historyUpdate with', updatedRecentHistory.length, 'items');
+      // Don't just replace historyList. Merge the update.
+      setHistoryList(prevList => {
+        // Create a Set of IDs from the incoming recent history for efficient lookup
+        const recentHistoryIds = new Set(updatedRecentHistory.map(song => song.id));
+        
+        // Filter the *current* list, keeping only items NOT present in the incoming recent list
+        const olderHistoryItems = prevList.filter(song => !recentHistoryIds.has(song.id));
+        
+        // Combine the new recent history with the filtered older items
+        const mergedList = [...updatedRecentHistory, ...olderHistoryItems];
+        
+        // Optional but safe: Sort the merged list by displayOrder again 
+        // (Theoretically, prepend should be okay, but this guarantees)
+        // mergedList.sort((a, b) => (b.displayOrder ?? 0) - (a.displayOrder ?? 0));
+        
+        console.log(`Admin: Merged historyList. Old length: ${prevList.length}, New length: ${mergedList.length}`);
+        return mergedList;
+      });
+      // Also update the main appState.history, which might be used elsewhere (e.g., stats)
+      // If appState.history is *only* ever meant to hold the recent items, keep this line.
+      // If it should mirror the full list, update it like historyList.
+      setAppState(prev => ({ ...prev, history: updatedRecentHistory })); 
     })
     
     socketInstance.on('songFinished', (finishedSong: SongRequest) => {
