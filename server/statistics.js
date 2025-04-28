@@ -13,6 +13,7 @@ function fetchAllTimeStats(db) {
             SELECT MIN(requester) as requester, COUNT(*) as request_count 
             FROM song_history 
             GROUP BY LOWER(requesterLogin) 
+            HAVING COUNT(*) > 1
             ORDER BY request_count DESC 
             LIMIT 20
         `;
@@ -21,6 +22,7 @@ function fetchAllTimeStats(db) {
             SELECT title, artist, COUNT(*) as play_count 
             FROM song_history 
             GROUP BY title, artist 
+            HAVING COUNT(*) > 1
             ORDER BY play_count DESC 
             LIMIT 20
         `;
@@ -30,6 +32,7 @@ function fetchAllTimeStats(db) {
             FROM song_history 
             WHERE artist IS NOT NULL AND artist != '' 
             GROUP BY artist 
+            HAVING COUNT(*) > 1
             ORDER BY play_count DESC 
             LIMIT 20
         `;
