@@ -348,11 +348,8 @@ export default function AdminDashboard() {
         // No more history to load
         setHasMoreHistory(false);
       } else {
-        setAppState(prev => ({
-          ...prev,
-          // Append new history items to the existing ones instead of replacing
-          history: [...prev.history, ...historyChunk]
-        }));
+        setHistoryList(prevList => [...prevList, ...historyChunk]);
+        
         // Increment the page counter
         setHistoryPage(prevPage => prevPage + 1);
       }
