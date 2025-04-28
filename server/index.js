@@ -951,8 +951,15 @@ io.on('connection', (socket) => {
         try {
             console.log(chalk.blue(`[Socket.IO] Client ${socket.id} requested more history (limit: ${limit}, offset: ${offset})`));
             const historyChunk = db.getHistoryWithOffset(limit, offset);
+            // --- Add Logging --- 
+            console.log(chalk.blue(`[Socket.IO] Fetched ${historyChunk?.length ?? 'undefined'} history items from DB for offset ${offset}.`));
+            // --- End Logging --- 
+
             // Send the chunk back to the specific client that requested it
             socket.emit('moreHistoryData', historyChunk);
+             // --- Add Logging --- 
+            console.log(chalk.cyan(`[Socket.IO] Emitted 'moreHistoryData' back to client ${socket.id}.`));
+            // --- End Logging --- 
         } catch (error) {
             console.error(chalk.red(`[Socket.IO] Error fetching history chunk for ${socket.id}:`), error);
             // Optionally send error back to client
@@ -974,13 +981,13 @@ io.on('connection', (socket) => {
         try {
             const success = db.updateHistoryDisplayOrder(orderedIds);
             if (success) {
-                // Fetch and broadcast the *updated* recent history to ALL clients
-                const recentHistory = db.getRecentHistory();
-                io.emit('historyUpdate', recentHistory);
+                // Fetch and broadcast the *updated* recent history to ALL clients - REMOVE THIS BLOCK
+                // const recentHistory = db.getRecentHistory(); 
+                // io.emit('historyUpdate', recentHistory); 
                 // --- NEW: Emit a signal that order has changed --- 
-                io.emit('historyOrderChanged'); 
+                io.emit('historyOrderChanged'); // Keep this signal
                 // --- END NEW --- 
-                console.log(chalk.cyan(`[Admin:${socket.id}] Successfully updated history order and broadcasted update/signal.`));
+                console.log(chalk.cyan(`[Admin:${socket.id}] Successfully updated history order and broadcasted signal.`)); // Updated log message
             } else {
                 // Log error or maybe inform admin?
                 console.error(chalk.red(`[Admin:${socket.id}] Failed to update history order in database.`));
