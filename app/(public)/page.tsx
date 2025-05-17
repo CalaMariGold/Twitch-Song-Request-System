@@ -269,8 +269,8 @@ export default function PublicDashboard() {
                   </a>
                   <ul className="list-disc list-inside text-brand-purple-light/80 space-y-0.5 pl-1 text-xs">
                     <li>Donations get queue priority!</li>
-                    <li>$1 USD per minute</li>
-                    <li>Minimum $3 USD</li>
+                    <li>Songs less than 5 min: $5</li>
+                    <li>Songs greater than 5 min: $10</li>
                     <li>Max 10 min duration</li>
                   </ul>
                 </div>
