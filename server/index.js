@@ -1013,8 +1013,8 @@ async function startServer() {
       // Check for request type
       const analysisResult = analyzeRequestText(message);
 
-      // Minimum donation amount ($3)
-      const MIN_DONATION_AMOUNT = 3;
+      // Minimum donation amount ($5)
+      const MIN_DONATION_AMOUNT = 5;
       if (amount < MIN_DONATION_AMOUNT) {
           console.log(chalk.yellow(`[StreamElements] Donation from ${userName} (${amount} ${currency}) below minimum (${MIN_DONATION_AMOUNT} ${currency}). Skipping request.`));
           sendChatMessage(`Thanks @${userName} for the ${amount} ${currency} donation! Song requests require a minimum donation of ${MIN_DONATION_AMOUNT} ${currency}. https://calamarigoldrequests.com/`);
