@@ -705,6 +705,13 @@ io.on('connection', (socket) => {
         console.log(chalk.magenta(`[Admin:${socket.id}] Max Duration set to ${minutes} mins via socket.`));
     }))
 
+    // Handle resetting today's played count
+    socket.on('resetTodaysCount', requireAdmin(() => {
+        db.resetTodaysCount();
+        broadcastTodaysCount(); // Broadcast the updated count (should be 0)
+        console.log(chalk.magenta(`[Admin:${socket.id}] Reset today's played count via socket.`));
+    }))
+
     // Handle active song updates (Auth needed)
     // Note: updateActiveSong can be called with null (stop) or a song object (play)
     socket.on('updateActiveSong', requireAdmin((song) => {
@@ -1775,6 +1782,9 @@ function handleMarkSongAsFinished() {
 
         // Log to history DB. This does not clear the active_song table.
         db.logCompletedSong(finishedSong);
+        
+        // Increment today's count
+        db.incrementTodaysCount();
         
         // Explicitly clear the active song from the database persistence
         db.clearActiveSongFromDB();

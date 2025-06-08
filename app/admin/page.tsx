@@ -131,6 +131,7 @@ export default function AdminDashboard() {
   const [hasMoreHistory, setHasMoreHistory] = useState(true)
   const [totalHistoryCount, setTotalHistoryCount] = useState(0)
   const [totalQueueCount, setTotalQueueCount] = useState(0)
+  const [songsPlayedToday, setSongsPlayedToday] = useState(0)
   const [historyList, setHistoryList] = useState<SongRequest[]>([])
   const { toast } = useToast()
 
@@ -386,6 +387,12 @@ export default function AdminDashboard() {
       setTotalQueueCount(counts.queue);
     });
 
+    // Listen for today's count update
+    socketInstance.on('todaysCountUpdate', (data: { count: number }) => {
+      console.log('Admin: Received today\'s count:', data);
+      setSongsPlayedToday(data.count);
+    });
+
     // --- Add a listener for history order changed signal ---
     socketInstance.on('historyOrderChanged', () => {
       console.log('Admin: History order changed signal received');
@@ -415,8 +422,9 @@ export default function AdminDashboard() {
       socketInstance.off('updateSpotifySuccess', handleSpotifySuccess);
       socketInstance.off('updateSpotifyError', handleSpotifyError);
       socketInstance.off('moreHistoryData');
-      // Clean up count listener
+      // Clean up count listeners
       socketInstance.off('totalCountsUpdate');
+      socketInstance.off('todaysCountUpdate');
       socketInstance.disconnect()
     }
   }, [toast, closeSpotifyLinkDialog])
@@ -511,6 +519,13 @@ export default function AdminDashboard() {
     console.log("Admin: Clearing queue")
     socket.emit('clearQueue')
     toast({ title: "Queue Cleared" })
+  }
+
+  const handleResetTodaysCount = () => {
+    if (!socket) return
+    console.log("Admin: Resetting today's count")
+    socket.emit('resetTodaysCount')
+    toast({ title: "Today's Count Reset", description: "Songs played today counter has been reset to 0." })
   }
 
   const handleMove = (songId: string, direction: 'up' | 'down') => {
@@ -1627,6 +1642,23 @@ export default function AdminDashboard() {
                    className="w-20 bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:border-purple-500 focus:ring-purple-500" 
                  />
                </div>
+
+               {/* Songs Played Today Counter */}
+               <div className="flex items-center justify-between">
+                 <Label className="text-sm font-medium">Songs Played Today</Label>
+                 <div className="flex items-center space-x-2">
+                   <span className="text-white font-bold">{songsPlayedToday}</span>
+                   <Button 
+                     variant="outline" 
+                     size="sm" 
+                     onClick={handleResetTodaysCount}
+                     className="h-8 text-xs bg-gray-700 border-gray-600 text-white hover:bg-gray-600 hover:border-gray-500"
+                   >
+                     Reset to 0
+                   </Button>
+                 </div>
+               </div>
+
                {/* Add more settings controls here as needed */}
                 <p className="text-xs text-gray-400 text-center pt-2">More settings coming soon...</p>
             </CardContent>

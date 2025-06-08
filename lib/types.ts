@@ -149,7 +149,7 @@ export interface SocketEvents {
     moreHistoryData: (historyChunk: SongRequest[]) => void;
     // --- Total Count Update Event ---
     totalCountsUpdate: (counts: { history: number; queue: number }) => void;
-    todaysCountUpdate: (counts: { todaysCount: number }) => void;
+    todaysCountUpdate: (counts: { count: number }) => void;
     // --- Spotify Update Events --- 
     updateSpotifySuccess: (payload: { requestId: string }) => void;
     updateSpotifyError: (payload: { requestId: string; message: string }) => void;
@@ -169,6 +169,7 @@ export interface SocketEvents {
     clearQueue: () => void;
     resetSystem?: () => void; // Make optional if not always implemented/used
     setMaxDuration: (minutes: number) => void;
+    resetTodaysCount: () => void;
     updateActiveSong: (song: SongRequest | null) => void;
     updateBlacklist: (newBlacklist: BlacklistItem[]) => void; // Assuming full list update based on frontend code
     updateBlockedUsers: (newBlockedUsers: BlockedUser[]) => void; // Assuming full list update based on frontend code

@@ -82,5 +82,6 @@ export const socketEvents = {
   GET_MORE_HISTORY: 'getMoreHistory',
   DELETE_MY_REQUEST: 'deleteMyRequest',
   GET_SONG_DETAILS_FOR_PLAN: 'getSongDetailsForPlan',
-  EDIT_MY_SONG_SPOTIFY: 'editMySongSpotify'
+  EDIT_MY_SONG_SPOTIFY: 'editMySongSpotify',
+  RESET_TODAYS_COUNT: 'resetTodaysCount'
 } as const 
