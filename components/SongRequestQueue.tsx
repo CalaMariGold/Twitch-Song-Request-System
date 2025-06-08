@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { io, Socket } from "socket.io-client"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -57,6 +57,7 @@ export default function SongRequestQueue() {
   const [socket, setSocket] = useState<Socket | null>(null)
   const [isConnected, setIsConnected] = useState(false)
   const [currentUser, setCurrentUser] = useState<TwitchUserDisplay | null>(null)
+  const currentUserRef = useRef(currentUser);
   const [requestPlan, setRequestPlan] = useState<PlannedRequest[]>([])
   const [isYoutubeDialogOpen, setIsYoutubeDialogOpen] = useState(false)
   const [historyPage, setHistoryPage] = useState(1)
@@ -69,6 +70,12 @@ export default function SongRequestQueue() {
   const [currentSpotifyUrl, setCurrentSpotifyUrl] = useState('')
   const [editSpotifyError, setEditSpotifyError] = useState<string | null>(null)
   const [editSpotifySuccess, setEditSpotifySuccess] = useState(false)
+  const [activeTab, setActiveTab] = useState("queue");
+  const [myRequestsHistory, setMyRequestsHistory] = useState<SongRequest[]>([]);
+  const [myRequestsTotal, setMyRequestsTotal] = useState(0);
+  const [myRequestsOffset, setMyRequestsOffset] = useState(0);
+  const [isLoadingMyRequests, setIsLoadingMyRequests] = useState(false);
+  const [hasMoreMyRequests, setHasMoreMyRequests] = useState(true);
 
   // Calculate total queue duration
   const { formatted: totalQueueDurationFormatted } = calculateTotalQueueDuration(state.queue)
@@ -316,6 +323,11 @@ export default function SongRequestQueue() {
     searchTerm,
     isLoading,
     socket,
+    myRequestsHistory,
+    myRequestsTotal,
+    hasMoreMyRequests,
+    isLoadingMyRequests,
+    loadMoreMyRequests,
     setEditingSongId,
     setCurrentSpotifyUrl,
     setIsEditSpotifyDialogOpen,
@@ -327,6 +339,11 @@ export default function SongRequestQueue() {
     searchTerm: string,
     isLoading: boolean,
     socket: Socket | null,
+    myRequestsHistory: SongRequest[],
+    myRequestsTotal: number,
+    hasMoreMyRequests: boolean,
+    isLoadingMyRequests: boolean,
+    loadMoreMyRequests: () => void,
     setEditingSongId: React.Dispatch<React.SetStateAction<string | null>>,
     setCurrentSpotifyUrl: React.Dispatch<React.SetStateAction<string>>,
     setIsEditSpotifyDialogOpen: React.Dispatch<React.SetStateAction<boolean>>,
@@ -335,19 +352,18 @@ export default function SongRequestQueue() {
   }) {
     const lowerCaseLogin = currentUser?.login?.toLowerCase();
     
-    // Filter queue and history based on login name
+    // Filter queue and history based on login name and search term
     const myQueueSongs = state.queue.filter(song => 
         (song.requesterLogin?.toLowerCase() === lowerCaseLogin || song.requester.toLowerCase() === lowerCaseLogin) &&
         (song.title?.toLowerCase().includes(searchTerm.toLowerCase()) || song.artist?.toLowerCase().includes(searchTerm.toLowerCase()))
     );
-    const myHistorySongs = state.history.filter(song => 
-        (song.requesterLogin?.toLowerCase() === lowerCaseLogin || song.requester.toLowerCase() === lowerCaseLogin) &&
+    const myFilteredHistorySongs = myRequestsHistory.filter(song => 
         (song.title?.toLowerCase().includes(searchTerm.toLowerCase()) || song.artist?.toLowerCase().includes(searchTerm.toLowerCase()))
     );
     
-    const hasNoRequests = myQueueSongs.length === 0 && myHistorySongs.length === 0
+    const hasNoRequests = myQueueSongs.length === 0 && myFilteredHistorySongs.length === 0 && !isLoadingMyRequests;
       
-    if (isLoading) {
+    if (isLoading || (isLoadingMyRequests && myRequestsHistory.length === 0)) {
       return <LoadingState />
     }
     
@@ -399,22 +415,42 @@ export default function SongRequestQueue() {
           </div>
         )}
         
-        {myQueueSongs.length > 0 && myHistorySongs.length > 0 && (
+        {myQueueSongs.length > 0 && myFilteredHistorySongs.length > 0 && (
           <div className="border-t border-brand-purple-dark my-4"></div>
         )}
         
-        {myHistorySongs.length > 0 && (
+        {myFilteredHistorySongs.length > 0 && (
           <div className="mt-6 pt-6 border-t border-brand-purple-dark/30">
             <div className="flex items-center gap-2 mb-2">
               <History size={16} className="text-brand-purple-light/80" />
-              <h3 className="text-sm font-medium text-brand-purple-light/80">Previously Requested ({myHistorySongs.length})</h3>
+              <h3 className="text-sm font-medium text-brand-purple-light/80">Previously Requested ({myRequestsTotal})</h3>
             </div>
             <SongList 
-              songs={myHistorySongs} 
+              songs={myFilteredHistorySongs} 
               isHistory={true} 
               currentUser={currentUser} 
               socket={socket}
             />
+          </div>
+        )}
+
+        {hasMoreMyRequests && (
+          <div className="mt-6 flex justify-center">
+            <Button
+              variant="outline"
+              className="bg-brand-purple-dark/50 border-brand-purple-neon/20 text-brand-purple-light hover:bg-brand-purple-dark/70 hover:border-brand-purple-neon/40 hover:text-white transition-all"
+              onClick={loadMoreMyRequests}
+              disabled={isLoadingMyRequests}
+            >
+              {isLoadingMyRequests ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Loading...
+                </>
+              ) : (
+                <>Load More History</>
+              )}
+            </Button>
           </div>
         )}
       </div>
@@ -430,28 +466,33 @@ export default function SongRequestQueue() {
         return acc
       }, {} as Record<string, string>)
       
-      // Read the display cookie
       const userDisplayJson = cookies['twitch_user_display']
       if (userDisplayJson) {
         try {
           const decoded = decodeURIComponent(userDisplayJson)
-          const userData: TwitchUserDisplay = JSON.parse(decoded)
-          setCurrentUser(userData)
-          
-          // Load request plan using login name if user is logged in
-          if (userData.login) {
-            // Use login name as the key for request plan
-            const loadedPlan = getRequestPlan(userData.login);
-            setRequestPlan(loadedPlan);
-          }
+          // Use a functional update to compare with the previous state
+          setCurrentUser(prevUser => {
+            if (JSON.stringify(prevUser) !== decoded) {
+              const newUser = JSON.parse(decoded);
+              // Also update request plan if the user has changed
+              if (newUser.login) {
+                const loadedPlan = getRequestPlan(newUser.login);
+                setRequestPlan(loadedPlan);
+              }
+              return newUser;
+            }
+            return prevUser;
+          });
         } catch (e) {
           console.error('Failed to parse user display cookie:', e)
-          setCurrentUser(null); // Clear user if cookie is invalid
-          setRequestPlan([]); // Clear plan if user is logged out/invalid
+          setCurrentUser(null);
+          setRequestPlan([]);
         }
       } else {
-          setCurrentUser(null); // Ensure user is null if no cookie
-          setRequestPlan([]); // Clear plan if no cookie
+        if (currentUser !== null) {
+          setCurrentUser(null);
+          setRequestPlan([]);
+        }
       }
     }
 
@@ -570,6 +611,16 @@ export default function SongRequestQueue() {
     newSocket.on('songFinished', (finishedSong: SongRequest) => {
       console.log('Song finished event received:', finishedSong); 
       // State update relies on 'historyUpdate' and 'activeSong' events from server
+      // NEW: Check if the finished song belongs to the current user
+      if (currentUserRef.current && finishedSong.requesterLogin?.toLowerCase() === currentUserRef.current.login.toLowerCase()) {
+        console.log('A song by the current user was finished. Refetching my requests.');
+        // Refetch the first page of the user's history to update the list and total count
+        newSocket.emit('getUserHistory', {
+          userLogin: currentUserRef.current.login,
+          limit: constants.HISTORY_PAGE_SIZE,
+          offset: 0
+        });
+      }
     })
 
     newSocket.on(socketEvents.ACTIVE_SONG, (song: SongRequest | null) => {
@@ -611,6 +662,19 @@ export default function SongRequestQueue() {
       // setState(prev => ({...prev, queue: prev.queue.slice(0, counts.queue) })); // Example, might not be needed
     });
 
+    newSocket.on('userHistoryData', ({ history: newHistory, total, offset }) => {
+      if (offset === 0) {
+          setMyRequestsHistory(newHistory);
+      } else {
+          setMyRequestsHistory(prev => [...prev, ...newHistory]);
+      }
+      setMyRequestsTotal(total);
+      const newOffset = offset + newHistory.length;
+      setMyRequestsOffset(newOffset);
+      setHasMoreMyRequests(newOffset < total);
+      setIsLoadingMyRequests(false);
+    });
+
     // --- NEW: Listen for history order change signal --- 
     newSocket.on('historyOrderChanged', () => {
       console.log('History order changed signal received. Refetching state.');
@@ -635,6 +699,28 @@ export default function SongRequestQueue() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []) // Empty dependency array ensures this runs only once on mount
 
+  useEffect(() => {
+    if (socket && currentUser?.login) {
+      // Fetch initial total count for the "My Requests" tab
+      socket.emit('getUserHistory', { 
+        userLogin: currentUser.login, 
+        limit: 0, 
+        offset: 0 
+      });
+    }
+  }, [socket, currentUser]);
+
+  useEffect(() => {
+    if (activeTab === 'my-requests' && currentUser?.login && myRequestsHistory.length === 0 && socket) {
+        setIsLoadingMyRequests(true);
+        socket.emit('getUserHistory', { 
+            userLogin: currentUser.login, 
+            limit: constants.HISTORY_PAGE_SIZE,
+            offset: 0 
+        });
+    }
+  }, [activeTab, currentUser, socket, myRequestsHistory.length]);
+
   // Filter handlers
   const filteredQueue = useCallback(() => 
     state.queue.filter((song: SongRequest) => 
@@ -654,29 +740,17 @@ export default function SongRequestQueue() {
     [state.history, searchTerm]
   )
   
-  // My Requests filter
-  const myRequests = useCallback(() => {
-    if (!currentUser?.login) return 0
-    
+  // Count of user's requests in the queue
+  const myQueueSongsCount = useMemo(() => {
+    if (!currentUser?.login) return 0;
     const lowerCaseLogin = currentUser.login.toLowerCase();
-    // Count queue and history requests for the current user
-    const queueCount = state.queue.filter((song: SongRequest) => 
-      (song.requesterLogin?.toLowerCase() === lowerCaseLogin) ||
-      (song.requester.toLowerCase() === lowerCaseLogin)
-    ).length
-    
-    const historyCount = state.history.filter((song: SongRequest) => 
-      (song.requesterLogin?.toLowerCase() === lowerCaseLogin) ||
-      (song.requester.toLowerCase() === lowerCaseLogin)
-    ).length
-    
-    return queueCount + historyCount
-  }, [state.queue, state.history, currentUser])
+    return state.queue.filter(song => 
+      (song.requesterLogin?.toLowerCase() === lowerCaseLogin || song.requester.toLowerCase() === lowerCaseLogin)
+    ).length;
+  }, [state.queue, currentUser]);
 
-  // Count of user's requests
-  const myRequestsCount = currentUser?.login 
-    ? myRequests()
-    : 0
+  // Total count for "My Requests" tab = songs in queue + total from history
+  const myRequestsCount = myQueueSongsCount + myRequestsTotal;
 
   // Function to load more history data
   const loadMoreHistory = useCallback(() => {
@@ -725,6 +799,10 @@ export default function SongRequestQueue() {
     };
   }, [socket, editingSongId]);
 
+  useEffect(() => {
+    currentUserRef.current = currentUser;
+  }, [currentUser]);
+
   return (
     <ErrorBoundary>
       <div className="w-full max-w-4xl mx-auto p-6 bg-brand-purple-deep/70 text-white rounded-lg shadow-xl border border-brand-purple-neon/20 backdrop-blur-md shadow-glow-purple">
@@ -742,7 +820,7 @@ export default function SongRequestQueue() {
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-brand-purple-light/60" size={20} />
         </div>
 
-        <Tabs defaultValue="queue" className="w-full">
+        <Tabs defaultValue="queue" className="w-full" onValueChange={setActiveTab}>
           {/* Tabs Style */}
           <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 bg-brand-purple-dark/50 border border-brand-purple-neon/10 p-1 h-auto rounded-lg">
             <TabsTrigger value="queue" className="data-[state=active]:bg-brand-purple-dark data-[state=active]:text-brand-pink-light data-[state=active]:shadow-md data-[state=active]:shadow-brand-black/30 text-brand-purple-light/80 hover:bg-brand-purple-dark/70 hover:text-white transition-all rounded-md data-[state=active]:border data-[state=active]:border-brand-pink-neon/50 data-[state=active]:text-glow-pink relative group text-xs sm:text-sm">
@@ -763,7 +841,7 @@ export default function SongRequestQueue() {
               {/* Use totalHistoryCount for display */}
               <span className="truncate">History ({totalHistoryCount})</span>
             </TabsTrigger>
-            <TabsTrigger value="myrequests" className="data-[state=active]:bg-brand-purple-dark data-[state=active]:text-brand-pink-light data-[state=active]:shadow-md data-[state=active]:shadow-brand-black/30 text-brand-purple-light/80 hover:bg-brand-purple-dark/70 hover:text-white transition-all rounded-md data-[state=active]:border data-[state=active]:border-brand-pink-neon/50 data-[state=active]:text-glow-pink disabled:opacity-50 disabled:pointer-events-none relative group text-xs sm:text-sm" disabled={!currentUser}>
+            <TabsTrigger value="my-requests" className="data-[state=active]:bg-brand-purple-dark data-[state=active]:text-brand-pink-light data-[state=active]:shadow-md data-[state=active]:shadow-brand-black/30 text-brand-purple-light/80 hover:bg-brand-purple-dark/70 hover:text-white transition-all rounded-md data-[state=active]:border data-[state=active]:border-brand-pink-neon/50 data-[state=active]:text-glow-pink disabled:opacity-50 disabled:pointer-events-none relative group text-xs sm:text-sm" disabled={!currentUser}>
               {/* Add shiny icon to active state */}
               <div className="absolute -top-1 -right-1 w-3 h-3 opacity-0 group-data-[state=active]:opacity-100 transition-opacity duration-300">
                 <Image src="/shiny.png" alt="" fill sizes="12px" className="object-contain"/>
@@ -771,7 +849,7 @@ export default function SongRequestQueue() {
               <User className="mr-1 sm:mr-1.5" size={16} />
               <span className="truncate">My Requests {currentUser ? `(${myRequestsCount})` : ''}</span>
             </TabsTrigger>
-            <TabsTrigger value="requestplan" className="data-[state=active]:bg-brand-purple-dark data-[state=active]:text-brand-pink-light data-[state=active]:shadow-md data-[state=active]:shadow-brand-black/30 text-brand-purple-light/80 hover:bg-brand-purple-dark/70 hover:text-white transition-all rounded-md data-[state=active]:border data-[state=active]:border-brand-pink-neon/50 data-[state=active]:text-glow-pink disabled:opacity-50 disabled:pointer-events-none relative group text-xs sm:text-sm" disabled={!currentUser}>
+            <TabsTrigger value="request-plan" className="data-[state=active]:bg-brand-purple-dark data-[state=active]:text-brand-pink-light data-[state=active]:shadow-md data-[state=active]:shadow-brand-black/30 text-brand-purple-light/80 hover:bg-brand-purple-dark/70 hover:text-white transition-all rounded-md data-[state=active]:border data-[state=active]:border-brand-pink-neon/50 data-[state=active]:text-glow-pink disabled:opacity-50 disabled:pointer-events-none relative group text-xs sm:text-sm" disabled={!currentUser}>
               {/* Add shiny icon to active state */}
               <div className="absolute -top-1 -right-1 w-3 h-3 opacity-0 group-data-[state=active]:opacity-100 transition-opacity duration-300">
                 <Image src="/shiny.png" alt="" fill sizes="12px" className="object-contain"/>
@@ -833,7 +911,7 @@ export default function SongRequestQueue() {
               )}
             </ErrorBoundary>
           </TabsContent>
-          <TabsContent value="myrequests" className="mt-4">
+          <TabsContent value="my-requests" className="mt-4">
             <ErrorBoundary>
               <MyRequestsTab 
                 currentUser={currentUser} 
@@ -841,6 +919,19 @@ export default function SongRequestQueue() {
                 searchTerm={searchTerm} 
                 isLoading={state.isLoading} 
                 socket={socket}
+                myRequestsHistory={myRequestsHistory}
+                myRequestsTotal={myRequestsTotal}
+                hasMoreMyRequests={hasMoreMyRequests}
+                isLoadingMyRequests={isLoadingMyRequests}
+                loadMoreMyRequests={() => {
+                  if (!socket || !currentUser?.login || isLoadingMyRequests) return;
+                  setIsLoadingMyRequests(true);
+                  socket.emit('getUserHistory', {
+                    userLogin: currentUser.login,
+                    limit: constants.HISTORY_PAGE_SIZE,
+                    offset: myRequestsOffset
+                  });
+                }}
                 setEditingSongId={setEditingSongId}
                 setCurrentSpotifyUrl={setCurrentSpotifyUrl}
                 setIsEditSpotifyDialogOpen={setIsEditSpotifyDialogOpen}
@@ -849,7 +940,7 @@ export default function SongRequestQueue() {
               />
             </ErrorBoundary>
           </TabsContent>
-          <TabsContent value="requestplan" className="mt-4">
+          <TabsContent value="request-plan" className="mt-4">
             <ErrorBoundary>
               <RequestPlanTab 
                 currentUser={currentUser}
@@ -955,7 +1046,7 @@ function ActiveSong({ song, isLoading }: { song: SongRequest | null, isLoading: 
                   <AvatarImage src={song.requesterAvatar ?? undefined} alt={song.requester} />
                   <AvatarFallback className="text-xs bg-brand-purple-dark">{song.requester.slice(0, 1)}</AvatarFallback>
                 </Avatar>
-                <Link href={`https://www.twitch.tv/${song.requesterLogin || song.requester.toLowerCase()}`} target="_blank" rel="noopener noreferrer" className="hover:text-brand-pink-light hover:underline transition-colors">
+                <Link href={`https://www.twitch.tv/${song.requesterLogin || song.requester.toLowerCase()}`} target="_blank" rel="noopener noreferrer" className="hover:text-brand-pink-light hover:underline transition-colors min-w-0 truncate">
                   <span>{song.requester}</span>
                 </Link>
                 {song.requestType === 'donation' && (

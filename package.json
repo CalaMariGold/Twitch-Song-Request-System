@@ -44,7 +44,7 @@
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.11",
     "@types/node": "^20",
-    "@types/react": "^18",
+    "@types/react": "^18.3.23",
     "@types/react-dom": "^18",
     "@types/tmi.js": "^1.8.6",
     "concurrently": "^8.2.2",

@@ -1105,6 +1105,93 @@ function updateHistoryDisplayOrder(orderedIds) {
     }
 }
 
+/**
+ * Retrieves a paginated list of song history for a specific user and the total count of their requests.
+ * @param {string} userLogin - The Twitch login name of the user.
+ * @param {number} limit - The maximum number of items to fetch.
+ * @param {number} offset - The number of items to skip.
+ * @returns {{history: SongRequest[], total: number}} An object containing the user's history and total count.
+ */
+function getHistoryForUser(userLogin, limit, offset) {
+    if (!db) {
+        console.error(chalk.red('[Database] Database not initialized. Cannot get user history.'));
+        return { history: [], total: 0 };
+    }
+    if (!userLogin) {
+        console.warn(chalk.yellow('[Database] getHistoryForUser called with invalid userLogin.'));
+        return { history: [], total: 0 };
+    }
+    // Allow limit to be 0 for fetching total count only
+    if (typeof limit !== 'number' || limit < 0 || typeof offset !== 'number' || offset < 0) {
+        console.warn(chalk.yellow(`[Database] Invalid limit (${limit}) or offset (${offset}) for getHistoryForUser.`));
+        return { history: [], total: 0 };
+    }
+
+    try {
+        // First, get the total count for the user
+        const totalStmt = db.prepare('SELECT COUNT(*) AS count FROM song_history WHERE requesterLogin = ? COLLATE NOCASE');
+        const totalResult = totalStmt.get(userLogin);
+        const total = totalResult.count || 0;
+
+        // Return early if limit is 0, no need to query for items
+        if (limit === 0) {
+            return { history: [], total };
+        }
+
+        // Then, get the paginated history for the user, ordered by most recent
+        const historyStmt = db.prepare('SELECT * FROM song_history WHERE requesterLogin = ? COLLATE NOCASE ORDER BY display_order DESC LIMIT ? OFFSET ?');
+        const historyItems = historyStmt.all(userLogin, limit, offset);
+
+        const formattedHistory = historyItems.map(item => {
+            let spotifyData = null;
+            if (item.spotifyData) {
+                try {
+                    spotifyData = JSON.parse(item.spotifyData);
+                } catch (e) {
+                    console.error(chalk.red('[Database] Failed to parse Spotify data for user history item:'), e);
+                }
+            }
+
+            let timestamp = item.completedAt;
+            try {
+                if (timestamp && !timestamp.includes('T')) {
+                    const date = new Date(timestamp);
+                    if (!isNaN(date.getTime())) {
+                        timestamp = date.toISOString();
+                    }
+                }
+            } catch (err) {
+                console.error(chalk.red('[Database] Error formatting timestamp (user history): '), err);
+            }
+
+            return {
+                id: item.id.toString(),
+                youtubeUrl: item.youtubeUrl,
+                title: item.title,
+                artist: item.artist,
+                channelId: item.channelId,
+                requester: item.requester,
+                requesterLogin: item.requesterLogin,
+                requesterAvatar: item.requesterAvatar,
+                timestamp: timestamp,
+                duration: item.durationSeconds ? formatDurationFromSeconds(item.durationSeconds) : null,
+                durationSeconds: item.durationSeconds,
+                thumbnailUrl: item.thumbnailUrl,
+                requestType: item.requestType,
+                source: 'database_history',
+                spotifyData: spotifyData,
+                displayOrder: item.display_order
+            };
+        });
+
+        return { history: formattedHistory, total };
+
+    } catch (err) {
+        console.error(chalk.red(`[Database] Failed to retrieve history for user ${userLogin}:`), err);
+        return { history: [], total: 0 };
+    }
+}
+
 module.exports = {
     initDatabase,
     closeDatabase,
@@ -1129,5 +1216,6 @@ module.exports = {
     getTodayHistoryCount,
     updateSongSpotifyDataAndDetailsInDbQueue,
     getDb,
-    updateHistoryDisplayOrder
+    updateHistoryDisplayOrder,
+    getHistoryForUser
 }; 

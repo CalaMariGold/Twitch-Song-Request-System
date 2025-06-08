@@ -27,6 +27,7 @@ const {
   disconnectFromTwitch
 } = require('./twitch')
 const { connectToStreamElements, disconnectFromStreamElements } = require('./streamElements')
+const { getHistoryForUser } = require('./database');
 const spotify = require('./spotify')
 require('dotenv').config()
 
@@ -916,35 +917,18 @@ io.on('connection', (socket) => {
 
     // --- NEW: Handle History Pagination --- 
     socket.on('getMoreHistory', (data) => {
-        const limit = data?.limit || 20; // Default limit changed to 20
-        const offset = data?.offset || 0; // Default offset
-
-        if (typeof limit !== 'number' || limit <= 0 || typeof offset !== 'number' || offset < 0) {
-            console.warn(chalk.yellow(`[Socket.IO] Invalid pagination request from ${socket.id}: limit=${limit}, offset=${offset}`));
-            // Optionally send error back to client
-            // socket.emit('moreHistoryError', { message: 'Invalid limit or offset.' });
-            return;
-        }
-        
-        try {
-            console.log(chalk.blue(`[Socket.IO] Client ${socket.id} requested more history (limit: ${limit}, offset: ${offset})`));
-            const historyChunk = db.getHistoryWithOffset(limit, offset);
-            // --- Add Logging --- 
-            console.log(chalk.blue(`[Socket.IO] Fetched ${historyChunk?.length ?? 'undefined'} history items from DB for offset ${offset}.`));
-            // --- End Logging --- 
-
-            // Send the chunk back to the specific client that requested it
-            socket.emit('moreHistoryData', historyChunk);
-             // --- Add Logging --- 
-            console.log(chalk.cyan(`[Socket.IO] Emitted 'moreHistoryData' back to client ${socket.id}.`));
-            // --- End Logging --- 
-        } catch (error) {
-            console.error(chalk.red(`[Socket.IO] Error fetching history chunk for ${socket.id}:`), error);
-            // Optionally send error back to client
-            // socket.emit('moreHistoryError', { message: 'Failed to fetch history data.' });
+        if (data && typeof data.offset === 'number' && typeof data.limit === 'number') {
+            const historyChunk = db.getHistoryWithOffset(data.limit, data.offset);
+            socket.emit('moreHistoryData', historyChunk); 
         }
     });
-    // --- END NEW --- 
+
+    socket.on('getUserHistory', (data) => {
+        if (data && data.userLogin && typeof data.limit === 'number' && typeof data.offset === 'number') {
+            const { history, total } = db.getHistoryForUser(data.userLogin, data.limit, data.offset);
+            socket.emit('userHistoryData', { history, total, offset: data.offset });
+        }
+    });
 
     // --- NEW: Handle History Reordering --- 
     socket.on('updateHistoryOrder', requireAdmin((orderedIds) => {
@@ -1769,32 +1753,41 @@ function addSongToQueue(song) {
  * @returns {SongRequest | null} The song that was finished, or null if no active song.
  */
 function handleMarkSongAsFinished() {
-    if (!state.activeSong) {
-        console.log(chalk.grey('[Control] No active song to mark as finished.'));
-        return null;
+    if (state.activeSong) {
+        const finishedSong = { ...state.activeSong, completedAt: new Date().toISOString() };
+        const previousSongTitle = state.activeSong.title;
+
+        // Log to history DB. This does not clear the active_song table.
+        db.logCompletedSong(finishedSong);
+        
+        // Explicitly clear the active song from the database persistence
+        db.clearActiveSongFromDB();
+
+        // Clear active song in memory state
+        state.activeSong = null;
+
+        console.log(chalk.blue(`[Control] Marked song as finished: "${previousSongTitle}"`));
+
+        // --- Broadcast updates to all clients ---
+
+        // 1. Let clients know a song was finished (for "My Requests" tab to refetch)
+        io.emit('songFinished', finishedSong);
+
+        // 2. Send signal that active song is now null
+        io.emit('activeSong', null);
+
+        // 3. Fetch and broadcast the updated recent history for the main History tab
+        const recentHistory = db.getRecentHistory();
+        io.emit('historyUpdate', recentHistory);
+
+        // 4. Update total counts
+        broadcastTotalCounts();
+        broadcastTodaysCount();
+
+        return finishedSong;
     }
-
-    const finishedSong = { ...state.activeSong, completedAt: new Date().toISOString() };
-    console.log(chalk.blue(`[Control] Marking song as finished: "${finishedSong.title}" requested by ${finishedSong.requester}`));
-
-    // Add to history DB
-    db.logCompletedSong(finishedSong);
-
-    // Update state
-    state.activeSong = null;
-    const recentHistory = db.getRecentHistory(); // Get updated history
-
-    // Clear active song from DB
-    db.clearActiveSongFromDB();
-
-    // Emit updates
-    io.emit('songFinished', finishedSong); // Notify about the finished song
-    io.emit('activeSong', null); // Explicitly send null for active song
-    io.emit('historyUpdate', recentHistory); // Send updated history
-    broadcastTotalCounts();
-    broadcastTodaysCount();
-
-    return finishedSong;
+    console.log(chalk.grey('[Control] No active song to mark as finished.'));
+    return null;
 }
 
 /**

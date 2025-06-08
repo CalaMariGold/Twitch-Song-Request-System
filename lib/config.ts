@@ -36,6 +36,7 @@ export const constants = {
   SOCKET_RECONNECT_ATTEMPTS: 5,
   SOCKET_RECONNECT_DELAY: 1000,
   MAX_SONG_DURATION_MINUTES: 5,
+  HISTORY_PAGE_SIZE: 20,
   YOUTUBE_API_BASE_URL: 'https://www.googleapis.com/youtube/v3',
 } as const
 
