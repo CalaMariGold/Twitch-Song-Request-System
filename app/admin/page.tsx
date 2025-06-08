@@ -126,6 +126,8 @@ export default function AdminDashboard() {
   const [editingRequestId, setEditingRequestId] = useState<string | null>(null)
   const [currentSpotifyLink, setCurrentSpotifyLink] = useState<string>("")
   const [spotifyLinkInput, setSpotifyLinkInput] = useState<string>("")
+  const [currentYouTubeLink, setCurrentYouTubeLink] = useState<string>("")
+  const [youTubeLinkInput, setYouTubeLinkInput] = useState<string>("")
   const [historyPage, setHistoryPage] = useState(1)
   const [isLoadingMoreHistory, setIsLoadingMoreHistory] = useState(false)
   const [hasMoreHistory, setHasMoreHistory] = useState(true)
@@ -141,6 +143,8 @@ export default function AdminDashboard() {
     setEditingRequestId(null);
     setCurrentSpotifyLink("");
     setSpotifyLinkInput("");
+    setCurrentYouTubeLink("");
+    setYouTubeLinkInput("");
   }, []); // This callback has no external dependencies
 
   // Socket Connection and Event Listeners
@@ -376,8 +380,27 @@ export default function AdminDashboard() {
       });
     };
 
+    const handleYouTubeSuccess = ({ requestId }: { requestId: string }) => {
+      console.log(`Admin: Successfully updated YouTube URL for ${requestId}`);
+      toast({
+        title: "YouTube URL Updated",
+        description: `Successfully updated YouTube URL for request ${requestId.substring(0, 8)}...`,
+      });
+      closeSpotifyLinkDialog(); // Close the dialog since it's shared
+    };
+
+    const handleYouTubeError = ({ requestId, message }: { requestId: string; message: string }) => {
+      console.error(`Admin: Error updating YouTube URL for ${requestId}: ${message}`);
+      toast({
+        title: "YouTube Update Error",
+        description: message || "An unknown error occurred.",
+      });
+    };
+
     socketInstance.on('updateSpotifySuccess', handleSpotifySuccess);
     socketInstance.on('updateSpotifyError', handleSpotifyError);
+    socketInstance.on('updateYouTubeSuccess', handleYouTubeSuccess);
+    socketInstance.on('updateYouTubeError', handleYouTubeError);
     socketInstance.on('removeSpotifySuccess', handleRemoveSpotifySuccess);
     socketInstance.on('removeSpotifyError', handleRemoveSpotifyError);
 
@@ -439,6 +462,8 @@ export default function AdminDashboard() {
       // Clean up new listeners
       socketInstance.off('updateSpotifySuccess', handleSpotifySuccess);
       socketInstance.off('updateSpotifyError', handleSpotifyError);
+      socketInstance.off('updateYouTubeSuccess', handleYouTubeSuccess);
+      socketInstance.off('updateYouTubeError', handleYouTubeError);
       socketInstance.off('removeSpotifySuccess', handleRemoveSpotifySuccess);
       socketInstance.off('removeSpotifyError', handleRemoveSpotifyError);
       socketInstance.off('moreHistoryData');
@@ -768,9 +793,12 @@ export default function AdminDashboard() {
   // Spotify Link Dialog Handlers
   const openSpotifyLinkDialog = useCallback((request: SongRequest) => {
     setEditingRequestId(request.id);
-    const initialLink = request.spotifyData?.url ?? "";
-    setCurrentSpotifyLink(initialLink);
-    setSpotifyLinkInput(initialLink);
+    const initialSpotifyLink = request.spotifyData?.url ?? "";
+    const initialYouTubeLink = request.youtubeUrl ?? "";
+    setCurrentSpotifyLink(initialSpotifyLink);
+    setSpotifyLinkInput(initialSpotifyLink);
+    setCurrentYouTubeLink(initialYouTubeLink);
+    setYouTubeLinkInput(initialYouTubeLink);
     setIsSpotifyLinkDialogOpen(true);
   }, []); // No dependencies needed here
 
@@ -790,7 +818,19 @@ export default function AdminDashboard() {
        });
     }
   // Add necessary dependencies: socket, editingRequestId, spotifyLinkInput, toast
-  }, [socket, editingRequestId, spotifyLinkInput, toast]); 
+  }, [socket, editingRequestId, spotifyLinkInput, toast]);
+
+  // handleYouTubeLinkSave for updating YouTube URLs
+  const handleYouTubeLinkSave = useCallback(() => {
+    if (socket && editingRequestId) {
+      console.log(`Admin: Emitting adminUpdateYouTubeUrl for ${editingRequestId} with URL: ${youTubeLinkInput}`);
+      const payload: { requestId: string; youtubeUrl: string } = { 
+        requestId: editingRequestId, 
+        youtubeUrl: youTubeLinkInput.trim() 
+      };
+      socket.emit('adminUpdateYouTubeUrl', payload);
+    }
+  }, [socket, editingRequestId, youTubeLinkInput]); 
 
   // --- DND Handler for History --- 
   const onHistoryDragEnd = (result: DropResult) => {
@@ -872,13 +912,13 @@ export default function AdminDashboard() {
     <div className="min-h-screen bg-gray-900 text-white p-6 rounded-lg shadow-xl max-w-7xl mx-auto">
       <Toaster />
       
-      {/* Spotify Link Edit Dialog */}
+      {/* Link Edit Dialog */}
       <Dialog open={isSpotifyLinkDialogOpen} onOpenChange={setIsSpotifyLinkDialogOpen}>
-        <DialogContent className="sm:max-w-[425px] bg-gray-850 border-gray-700 text-white">
+        <DialogContent className="sm:max-w-[500px] bg-gray-850 border-gray-700 text-white">
           <DialogHeader>
-            <DialogTitle>Edit Spotify Link</DialogTitle>
+            <DialogTitle>Edit Song Links</DialogTitle>
             <DialogDescription className="text-gray-400">
-              Enter the Spotify track URL for this request. This will fetch and update the associated Spotify data.
+              Update the Spotify or YouTube URLs for this request. Spotify URLs will fetch and update the associated data.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
@@ -896,13 +936,46 @@ export default function AdminDashboard() {
             </div>
             {currentSpotifyLink && (
                <p className="text-xs text-muted-foreground col-span-4 px-3">
-                 Current link: <a href={currentSpotifyLink} target="_blank" rel="noopener noreferrer" className="underline hover:text-purple-300">{currentSpotifyLink}</a>
+                 Current Spotify: <a href={currentSpotifyLink} target="_blank" rel="noopener noreferrer" className="underline hover:text-purple-300">{currentSpotifyLink}</a>
+               </p>
+            )}
+            
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="youtube-link" className="text-right">
+                YouTube URL
+              </Label>
+              <Input
+                id="youtube-link"
+                value={youTubeLinkInput}
+                onChange={(e) => setYouTubeLinkInput(e.target.value)}
+                className="col-span-3 bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:border-red-500 focus:ring-red-500"
+                placeholder="https://www.youtube.com/watch?v=..."
+              />
+            </div>
+            {currentYouTubeLink && (
+               <p className="text-xs text-muted-foreground col-span-4 px-3">
+                 Current YouTube: <a href={currentYouTubeLink} target="_blank" rel="noopener noreferrer" className="underline hover:text-red-300">{currentYouTubeLink}</a>
                </p>
             )}
           </div>
-          <DialogFooter className="bg-gray-850">
+          <DialogFooter className="bg-gray-850 flex-col sm:flex-row gap-2">
              <Button type="button" variant="outline" onClick={closeSpotifyLinkDialog}>Cancel</Button>
-             <Button type="button" onClick={handleSpotifyLinkSave} disabled={!isConnected || !spotifyLinkInput.trim()} className="bg-purple-600 hover:bg-purple-700">Save changes</Button>
+             <Button 
+               type="button" 
+               onClick={handleYouTubeLinkSave} 
+               disabled={!isConnected} 
+               className="bg-red-600 hover:bg-red-700"
+             >
+               Update YouTube URL
+             </Button>
+             <Button 
+               type="button" 
+               onClick={handleSpotifyLinkSave} 
+               disabled={!isConnected || !spotifyLinkInput.trim()} 
+               className="bg-purple-600 hover:bg-purple-700"
+             >
+               Update Spotify URL
+             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

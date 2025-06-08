@@ -62,6 +62,8 @@ export const socketEvents = {
   SONG_DETAILS_FOR_PLAN_RESPONSE: 'songDetailsForPlanResponse',
   EDIT_SPOTIFY_SUCCESS: 'editSpotifySuccess',
   EDIT_SPOTIFY_ERROR: 'editSpotifyError',
+  EDIT_YOUTUBE_SUCCESS: 'editYouTubeSuccess',
+  EDIT_YOUTUBE_ERROR: 'editYouTubeError',
   
   // Client -> Server events
   GET_STATE: 'getState',
@@ -83,5 +85,6 @@ export const socketEvents = {
   DELETE_MY_REQUEST: 'deleteMyRequest',
   GET_SONG_DETAILS_FOR_PLAN: 'getSongDetailsForPlan',
   EDIT_MY_SONG_SPOTIFY: 'editMySongSpotify',
+  EDIT_MY_SONG_YOUTUBE: 'editMySongYouTube',
   RESET_TODAYS_COUNT: 'resetTodaysCount'
 } as const 

@@ -153,6 +153,9 @@ export interface SocketEvents {
     // --- Spotify Update Events --- 
     updateSpotifySuccess: (payload: { requestId: string }) => void;
     updateSpotifyError: (payload: { requestId: string; message: string }) => void;
+    // --- YouTube Update Events ---
+    updateYouTubeSuccess: (payload: { requestId: string }) => void;
+    updateYouTubeError: (payload: { requestId: string; message: string }) => void;
     // --- Spotify Remove Events ---
     removeSpotifySuccess: (payload: { requestId: string; source: string }) => void;
     removeSpotifyError: (payload: { requestId: string; message: string }) => void;
@@ -160,6 +163,10 @@ export interface SocketEvents {
     myRequestsUpdate?: (requests: SongRequest[]) => void; // Optional for user-specific features
     deleteRequestSuccess?: (payload: { requestId: string }) => void; // Optional confirmation
     deleteRequestError?: (payload: { requestId: string; message: string }) => void; // Optional error feedback
+    editSpotifySuccess: (payload: { requestId: string; message?: string }) => void;
+    editSpotifyError: (payload: { requestId: string; message: string }) => void;
+    editYouTubeSuccess: (payload: { requestId: string; message?: string }) => void;
+    editYouTubeError: (payload: { requestId: string; message: string }) => void;
 
     // === Client -> Server ===
     // --- Admin Actions --- 
@@ -183,6 +190,8 @@ export interface SocketEvents {
     skipSong: () => void;
     // --- Admin Spotify Update Action --- 
     adminUpdateSpotifyLink: (payload: { requestId: string; spotifyUrl: string }) => void;
+    // --- Admin YouTube Update Action ---
+    adminUpdateYouTubeUrl: (payload: { requestId: string; youtubeUrl: string }) => void;
     // --- Admin Spotify Remove Action ---
     adminRemoveSpotifyData: (payload: { requestId: string; source: 'queue' | 'history' | 'activeSong' }) => void;
     // --- History Pagination Request ---
@@ -192,6 +201,8 @@ export interface SocketEvents {
     getYouTubeDetails: (youtubeUrl: string, callback: (error: { message: string } | null, details?: YouTubeVideoDetails) => void) => void;
     deleteMyRequest?: (data: { requestId: string; userLogin?: string }) => void; // Make userLogin optional if client might not send it
     getMyRequests?: () => void; // Optional user-specific feature
+    editMySongSpotify: (data: { requestId: string; spotifyUrl: string; userLogin: string }) => void;
+    editMySongYouTube: (data: { requestId: string; youtubeUrl: string; userLogin: string }) => void;
 
 }
 

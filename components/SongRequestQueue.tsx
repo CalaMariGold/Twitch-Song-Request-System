@@ -27,6 +27,7 @@ import {
 } from "@/lib/utils"
 import { getTwitchAuthUrl } from "@/lib/auth"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
 import { DragDropContext, Draggable, Droppable, DropResult } from '@hello-pangea/dnd'
 import Image from 'next/image'
 import { cn } from "@/lib/utils"
@@ -65,11 +66,14 @@ export default function SongRequestQueue() {
   const [hasMoreHistory, setHasMoreHistory] = useState(true)
   const [totalHistoryCount, setTotalHistoryCount] = useState(0)
   const [totalQueueCount, setTotalQueueCount] = useState(0)
-  const [isEditSpotifyDialogOpen, setIsEditSpotifyDialogOpen] = useState(false)
+  const [isEditSongLinksDialogOpen, setIsEditSongLinksDialogOpen] = useState(false)
   const [editingSongId, setEditingSongId] = useState<string | null>(null)
   const [currentSpotifyUrl, setCurrentSpotifyUrl] = useState('')
+  const [currentYouTubeUrl, setCurrentYouTubeUrl] = useState('')
   const [editSpotifyError, setEditSpotifyError] = useState<string | null>(null)
   const [editSpotifySuccess, setEditSpotifySuccess] = useState(false)
+  const [editYouTubeError, setEditYouTubeError] = useState<string | null>(null)
+  const [editYouTubeSuccess, setEditYouTubeSuccess] = useState(false)
   const [activeTab, setActiveTab] = useState("queue");
   const [myRequestsHistory, setMyRequestsHistory] = useState<SongRequest[]>([]);
   const [myRequestsTotal, setMyRequestsTotal] = useState(0);
@@ -330,9 +334,12 @@ export default function SongRequestQueue() {
     loadMoreMyRequests,
     setEditingSongId,
     setCurrentSpotifyUrl,
-    setIsEditSpotifyDialogOpen,
+    setCurrentYouTubeUrl,
+    setIsEditSongLinksDialogOpen,
     setEditSpotifyError,
-    setEditSpotifySuccess
+    setEditSpotifySuccess,
+    setEditYouTubeError,
+    setEditYouTubeSuccess
   }: { 
     currentUser: TwitchUserDisplay | null,
     state: AppState,
@@ -346,9 +353,12 @@ export default function SongRequestQueue() {
     loadMoreMyRequests: () => void,
     setEditingSongId: React.Dispatch<React.SetStateAction<string | null>>,
     setCurrentSpotifyUrl: React.Dispatch<React.SetStateAction<string>>,
-    setIsEditSpotifyDialogOpen: React.Dispatch<React.SetStateAction<boolean>>,
+    setCurrentYouTubeUrl: React.Dispatch<React.SetStateAction<string>>,
+    setIsEditSongLinksDialogOpen: React.Dispatch<React.SetStateAction<boolean>>,
     setEditSpotifyError: React.Dispatch<React.SetStateAction<string | null>>,
-    setEditSpotifySuccess: React.Dispatch<React.SetStateAction<boolean>>
+    setEditSpotifySuccess: React.Dispatch<React.SetStateAction<boolean>>,
+    setEditYouTubeError: React.Dispatch<React.SetStateAction<string | null>>,
+    setEditYouTubeSuccess: React.Dispatch<React.SetStateAction<boolean>>
   }) {
     const lowerCaseLogin = currentUser?.login?.toLowerCase();
     
@@ -408,9 +418,12 @@ export default function SongRequestQueue() {
               socket={socket} 
               setEditingSongId={setEditingSongId}
               setCurrentSpotifyUrl={setCurrentSpotifyUrl}
-              setIsEditSpotifyDialogOpen={setIsEditSpotifyDialogOpen}
+              setCurrentYouTubeUrl={setCurrentYouTubeUrl}
+              setIsEditSongLinksDialogOpen={setIsEditSongLinksDialogOpen}
               setEditSpotifyError={setEditSpotifyError}
               setEditSpotifySuccess={setEditSpotifySuccess}
+              setEditYouTubeError={setEditYouTubeError}
+              setEditYouTubeSuccess={setEditYouTubeSuccess}
             />
           </div>
         )}
@@ -777,10 +790,11 @@ export default function SongRequestQueue() {
         setEditSpotifyError(null);
         // Auto-close after success
         setTimeout(() => {
-          setIsEditSpotifyDialogOpen(false);
+          setIsEditSongLinksDialogOpen(false);
           setEditSpotifySuccess(false); 
           setEditingSongId(null);
           setCurrentSpotifyUrl('');
+          setCurrentYouTubeUrl('');
         }, 1500);
       }
     });
@@ -793,9 +807,35 @@ export default function SongRequestQueue() {
       }
     });
 
+    socket.on(socketEvents.EDIT_YOUTUBE_SUCCESS, (data) => {
+      const { requestId, message } = data;
+      if (requestId === editingSongId) {
+        setEditYouTubeSuccess(true);
+        setEditYouTubeError(null);
+        // Auto-close after success
+        setTimeout(() => {
+          setIsEditSongLinksDialogOpen(false);
+          setEditYouTubeSuccess(false); 
+          setEditingSongId(null);
+          setCurrentSpotifyUrl('');
+          setCurrentYouTubeUrl('');
+        }, 1500);
+      }
+    });
+
+    socket.on(socketEvents.EDIT_YOUTUBE_ERROR, (data) => {
+      const { requestId, message } = data;
+      if (requestId === editingSongId) {
+        setEditYouTubeError(message || 'Error updating YouTube link');
+        setEditYouTubeSuccess(false);
+      }
+    });
+
     return () => {
       socket.off(socketEvents.EDIT_SPOTIFY_SUCCESS);
       socket.off(socketEvents.EDIT_SPOTIFY_ERROR);
+      socket.off(socketEvents.EDIT_YOUTUBE_SUCCESS);
+      socket.off(socketEvents.EDIT_YOUTUBE_ERROR);
     };
   }, [socket, editingSongId]);
 
@@ -867,9 +907,12 @@ export default function SongRequestQueue() {
                 socket={socket}
                 setEditingSongId={setEditingSongId}
                 setCurrentSpotifyUrl={setCurrentSpotifyUrl}
-                setIsEditSpotifyDialogOpen={setIsEditSpotifyDialogOpen}
+                setCurrentYouTubeUrl={setCurrentYouTubeUrl}
+                setIsEditSongLinksDialogOpen={setIsEditSongLinksDialogOpen}
                 setEditSpotifyError={setEditSpotifyError}
                 setEditSpotifySuccess={setEditSpotifySuccess}
+                setEditYouTubeError={setEditYouTubeError}
+                setEditYouTubeSuccess={setEditYouTubeSuccess}
               />
             </ErrorBoundary>
           </TabsContent>
@@ -934,9 +977,12 @@ export default function SongRequestQueue() {
                 }}
                 setEditingSongId={setEditingSongId}
                 setCurrentSpotifyUrl={setCurrentSpotifyUrl}
-                setIsEditSpotifyDialogOpen={setIsEditSpotifyDialogOpen}
+                setCurrentYouTubeUrl={setCurrentYouTubeUrl}
+                setIsEditSongLinksDialogOpen={setIsEditSongLinksDialogOpen}
                 setEditSpotifyError={setEditSpotifyError}
                 setEditSpotifySuccess={setEditSpotifySuccess}
+                setEditYouTubeError={setEditYouTubeError}
+                setEditYouTubeSuccess={setEditYouTubeSuccess}
               />
             </ErrorBoundary>
           </TabsContent>
@@ -955,19 +1001,24 @@ export default function SongRequestQueue() {
           </TabsContent>
         </Tabs>
 
-        {/* Add the EditSpotifyDialog */}
-        <EditSpotifyDialog
-          isOpen={isEditSpotifyDialogOpen}
-          onOpenChange={setIsEditSpotifyDialogOpen}
+        {/* Add the EditSongLinksDialog */}
+        <EditSongLinksDialog
+          isOpen={isEditSongLinksDialogOpen}
+          onOpenChange={setIsEditSongLinksDialogOpen}
           currentUser={currentUser}
           socket={socket}
           songId={editingSongId}
-          initialUrl={currentSpotifyUrl}
-          isSuccess={editSpotifySuccess}
-          error={editSpotifyError}
+          initialSpotifyUrl={currentSpotifyUrl}
+          initialYouTubeUrl={currentYouTubeUrl}
+          spotifySuccess={editSpotifySuccess}
+          spotifyError={editSpotifyError}
+          youtubeSuccess={editYouTubeSuccess}
+          youtubeError={editYouTubeError}
           onReset={() => {
             setEditSpotifyError(null);
             setEditSpotifySuccess(false);
+            setEditYouTubeError(null);
+            setEditYouTubeSuccess(false);
           }}
         />
       </div>
@@ -1095,9 +1146,12 @@ function SongList({
   socket,
   setEditingSongId,
   setCurrentSpotifyUrl,
-  setIsEditSpotifyDialogOpen,
+  setCurrentYouTubeUrl,
+  setIsEditSongLinksDialogOpen,
   setEditSpotifyError,
-  setEditSpotifySuccess
+  setEditSpotifySuccess,
+  setEditYouTubeError,
+  setEditYouTubeSuccess
 }: { 
   songs: SongRequest[], 
   isHistory: boolean, 
@@ -1105,9 +1159,12 @@ function SongList({
   socket: Socket | null,
   setEditingSongId?: React.Dispatch<React.SetStateAction<string | null>>,
   setCurrentSpotifyUrl?: React.Dispatch<React.SetStateAction<string>>,
-  setIsEditSpotifyDialogOpen?: React.Dispatch<React.SetStateAction<boolean>>,
+  setCurrentYouTubeUrl?: React.Dispatch<React.SetStateAction<string>>,
+  setIsEditSongLinksDialogOpen?: React.Dispatch<React.SetStateAction<boolean>>,
   setEditSpotifyError?: React.Dispatch<React.SetStateAction<string | null>>,
-  setEditSpotifySuccess?: React.Dispatch<React.SetStateAction<boolean>>
+  setEditSpotifySuccess?: React.Dispatch<React.SetStateAction<boolean>>,
+  setEditYouTubeError?: React.Dispatch<React.SetStateAction<string | null>>,
+  setEditYouTubeSuccess?: React.Dispatch<React.SetStateAction<boolean>>
 }) {
   // Use the songs as provided without any additional sorting
   
@@ -1236,25 +1293,28 @@ function SongList({
                     </a>
                   )}
 
-                  {/* Edit Spotify button */}
+                  {/* Edit Song Links button */}
                   {!isHistory && isOwnRequest && socket && 
-                   setEditingSongId && setCurrentSpotifyUrl && setIsEditSpotifyDialogOpen && 
-                   setEditSpotifyError && setEditSpotifySuccess && (
+                   setEditingSongId && setCurrentSpotifyUrl && setCurrentYouTubeUrl && setIsEditSongLinksDialogOpen && 
+                   setEditSpotifyError && setEditSpotifySuccess && setEditYouTubeError && setEditYouTubeSuccess && (
                      <Button
                         variant="ghost"
                         size="icon"
                         className="text-brand-purple-light/60 hover:text-green-500 hover:bg-green-500/10 rounded-full transition-all"
                         onClick={() => {
                           if (socket && currentUser?.login) {
-                            // Open the edit dialog and set the current song ID and Spotify URL
+                            // Open the edit dialog and set the current song ID and URLs
                             setEditingSongId(song.id);
                             setCurrentSpotifyUrl(song.spotifyData?.url || '');
-                            setIsEditSpotifyDialogOpen(true);
+                            setCurrentYouTubeUrl(song.youtubeUrl || '');
+                            setIsEditSongLinksDialogOpen(true);
                             setEditSpotifyError(null);
                             setEditSpotifySuccess(false);
+                            setEditYouTubeError(null);
+                            setEditYouTubeSuccess(false);
                           }
                         }}
-                        title="Edit Spotify link"
+                        title="Edit song links"
                       >
                         <Edit size={18} />
                    </Button>
@@ -1412,15 +1472,18 @@ function AddToPlanDialog({
   );
 }
 
-function EditSpotifyDialog({ 
+function EditSongLinksDialog({ 
   isOpen, 
   onOpenChange, 
   currentUser, 
   socket, 
   songId,
-  initialUrl,
-  isSuccess,
-  error,
+  initialSpotifyUrl,
+  initialYouTubeUrl,
+  spotifySuccess,
+  spotifyError,
+  youtubeSuccess,
+  youtubeError,
   onReset 
 }: { 
   isOpen: boolean; 
@@ -1428,91 +1491,159 @@ function EditSpotifyDialog({
   currentUser: { id?: string, login?: string } | null;
   socket: Socket | null;
   songId: string | null;
-  initialUrl: string;
-  isSuccess: boolean;
-  error: string | null;
+  initialSpotifyUrl: string;
+  initialYouTubeUrl: string;
+  spotifySuccess: boolean;
+  spotifyError: string | null;
+  youtubeSuccess: boolean;
+  youtubeError: string | null;
   onReset: () => void;
 }) {
-  // Use local state for the input
-  const [inputValue, setInputValue] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
+  // Use local state for the inputs
+  const [spotifyInputValue, setSpotifyInputValue] = useState("");
+  const [youtubeInputValue, setYoutubeInputValue] = useState("");
+  const [isSubmittingSpotify, setIsSubmittingSpotify] = useState(false);
+  const [isSubmittingYoutube, setIsSubmittingYoutube] = useState(false);
+  const spotifyInputRef = useRef<HTMLInputElement>(null);
+  const youtubeInputRef = useRef<HTMLInputElement>(null);
 
-  // Reset form when dialog opens or initialUrl changes
+  // Reset form when dialog opens or initial URLs change
   useEffect(() => {
     if (isOpen) {
-      setInputValue(initialUrl);
-      setIsSubmitting(false);
+      setSpotifyInputValue(initialSpotifyUrl);
+      setYoutubeInputValue(initialYouTubeUrl);
+      setIsSubmittingSpotify(false);
+      setIsSubmittingYoutube(false);
       onReset();
     }
-  }, [isOpen, initialUrl, onReset]);
+  }, [isOpen, initialSpotifyUrl, initialYouTubeUrl, onReset]);
 
-  // Focus the input when dialog opens
+  // Focus the first input when dialog opens
   useEffect(() => {
-    if (isOpen && inputRef.current) {
+    if (isOpen && spotifyInputRef.current) {
       setTimeout(() => {
-        inputRef.current?.focus();
+        spotifyInputRef.current?.focus();
       }, 100);
     }
   }, [isOpen]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSpotifySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!inputValue || !currentUser?.login || !socket || !songId) {
+    if (!spotifyInputValue || !currentUser?.login || !socket || !songId) {
       return;
     }
     
-    setIsSubmitting(true);
+    setIsSubmittingSpotify(true);
     
     // Emit to server to update the Spotify link
     socket.emit(socketEvents.EDIT_MY_SONG_SPOTIFY, { 
       requestId: songId,
-      spotifyUrl: inputValue,
+      spotifyUrl: spotifyInputValue,
       userLogin: currentUser.login
     });
 
     // Reset submitting state immediately after emitting.
     // Feedback (success/error) will come via props from parent.
-    setIsSubmitting(false);
+    setIsSubmittingSpotify(false);
   };
+
+  const handleYouTubeSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!currentUser?.login || !socket || !songId) {
+      return;
+    }
+    
+    setIsSubmittingYoutube(true);
+    
+    // Emit to server to update the YouTube URL (allow empty to remove)
+    socket.emit(socketEvents.EDIT_MY_SONG_YOUTUBE, { 
+      requestId: songId,
+      youtubeUrl: youtubeInputValue.trim(),
+      userLogin: currentUser.login
+    });
+
+    // Reset submitting state immediately after emitting.
+    // Feedback (success/error) will come via props from parent.
+    setIsSubmittingYoutube(false);
+  };
+
+  const isAnySubmitting = isSubmittingSpotify || isSubmittingYoutube;
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => {
-      if (!isSubmitting) { // Only allow closing if not in the middle of submitting
+      if (!isAnySubmitting) { // Only allow closing if not in the middle of submitting
         onOpenChange(open);
       }
     }}>
-      <DialogContent className="bg-brand-black/95 backdrop-blur border-brand-purple-neon/50 text-brand-purple-light">
+      <DialogContent className="bg-brand-black/95 backdrop-blur border-brand-purple-neon/50 text-brand-purple-light max-w-md">
         <DialogHeader>
-          <DialogTitle className="text-brand-purple-light">Edit Spotify Link</DialogTitle>
+          <DialogTitle className="text-brand-purple-light">Edit Song Links</DialogTitle>
           <DialogDescription className="text-brand-purple-light/70">
-            IMPORTANT: Currently only supports changing/adding a Spotify link!
+            Update the Spotify or YouTube links for your song request.
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-          <Input 
-            ref={inputRef}
-            value={inputValue} 
-            onChange={(e) => setInputValue(e.target.value)}
-            placeholder="https://open.spotify.com/track/..." 
-            className="bg-brand-black/60 text-white border-brand-purple-neon/30 focus-visible:ring-brand-purple-neon/70 placeholder:text-brand-purple-light/50"
-            autoComplete="off"
-            disabled={isSubmitting || isSuccess}
-          />
-          {error && <p className="text-red-500 text-sm">{error}</p>}
-          {isSuccess && <p className="text-green-500 text-sm">Spotify link updated successfully!</p>}
-          <DialogFooter>
+        
+        <div className="flex flex-col gap-6">
+          {/* Spotify Section */}
+          <form onSubmit={handleSpotifySubmit} className="flex flex-col gap-3">
+            <div className="flex items-center gap-2">
+              <SpotifyIcon className="h-4 w-4" />
+              <Label className="text-sm font-medium">Spotify Link</Label>
+            </div>
+            <Input 
+              ref={spotifyInputRef}
+              value={spotifyInputValue} 
+              onChange={(e) => setSpotifyInputValue(e.target.value)}
+              placeholder="https://open.spotify.com/track/..." 
+              className="bg-brand-black/60 text-white border-brand-purple-neon/30 focus-visible:ring-brand-purple-neon/70 placeholder:text-brand-purple-light/50"
+              autoComplete="off"
+              disabled={isAnySubmitting || spotifySuccess}
+            />
+            {spotifyError && <p className="text-red-500 text-sm">{spotifyError}</p>}
+            {spotifySuccess && <p className="text-green-500 text-sm">Spotify link updated successfully!</p>}
             <Button
               type="submit"
-              className="bg-brand-pink-neon hover:bg-brand-pink-dark text-brand-black font-semibold hover:shadow-glow-pink transition-all"
-              disabled={isSubmitting || isSuccess || !inputValue || !inputValue.includes('spotify.com/track/')}
+              className="bg-green-600 hover:bg-green-700 text-white font-semibold transition-all"
+              disabled={isAnySubmitting || spotifySuccess || !spotifyInputValue || !spotifyInputValue.includes('spotify.com/track/')}
             >
-              {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <SpotifyIcon className="mr-2 h-4 w-4" />}
-              {isSubmitting ? "Updating..." : isSuccess ? "Updated!" : "Update Spotify Link"}
+              {isSubmittingSpotify ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <SpotifyIcon className="mr-2 h-4 w-4" />}
+              {isSubmittingSpotify ? "Updating..." : spotifySuccess ? "Updated!" : "Update Spotify Link"}
             </Button>
-          </DialogFooter>
-        </form>
+          </form>
+
+          <div className="border-t border-brand-purple-neon/20" />
+
+          {/* YouTube Section */}
+          <form onSubmit={handleYouTubeSubmit} className="flex flex-col gap-3">
+            <div className="flex items-center gap-2">
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+              </svg>
+              <Label className="text-sm font-medium">YouTube Link</Label>
+            </div>
+            <Input 
+              ref={youtubeInputRef}
+              value={youtubeInputValue} 
+              onChange={(e) => setYoutubeInputValue(e.target.value)}
+              placeholder="https://www.youtube.com/watch?v=... (leave empty to remove)" 
+              className="bg-brand-black/60 text-white border-brand-purple-neon/30 focus-visible:ring-brand-purple-neon/70 placeholder:text-brand-purple-light/50"
+              autoComplete="off"
+              disabled={isAnySubmitting || youtubeSuccess}
+            />
+            {youtubeError && <p className="text-red-500 text-sm">{youtubeError}</p>}
+            {youtubeSuccess && <p className="text-green-500 text-sm">YouTube link updated successfully!</p>}
+            <Button
+              type="submit"
+              className="bg-red-600 hover:bg-red-700 text-white font-semibold transition-all"
+              disabled={isAnySubmitting || youtubeSuccess}
+            >
+                             {isSubmittingYoutube ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>}
+              {isSubmittingYoutube ? "Updating..." : youtubeSuccess ? "Updated!" : youtubeInputValue.trim() ? "Update YouTube Link" : "Remove YouTube Link"}
+            </Button>
+          </form>
+        </div>
       </DialogContent>
     </Dialog>
   );

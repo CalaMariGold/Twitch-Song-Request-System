@@ -1060,6 +1060,54 @@ function updateSongSpotifyDataAndDetailsInDbQueue(appRequestId, spotifyData, tit
   }
 }
 
+/**
+ * Updates the YouTube URL and related details for a specific song in the active_queue table.
+ * @param {string} appRequestId The application-generated unique ID of the song request to update.
+ * @param {string | null} youtubeUrl The new YouTube URL (or null).
+ * @param {string} title The new title from YouTube.
+ * @param {string} artist The new artist/channel from YouTube.
+ * @param {string | null} channelId The new channel ID from YouTube.
+ * @param {string | null} thumbnailUrl The new thumbnail URL from YouTube.
+ * @param {number | null} durationSeconds The new duration in seconds from YouTube.
+ * @param {object | null} spotifyData The new Spotify data object (or null).
+ */
+function updateSongYouTubeUrlAndDetailsInDbQueue(appRequestId, youtubeUrl, title, artist, channelId, thumbnailUrl, durationSeconds, spotifyData) {
+  if (!db) {
+      console.error(chalk.red('[DB] Database not initialized. Cannot update YouTube details.'));
+      return false;
+  }
+  if (!appRequestId) {
+      console.warn(chalk.yellow('[DB] updateSongYouTubeUrlAndDetailsInDbQueue called with invalid appRequestId.'));
+      return false;
+  }
+
+  try {
+    // Update all YouTube-related fields using the request_id column
+    const stmt = db.prepare('UPDATE active_queue SET youtubeUrl = ?, title = ?, artist = ?, channelId = ?, thumbnailUrl = ?, durationSeconds = ?, spotifyData = ? WHERE request_id = ?');
+    const result = stmt.run(
+      youtubeUrl,
+      title || 'Unknown Title',
+      artist || 'Unknown Artist', 
+      channelId,
+      thumbnailUrl,
+      durationSeconds,
+      spotifyData ? JSON.stringify(spotifyData) : null,
+      appRequestId
+    );
+    
+    if (result.changes > 0) {
+      console.log(chalk.blue(`[DB] Updated YouTube URL and details for queue item with request_id ${appRequestId}.`));
+      return true;
+    } else {
+      console.log(chalk.yellow(`[DB] Attempted to update YouTube details for non-existent queue item with request_id ${appRequestId}.`));
+      return false;
+    }
+  } catch (error) {
+    console.error(chalk.red(`[DB] Error updating YouTube details in queue for request_id ${appRequestId}:`), error);
+    return false;
+  }
+}
+
 // Function to update display order for history
 function updateHistoryDisplayOrder(orderedIds) {
     if (!db) {
@@ -1277,6 +1325,7 @@ module.exports = {
     incrementTodaysCount,
     resetTodaysCount,
     updateSongSpotifyDataAndDetailsInDbQueue,
+    updateSongYouTubeUrlAndDetailsInDbQueue,
     removeSpotifyDataFromSong,
     getDb,
     updateHistoryDisplayOrder,

@@ -95,7 +95,7 @@ const tmiClient = initTwitchChat({
 
 // Initialize database first, before we setup any routes or connections
 db.initDatabase(dbPath);
-const { updateSongSpotifyDataAndDetailsInDbQueue, removeSpotifyDataFromSong } = require('./database');
+const { updateSongSpotifyDataAndDetailsInDbQueue, updateSongYouTubeUrlAndDetailsInDbQueue, removeSpotifyDataFromSong } = require('./database');
 
 // Server state - Initial state will be loaded from DB
 const state = {
@@ -521,6 +521,107 @@ io.on('connection', (socket) => {
         }
     }));
 
+    // Handle updating YouTube URL for a request
+    socket.on('adminUpdateYouTubeUrl', requireAdmin(async ({ requestId, youtubeUrl }) => {
+        console.log(chalk.cyan(`[Admin:${socket.id}] Received adminUpdateYouTubeUrl for ${requestId} with URL: ${youtubeUrl}`));
+
+        if (!requestId || typeof youtubeUrl !== 'string') {
+            console.warn(chalk.yellow(`[Admin:${socket.id}] Invalid payload for adminUpdateYouTubeUrl.`));
+            socket.emit('updateYouTubeError', { requestId, message: 'Invalid request data.' });
+            return;
+        }
+
+        // Validate YouTube URL format if provided
+        if (youtubeUrl.trim() && !youtubeUrl.includes('youtube.com/') && !youtubeUrl.includes('youtu.be/')) {
+            console.warn(chalk.yellow(`[Admin:${socket.id}] Invalid YouTube URL provided: ${youtubeUrl}`));
+            socket.emit('updateYouTubeError', { requestId, message: 'Invalid YouTube URL format.' });
+            return;
+        }
+
+        try {
+            // Find the request in the in-memory queue
+            const requestIndex = state.queue.findIndex(req => req.id === requestId);
+            if (requestIndex === -1) {
+                console.warn(chalk.yellow(`[Admin:${socket.id}] Could not find request ${requestId} in the current queue.`));
+                socket.emit('updateYouTubeError', { requestId, message: 'Request not found in the queue.' });
+                return;
+            }
+
+            const finalYoutubeUrl = youtubeUrl.trim() || null;
+            let videoDetails = null;
+            let newTitle = state.queue[requestIndex].title;
+            let newArtist = state.queue[requestIndex].artist;
+            let newChannelId = state.queue[requestIndex].channelId;
+            let newThumbnailUrl = state.queue[requestIndex].thumbnailUrl;
+            let newDurationSeconds = state.queue[requestIndex].durationSeconds;
+
+            // If a valid YouTube URL is provided, fetch the video details
+            if (finalYoutubeUrl) {
+                const videoId = extractVideoId(finalYoutubeUrl);
+                if (!videoId) {
+                    console.warn(chalk.yellow(`[Admin:${socket.id}] Could not extract video ID from URL: ${finalYoutubeUrl}`));
+                    socket.emit('updateYouTubeError', { requestId, message: 'Could not extract video ID from YouTube URL.' });
+                    return;
+                }
+
+                videoDetails = await fetchYouTubeDetails(videoId);
+                if (!videoDetails) {
+                    console.warn(chalk.yellow(`[Admin:${socket.id}] Could not fetch YouTube details for video ID: ${videoId}`));
+                    socket.emit('updateYouTubeError', { requestId, message: 'Could not fetch video details from YouTube.' });
+                    return;
+                }
+
+                // Update details with YouTube data
+                newTitle = videoDetails.title;
+                newArtist = videoDetails.channelTitle;
+                newChannelId = videoDetails.channelId;
+                newThumbnailUrl = videoDetails.thumbnailUrl;
+                newDurationSeconds = videoDetails.durationSeconds;
+
+                console.log(chalk.green(`[Admin:${socket.id}] Fetched YouTube details: "${newTitle}" by ${newArtist}`));
+            }
+
+            // Update the in-memory queue
+            state.queue[requestIndex].youtubeUrl = finalYoutubeUrl;
+            state.queue[requestIndex].title = newTitle;
+            state.queue[requestIndex].artist = newArtist;
+            state.queue[requestIndex].channelId = newChannelId;
+            state.queue[requestIndex].thumbnailUrl = newThumbnailUrl;
+            state.queue[requestIndex].durationSeconds = newDurationSeconds;
+            
+            console.log(chalk.green(`[Admin:${socket.id}] Updated in-memory song details for request ${requestId}.`));
+
+            // Update the database
+            const dbSuccess = updateSongYouTubeUrlAndDetailsInDbQueue(
+                requestId, 
+                finalYoutubeUrl, 
+                newTitle, 
+                newArtist, 
+                newChannelId, 
+                newThumbnailUrl, 
+                newDurationSeconds,
+                state.queue[requestIndex].spotifyData // Keep existing Spotify data
+            );
+
+            if (!dbSuccess) {
+                console.warn(chalk.yellow(`[Admin:${socket.id}] Failed to update YouTube details in database for ${requestId}.`));
+                socket.emit('updateYouTubeError', { requestId, message: 'Failed to update database.' });
+                return;
+            }
+
+            // Broadcast the updated queue to all clients
+            io.emit('queueUpdate', state.queue);
+            console.log(chalk.cyan(`[Admin:${socket.id}] Broadcasted queue update after YouTube URL change for ${requestId}.`));
+
+            // Send success confirmation back to the admin who made the change
+            socket.emit('updateYouTubeSuccess', { requestId });
+
+        } catch (error) {
+            console.error(chalk.red(`[Admin:${socket.id}] Error processing adminUpdateYouTubeUrl for ${requestId}:`), error);
+            socket.emit('updateYouTubeError', { requestId, message: 'An internal server error occurred.' });
+        }
+    }));
+
     // Handle removing Spotify data from a request
     socket.on('adminRemoveSpotifyData', requireAdmin(({ requestId, source }) => {
         if (!requestId || !source) {
@@ -749,6 +850,145 @@ io.on('connection', (socket) => {
         } catch (error) {
             console.error(chalk.red(`[Error] Error updating Spotify details for song ${requestId}:`), error);
             socket.emit('editSpotifyError', { 
+                requestId,
+                message: 'An error occurred while updating the song details. Please try again.' 
+            });
+        }
+    });
+
+    // Handle user editing YouTube URL for their own request
+    socket.on('editMySongYouTube', async (data) => {
+        const { requestId, youtubeUrl, userLogin } = data;
+        if (!requestId || typeof youtubeUrl !== 'string' || !userLogin) {
+            console.warn(chalk.yellow('[Socket.IO] Received invalid editMySongYouTube data:'), data);
+            socket.emit('editYouTubeError', { 
+                requestId,
+                message: 'Invalid request data. Please provide YouTube URL and try again.' 
+            });
+            return;
+        }
+
+        const songIndex = state.queue.findIndex(song => song.id === requestId);
+        if (songIndex === -1) {
+            console.warn(chalk.yellow(`[User] Attempted to edit non-existent song ID: ${requestId}`));
+            socket.emit('editYouTubeError', { 
+                requestId,
+                message: 'This song is no longer in the queue.' 
+            });
+            return;
+        }
+
+        const songToEdit = state.queue[songIndex];
+        // Verify ownership
+        if (!songToEdit.requesterLogin || songToEdit.requesterLogin.toLowerCase() !== userLogin.toLowerCase()) {
+            console.warn(chalk.yellow(`[Security] User ${userLogin} attempted to edit song ${requestId} owned by ${songToEdit.requesterLogin}`));
+            socket.emit('editYouTubeError', { 
+                requestId,
+                message: 'You can only edit your own song requests.' 
+            });
+            return;
+        }
+
+        try {
+            const finalYoutubeUrl = youtubeUrl.trim() || null;
+            let newTitle = songToEdit.title;
+            let newArtist = songToEdit.artist;
+            let newChannelId = songToEdit.channelId;
+            let newThumbnailUrl = songToEdit.thumbnailUrl;
+            let newDurationSeconds = songToEdit.durationSeconds;
+
+            // If a valid YouTube URL is provided, fetch the video details
+            if (finalYoutubeUrl) {
+                // Validate YouTube URL format
+                if (!finalYoutubeUrl.includes('youtube.com/') && !finalYoutubeUrl.includes('youtu.be/')) {
+                    console.warn(chalk.yellow(`[User] Invalid YouTube URL provided by ${userLogin} for song ${requestId}: ${finalYoutubeUrl}`));
+                    socket.emit('editYouTubeError', { 
+                        requestId,
+                        message: 'Invalid YouTube URL format. Please provide a valid YouTube video link.' 
+                    });
+                    return;
+                }
+
+                const videoId = extractVideoId(finalYoutubeUrl);
+                if (!videoId) {
+                    console.warn(chalk.yellow(`[User] Could not extract video ID from URL provided by ${userLogin} for song ${requestId}: ${finalYoutubeUrl}`));
+                    socket.emit('editYouTubeError', { 
+                        requestId,
+                        message: 'Could not extract video ID from YouTube URL.' 
+                    });
+                    return;
+                }
+
+                const videoDetails = await fetchYouTubeDetails(videoId);
+                if (!videoDetails) {
+                    console.warn(chalk.yellow(`[User] YouTube video not found for ID ${videoId} provided by ${userLogin} for song ${requestId}`));
+                    socket.emit('editYouTubeError', { 
+                        requestId,
+                        message: 'Could not fetch video details from YouTube. Please check the URL and try again.' 
+                    });
+                    return;
+                }
+
+                // Update details with YouTube data
+                newTitle = videoDetails.title;
+                newArtist = videoDetails.channelTitle;
+                newChannelId = videoDetails.channelId;
+                newThumbnailUrl = videoDetails.thumbnailUrl;
+                newDurationSeconds = videoDetails.durationSeconds;
+
+                console.log(chalk.green(`[User] Fetched YouTube details for ${userLogin}: "${newTitle}" by ${newArtist}`));
+            }
+
+            // Update the in-memory state
+            state.queue[songIndex].youtubeUrl = finalYoutubeUrl;
+            state.queue[songIndex].title = newTitle;
+            state.queue[songIndex].artist = newArtist;
+            state.queue[songIndex].channelId = newChannelId;
+            state.queue[songIndex].thumbnailUrl = newThumbnailUrl;
+            state.queue[songIndex].durationSeconds = newDurationSeconds;
+
+            // Update the database
+            const dbSuccess = updateSongYouTubeUrlAndDetailsInDbQueue(
+                requestId, 
+                finalYoutubeUrl, 
+                newTitle, 
+                newArtist, 
+                newChannelId, 
+                newThumbnailUrl, 
+                newDurationSeconds,
+                songToEdit.spotifyData // Keep existing Spotify data
+            );
+
+            if (!dbSuccess) {
+                console.warn(chalk.yellow(`[User] Failed to update YouTube details in database for ${requestId} by ${userLogin}.`));
+                socket.emit('editYouTubeError', { 
+                    requestId,
+                    message: 'Failed to update database. Please try again.' 
+                });
+                return;
+            }
+            
+            // Broadcast updated queue to all clients
+            io.emit('queueUpdate', state.queue);
+            
+            // Send success response to the user
+            socket.emit('editYouTubeSuccess', { 
+                requestId,
+                message: 'Song details updated successfully from YouTube!' 
+            });
+            
+            console.log(chalk.cyan(`[User] Song details updated by ${userLogin} for request ${requestId}: ${newTitle} by ${newArtist}`));
+            
+            // Send Twitch chat confirmation message
+            if (finalYoutubeUrl) {
+                sendChatMessage(`@${userLogin} updated their request to: "${newTitle}" by ${newArtist}. https://calamarigoldrequests.com/`);
+            } else {
+                sendChatMessage(`@${userLogin} removed the YouTube URL from their request. https://calamarigoldrequests.com/`);
+            }
+            
+        } catch (error) {
+            console.error(chalk.red(`[Error] Error updating YouTube details for song ${requestId}:`), error);
+            socket.emit('editYouTubeError', { 
                 requestId,
                 message: 'An error occurred while updating the song details. Please try again.' 
             });
