@@ -35,6 +35,7 @@ interface TwitchUserDisplay {
   login: string
   display_name: string
   profile_image_url: string
+  isAdmin: boolean
 }
 
 export function Header({ isConnected }: HeaderProps) {
@@ -45,7 +46,7 @@ export function Header({ isConnected }: HeaderProps) {
   const isAdminPage = pathname?.includes('/admin')
   const [currentTimeEst, setCurrentTimeEst] = useState('')
   
-  const potentialAdmin = user && ADMIN_USERNAMES.some(adminName => adminName.toLowerCase() === user.login.toLowerCase());
+
 
   const readUserFromCookie = () => {
     const cookies = document.cookie.split(';').reduce((acc, cookie) => {
@@ -105,7 +106,7 @@ export function Header({ isConnected }: HeaderProps) {
         window.removeEventListener('storage', handleStorage);
     };
 
-  }, [])
+  }, [searchParams])
 
   useEffect(() => {
     const updateTime = () => {
@@ -191,7 +192,7 @@ export function Header({ isConnected }: HeaderProps) {
                       <span>View Twitch Profile</span>
                     </DropdownMenuItem>
                   </Link>
-                  {potentialAdmin && (
+                  {user.isAdmin && (
                     <Link href="/admin">
                       <DropdownMenuItem className="cursor-pointer hover:bg-gray-700 focus:bg-gray-700">
                         <Shield className="mr-2 h-4 w-4" />

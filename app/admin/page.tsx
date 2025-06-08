@@ -95,6 +95,7 @@ interface TwitchUserDisplay {
   login: string
   display_name: string
   profile_image_url: string
+  isAdmin: boolean
 }
 
 export default function AdminDashboard() {
@@ -448,7 +449,8 @@ export default function AdminDashboard() {
             setUser({ 
                 login: userData.login, 
                 display_name: userData.display_name, 
-                profile_image_url: userData.profile_image_url 
+                profile_image_url: userData.profile_image_url,
+                isAdmin: userData.isAdmin
             }); // This also matches the state type
           } catch (e) {
             console.error('Failed to parse legacy user cookie in admin page:', e);
@@ -883,13 +885,6 @@ export default function AdminDashboard() {
                    <List className="mr-2 h-4 w-4" />
                    <span>Public Queue</span>
                  </DropdownMenuItem>
-                 {/* Link to admin is always present if logged in, access is controlled by middleware */}
-                 <Link href="/admin">
-                    <DropdownMenuItem className="cursor-pointer hover:bg-gray-700 focus:bg-gray-700">
-                       <Shield className="mr-2 h-4 w-4" />
-                       <span>Admin Dashboard</span>
-                     </DropdownMenuItem>
-                 </Link> {/* Closing Link tag was missing here */} 
                 <DropdownMenuSeparator className="bg-gray-700" />
                 <DropdownMenuItem onClick={handleLogout} className="cursor-pointer text-red-400 hover:bg-red-900/50 focus:bg-red-900/50 focus:text-red-300 hover:text-red-300">
                   <LogOut className="mr-2 h-4 w-4" />

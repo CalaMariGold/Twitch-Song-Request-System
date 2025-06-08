@@ -40,7 +40,8 @@ export async function GET(request: Request) {
     response.cookies.set('twitch_user_display', JSON.stringify({
       display_name: userInfo.display_name,
       profile_image_url: userInfo.profile_image_url,
-      login: userInfo.login
+      login: userInfo.login,
+      isAdmin: isAdmin(userInfo.login)
     }), {
       httpOnly: false,
       secure: process.env.NODE_ENV === 'production',
