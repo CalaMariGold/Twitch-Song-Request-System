@@ -119,14 +119,14 @@ export default function PublicDashboard() {
       setIsLoadingStats(false)
     })
     
-    // NEW: Listen for total count updates
+    // Listen for total count updates
     socketInstance.on('totalCountsUpdate', (counts: { history: number; queue: number }) => {
       console.log('Public: Received total counts:', counts);
       setTotalHistoryCount(counts.history);
       setTotalQueueCount(counts.queue);
     });
     
-    // NEW: Listen for today's count update
+    // Listen for today's count update
     socketInstance.on('todaysCountUpdate', (data: { count: number }) => {
       console.log('Public: Received today\'s count:', data);
       setSongsPlayedToday(data.count);
@@ -138,7 +138,7 @@ export default function PublicDashboard() {
     setSocket(socketInstance)
     
     return () => {
-      // NEW: Clean up count listener
+      // Clean up count listener
       socketInstance.off('totalCountsUpdate');
       socketInstance.off('todaysCountUpdate');
       socketInstance.off('historyOrderChanged');

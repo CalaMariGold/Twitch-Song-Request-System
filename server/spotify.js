@@ -113,7 +113,7 @@ function similarityScore(str1, str2) {
   
   if (s1 === s2) return 1; // Exact match
 
-  // ** NEW: Check for match ignoring spaces **
+  // Check for match ignoring spaces
   const s1NoSpace = s1.replace(/\s+/g, '');
   const s2NoSpace = s2.replace(/\s+/g, '');
   if (s1NoSpace === s2NoSpace && s1NoSpace.length > 0) return 0.95; // High score for space difference only

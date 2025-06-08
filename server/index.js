@@ -31,14 +31,14 @@ const { getHistoryForUser } = require('./database');
 const spotify = require('./spotify')
 require('dotenv').config()
 
-// --- NEW: Admin Auth Setup ---
+// --- Admin Auth Setup ---
 const authenticatedAdminSockets = new Set(); 
 const ADMIN_USERNAMES_LOWER = (process.env.ADMIN_USERNAMES || '')
                                 .split(',')
                                 .map(name => name.trim().toLowerCase())
                                 .filter(name => name); // Ensure lowercase and filter empty
 console.log(chalk.blue(`[Config] Admin Usernames (lowercase): ${ADMIN_USERNAMES_LOWER.join(', ')}`));
-// --- END NEW ---
+// --- END ---
 
 
 const SOCKET_PORT = process.env.SOCKET_PORT ? parseInt(process.env.SOCKET_PORT, 10) : 3002
@@ -129,7 +129,7 @@ const io = new Server(httpServer, {
 io.on('connection', (socket) => {
     console.log(`Client connected: ${socket.id}`); // Log connection
 
-    // --- NEW: Admin Auth Handler ---
+    // --- Admin Auth Handler ---
     socket.on('authenticateAdmin', (data) => {
       if (data && data.login && ADMIN_USERNAMES_LOWER.includes(data.login.toLowerCase())) {
         console.log(chalk.cyan(`[Auth] Admin authenticated: ${data.login} (Socket ID: ${socket.id})`));
@@ -142,9 +142,9 @@ io.on('connection', (socket) => {
         // socket.emit('adminAuthFailed');
       }
     });
-    // --- END NEW ---
+    // --- END ---
 
-    // --- NEW: Wrapper function for admin checks ---
+    // --- Wrapper function for admin checks ---
     const requireAdmin = (handler) => {
       return (...args) => {
         if (!authenticatedAdminSockets.has(socket.id)) {
@@ -163,14 +163,14 @@ io.on('connection', (socket) => {
         }
       };
     };
-    // --- END NEW ---
+    // --- END ---
 
-    // --- NEW: Disconnect Cleanup ---
+    // --- Disconnect Cleanup ---
     socket.on('disconnect', () => {
       console.log(`Client disconnected: ${socket.id}`);
       authenticatedAdminSockets.delete(socket.id); // Clean up on disconnect
     });
-    // --- END NEW ---
+    // --- END ---
     
     // Send initial state to newly connected client - fetch history from DB first
     let recentHistory = db.getRecentHistory();
@@ -371,12 +371,12 @@ io.on('connection', (socket) => {
         const bypass = songRequestData.bypassRestrictions === true;
         const isAdminAdd = songRequestData.source === 'admin'; // Check if it's an admin add
 
-        // --- NEW: Check auth if bypassing ---
+        // Check auth if bypassing ---
         if (bypass && !authenticatedAdminSockets.has(socket.id)) {
              console.warn(chalk.yellow(`[Security] Unauthorized attempt to bypass restrictions by socket: ${socket.id}`));
              return; // Stop processing
         }
-        // --- END NEW ---
+        // --- END ---
 
         console.log(chalk.magenta(`[Admin:${bypass ? socket.id : 'N/A'}] Adding song via socket. Bypass: ${bypass}. Source: ${songRequestData.source || 'unknown'}`));
         
@@ -389,7 +389,7 @@ io.on('connection', (socket) => {
             // Broadcast counts after potentially adding a song
             broadcastTotalCounts(); 
 
-            // *** NEW: Force admin-added songs to the top ***
+            // --- Force admin-added songs to the top ---
             if (isAdminAdd) {
                 console.log(chalk.cyan(`[Admin Add] Forcing song ${finalRequestId} to top of queue.`));
                 const addedSongIndex = state.queue.findIndex(song => song.id === finalRequestId);
@@ -413,7 +413,7 @@ io.on('connection', (socket) => {
                     console.warn(chalk.yellow(`[Admin Add] Could not find song ${finalRequestId} in queue after validateAndAddSong, cannot force to top.`));
                 }
             }
-             // *** END NEW ***
+             // --- END ---
 
         } catch (error) {
              // If validateAndAddSong throws an error, log it
@@ -436,7 +436,7 @@ io.on('connection', (socket) => {
         }
     }))
 
-    // NEW: Handle updating Spotify link for a request
+    // Handle updating Spotify link for a request
     socket.on('adminUpdateSpotifyLink', requireAdmin(async ({ requestId, spotifyUrl }) => {
         console.log(chalk.cyan(`[Admin:${socket.id}] Received adminUpdateSpotifyLink for ${requestId} with URL: ${spotifyUrl}`));
 
@@ -493,7 +493,7 @@ io.on('connection', (socket) => {
                 : 'Unknown Artist';
             state.queue[requestIndex].artist = updatedArtist;
             
-            // NEW: Update thumbnail and duration
+            // Update thumbnail and duration
             const newThumbnailUrl = spotifyDetails.album?.images?.[0]?.url || state.queue[requestIndex].thumbnailUrl; 
             const newDurationSeconds = spotifyDetails.durationMs ? Math.round(spotifyDetails.durationMs / 1000) : state.queue[requestIndex].durationSeconds; // Fallback to existing duration
             state.queue[requestIndex].thumbnailUrl = newThumbnailUrl;
@@ -669,7 +669,7 @@ io.on('connection', (socket) => {
             
             console.log(chalk.cyan(`[User] Song details updated by ${userLogin} for request ${requestId}: ${spotifyDetails.name} by ${updatedArtist}`));
             
-            // NEW: Send Twitch chat confirmation message
+            // Send Twitch chat confirmation message
             sendChatMessage(`@${userLogin} updated their request to: "${spotifyDetails.name}" by ${updatedArtist}. https://calamarigoldrequests.com/`);
             
         } catch (error) {
@@ -915,7 +915,7 @@ io.on('connection', (socket) => {
         console.log(chalk.magenta(`[Admin:${socket.id}] Song skipped. New active song: ${nextSong ? nextSong.title : 'None'}`));
     }))
 
-    // --- NEW: Handle History Pagination --- 
+    // Handle History Pagination --- 
     socket.on('getMoreHistory', (data) => {
         if (data && typeof data.offset === 'number' && typeof data.limit === 'number') {
             const historyChunk = db.getHistoryWithOffset(data.limit, data.offset);
@@ -930,7 +930,7 @@ io.on('connection', (socket) => {
         }
     });
 
-    // --- NEW: Handle History Reordering --- 
+    // Handle History Reordering --- 
     socket.on('updateHistoryOrder', requireAdmin((orderedIds) => {
         if (!Array.isArray(orderedIds)) {
             console.warn(chalk.yellow(`[Admin:${socket.id}] Received invalid data for updateHistoryOrder:`), orderedIds);
@@ -946,9 +946,9 @@ io.on('connection', (socket) => {
                 // Fetch and broadcast the *updated* recent history to ALL clients - REMOVE THIS BLOCK
                 // const recentHistory = db.getRecentHistory(); 
                 // io.emit('historyUpdate', recentHistory); 
-                // --- NEW: Emit a signal that order has changed --- 
+                // Emit a signal that order has changed --- 
                 io.emit('historyOrderChanged'); // Keep this signal
-                // --- END NEW --- 
+                // --- END --- 
                 console.log(chalk.cyan(`[Admin:${socket.id}] Successfully updated history order and broadcasted signal.`)); // Updated log message
             } else {
                 // Log error or maybe inform admin?
@@ -959,7 +959,7 @@ io.on('connection', (socket) => {
             // Optionally emit error back
         }
     }));
-    // --- END NEW --- 
+    // --- END --- 
 })
 
 // Start the server and load initial data
@@ -1049,7 +1049,7 @@ async function startServer() {
                 // Create a song request based on Spotify data
                 const spotifyRequest = await createSpotifyBasedRequest(spotifyDetails, initialRequestData);
 
-                // *** Perform Validations (Copied from text search path) ***
+                // --- Perform Validations (Copied from text search path) ---
                 const durationError = validateDuration(
                     spotifyRequest.durationSeconds,
                     spotifyRequest.requestType,
@@ -1073,7 +1073,7 @@ async function startServer() {
                     sendChatMessage(blacklistMessage + ' https://calamarigoldrequests.com/');
                     return;
                 }
-                // *** End Validations ***
+                // --- End Validations ---
 
                 // Add to queue
                 const position = addSongToQueue(spotifyRequest);
@@ -1210,7 +1210,7 @@ async function startServer() {
                 // Create a song request based on Spotify data
                 const spotifyRequest = await createSpotifyBasedRequest(spotifyDetails, initialRequestData);
 
-                // *** Perform Validations (Copied from text search path) ***
+                // --- Perform Validations (Copied from text search path) ---
                 // Check for user queue limit first
                 const existingRequest = state.queue.find(song => song.requesterLogin?.toLowerCase() === userName.toLowerCase() || song.requester.toLowerCase() === userName.toLowerCase());
                 if (existingRequest) {
@@ -1242,7 +1242,7 @@ async function startServer() {
                     sendChatMessage(blacklistMessage + ' https://calamarigoldrequests.com/');
                     return;
                 }
-                 // *** End Validations ***
+                 // --- End Validations ---
 
                 // Add to queue
                 const position = addSongToQueue(spotifyRequest);
@@ -1745,7 +1745,7 @@ function addSongToQueue(song) {
   }
 }
 
-// --- NEW HELPER FUNCTIONS for Song Control ---
+// --- HELPER FUNCTIONS for Song Control ---
 
 /**
  * Marks the currently active song as finished, moves it to history, and emits updates.
@@ -1823,9 +1823,9 @@ function handleSkipSong() {
     }
 }
 
-// --- END NEW HELPER FUNCTIONS ---
+// --- END HELPER FUNCTIONS ---
 
-// --- NEW: Twitch Chat Command Listener ---
+// Twitch Chat Command Listener ---
 if (tmiClient) {
     tmiClient.on('message', (channel, tags, message, self) => {
         if (self) return; // Ignore messages from the bot itself
@@ -1864,9 +1864,9 @@ if (tmiClient) {
 } else {
      console.warn(chalk.yellow('[Twitch Command] TMI client not initialized, admin chat commands disabled.'));
 }
-// --- END NEW ---
+// --- END ---
 
-// --- NEW: Helper to broadcast total counts ---
+// Helper to broadcast total counts ---
 function broadcastTotalCounts() {
     try {
         const totalHistory = db.getTotalHistoryCount();
@@ -1876,9 +1876,9 @@ function broadcastTotalCounts() {
         console.error(chalk.red('[Counts] Error broadcasting total counts:'), error);
     }
 }
-// --- END NEW ---
+// --- END ---
 
-// --- NEW: Helper to broadcast today's played count ---
+// Helper to broadcast today's played count ---
 function broadcastTodaysCount() {
     try {
         const todaysCount = db.getTodayHistoryCount();
@@ -1887,4 +1887,4 @@ function broadcastTodaysCount() {
         console.error(chalk.red('[Counts] Error broadcasting today\'s count:'), error);
     }
 }
-// --- END NEW ---
+// --- END ---

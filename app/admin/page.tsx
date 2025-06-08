@@ -161,7 +161,7 @@ export default function AdminDashboard() {
       setIsConnected(true)
       console.log('Admin: Connected to Socket.IO server')
 
-      // --- NEW: Authenticate admin socket connection --- 
+      // --- Authenticate admin socket connection --- 
       const cookies = document.cookie.split(';').reduce((acc, cookie) => {
         const [key, value] = cookie.trim().split('=');
         if (key) acc[key] = value;
@@ -206,7 +206,7 @@ export default function AdminDashboard() {
           console.warn('Admin: No auth cookies found for socket authentication.');
         }
       }
-      // --- END NEW ---
+      // --- END ---
 
       socketInstance.emit('getState')
       socketInstance.emit('getAllTimeStats')
@@ -319,7 +319,7 @@ export default function AdminDashboard() {
       }
     })
     
-    // --- NEW: Listen for auth confirmation/failure (Optional) ---
+    // --- Listen for auth confirmation/failure (Optional) ---
     socketInstance.on('adminAuthenticated', () => {
         console.log('[Auth] Socket connection successfully authenticated by server.');
         toast({ title: "Admin Session Active", description: "Backend connection secured.", duration: 2000 });
@@ -331,9 +331,9 @@ export default function AdminDashboard() {
         // Potentially disconnect or disable admin controls here
     });
     */
-    // --- END NEW ---
+    // --- END ---
 
-    // NEW: Listen for Spotify update results
+    // Listen for Spotify update results
     // Define listener handlers within useEffect
     const handleSpotifySuccess = ({ requestId }: { requestId: string }) => {
       console.log(`Admin: Successfully updated Spotify link for ${requestId}`);
@@ -362,7 +362,7 @@ export default function AdminDashboard() {
     socketInstance.on('updateSpotifySuccess', handleSpotifySuccess);
     socketInstance.on('updateSpotifyError', handleSpotifyError);
 
-    // NEW: Add listener for moreHistoryData event
+    // Add listener for moreHistoryData event
     socketInstance.on('moreHistoryData', (historyChunk: SongRequest[]) => {
       console.log('Admin: Received more history data:', historyChunk);
       
@@ -379,7 +379,7 @@ export default function AdminDashboard() {
       setIsLoadingMoreHistory(false);
     });
 
-    // NEW: Listen for total count updates
+    // Listen for total count updates
     socketInstance.on('totalCountsUpdate', (counts: { history: number; queue: number }) => {
       console.log('Admin: Received total counts:', counts);
       setTotalHistoryCount(counts.history);
@@ -411,11 +411,11 @@ export default function AdminDashboard() {
       socketInstance.off('allTimeStatsError');
       socketInstance.off('connect_error');
       socketInstance.off('adminAuthenticated');
-      // NEW: Clean up new listeners
+      // Clean up new listeners
       socketInstance.off('updateSpotifySuccess', handleSpotifySuccess);
       socketInstance.off('updateSpotifyError', handleSpotifyError);
       socketInstance.off('moreHistoryData');
-      // NEW: Clean up count listener
+      // Clean up count listener
       socketInstance.off('totalCountsUpdate');
       socketInstance.disconnect()
     }
@@ -714,7 +714,7 @@ export default function AdminDashboard() {
   // Calculate total queue duration
   const { formatted: totalQueueDurationFormatted } = calculateTotalQueueDuration(appState.queue)
 
-  // NEW: Spotify Link Dialog Handlers
+  // Spotify Link Dialog Handlers
   const openSpotifyLinkDialog = useCallback((request: SongRequest) => {
     setEditingRequestId(request.id);
     const initialLink = request.spotifyData?.url ?? "";
@@ -741,7 +741,7 @@ export default function AdminDashboard() {
   // Add necessary dependencies: socket, editingRequestId, spotifyLinkInput, toast
   }, [socket, editingRequestId, spotifyLinkInput, toast]); 
 
-  // --- NEW: DND Handler for History --- 
+  // --- DND Handler for History --- 
   const onHistoryDragEnd = (result: DropResult) => {
     const { source, destination } = result;
 
@@ -791,9 +791,9 @@ export default function AdminDashboard() {
       socket.once('historyOrderChanged', updateListener);
     }
   };
-  // --- END NEW --- 
+  // --- END --- 
 
-  // NEW: Add function to load more history
+  // Add function to load more history
   const loadMoreHistory = useCallback(() => {
     if (!socket || isLoadingMoreHistory || !hasMoreHistory) return;
     
@@ -821,7 +821,7 @@ export default function AdminDashboard() {
     <div className="min-h-screen bg-gray-900 text-white p-6 rounded-lg shadow-xl max-w-7xl mx-auto">
       <Toaster />
       
-      {/* NEW: Spotify Link Edit Dialog */}
+      {/* Spotify Link Edit Dialog */}
       <Dialog open={isSpotifyLinkDialogOpen} onOpenChange={setIsSpotifyLinkDialogOpen}>
         <DialogContent className="sm:max-w-[425px] bg-gray-850 border-gray-700 text-white">
           <DialogHeader>
@@ -1175,7 +1175,7 @@ export default function AdminDashboard() {
                                      {/* Buttons and Timestamp container */}
                                      <div className="flex-shrink-0 flex flex-col items-end flex-grow-0">
                                         <div className="flex space-x-1 items-center"> {/* Wrap buttons for alignment */}
-                                           {/* NEW: Edit Spotify Button */}
+                                           {/* Edit Spotify Button */}
                                            <Button 
                                              variant="ghost" 
                                              size="sm" 
@@ -1397,7 +1397,7 @@ export default function AdminDashboard() {
                  </ScrollArea>
                   {/* --- END Modified History List --- */} 
 
-                  {/* NEW: Add Load More Button for history pagination */} 
+                  {/* Add Load More Button for history pagination */} 
                   {hasMoreHistory && historyList.length > 0 && (
                     <div className="mt-6 flex justify-center">
                       <Button

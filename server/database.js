@@ -1055,7 +1055,7 @@ function updateSongSpotifyDataAndDetailsInDbQueue(appRequestId, spotifyData, tit
   }
 }
 
-// NEW function to update display order for history
+// Function to update display order for history
 function updateHistoryDisplayOrder(orderedIds) {
     if (!db) {
         console.error(chalk.red('[Database] Database not initialized. Cannot update history order.'));

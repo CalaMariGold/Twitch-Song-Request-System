@@ -611,7 +611,7 @@ export default function SongRequestQueue() {
     newSocket.on('songFinished', (finishedSong: SongRequest) => {
       console.log('Song finished event received:', finishedSong); 
       // State update relies on 'historyUpdate' and 'activeSong' events from server
-      // NEW: Check if the finished song belongs to the current user
+      // Check if the finished song belongs to the current user
       if (currentUserRef.current && finishedSong.requesterLogin?.toLowerCase() === currentUserRef.current.login.toLowerCase()) {
         console.log('A song by the current user was finished. Refetching my requests.');
         // Refetch the first page of the user's history to update the list and total count
@@ -653,7 +653,7 @@ export default function SongRequestQueue() {
       setIsLoadingMoreHistory(false);
     });
 
-    // NEW: Listen for total count updates
+    // Listen for total count updates
     newSocket.on('totalCountsUpdate', (counts: { history: number; queue: number }) => {
       console.log('Received total counts:', counts);
       setTotalHistoryCount(counts.history);
@@ -675,7 +675,7 @@ export default function SongRequestQueue() {
       setIsLoadingMyRequests(false);
     });
 
-    // --- NEW: Listen for history order change signal --- 
+    // --- Listen for history order change signal --- 
     newSocket.on('historyOrderChanged', () => {
       console.log('History order changed signal received. Refetching state.');
       // Refetch the initial state to get the latest ordered history
@@ -684,16 +684,16 @@ export default function SongRequestQueue() {
       // setHistoryPage(1); 
       // setHasMoreHistory(true);
     });
-    // --- END NEW --- 
+    // --- END --- 
 
     setSocket(newSocket)
 
 
     return () => {
       console.log('Disconnecting socket...');
-      // --- NEW: Clean up history order listener --- 
+      // --- Clean up history order listener --- 
       newSocket.off('historyOrderChanged');
-      // --- END NEW --- 
+      // --- END --- 
       newSocket.disconnect()
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -769,7 +769,7 @@ export default function SongRequestQueue() {
   useEffect(() => {
     if (!socket) return;
 
-    // New socket event listeners for editing Spotify link
+    // Socket event listeners for editing Spotify link
     socket.on(socketEvents.EDIT_SPOTIFY_SUCCESS, (data) => {
       const { requestId, message } = data;
       if (requestId === editingSongId) {
@@ -1236,7 +1236,7 @@ function SongList({
                     </a>
                   )}
 
-                  {/* NEW: Edit Spotify button */}
+                  {/* Edit Spotify button */}
                   {!isHistory && isOwnRequest && socket && 
                    setEditingSongId && setCurrentSpotifyUrl && setIsEditSpotifyDialogOpen && 
                    setEditSpotifyError && setEditSpotifySuccess && (
