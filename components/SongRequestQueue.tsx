@@ -1333,7 +1333,7 @@ function AddToPlanDialog({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!inputValue || !currentUser?.id || !socket) {
+    if (!inputValue || !currentUser?.login || !socket) {
       setError("Please enter a song URL or search text");
       return;
     }
