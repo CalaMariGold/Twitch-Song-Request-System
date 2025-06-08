@@ -225,6 +225,10 @@ io.on('connection', (socket) => {
           return callback({ error: 'Please enter a valid URL or song name' });
         }
         
+        if (analysisResult.type === 'spotifyAlbumUrl') {
+          return callback({ error: 'Please use a Spotify track link, not an album link.' });
+        }
+        
         if (analysisResult.type === 'youtube') {
           // Process as YouTube URL
           const videoId = extractVideoId(analysisResult.value);
@@ -997,6 +1001,12 @@ async function startServer() {
       // Check for request type
       const analysisResult = analyzeRequestText(message);
 
+      if (analysisResult.type === 'spotifyAlbumUrl') {
+          console.warn(chalk.yellow(`[StreamElements] User ${userName} provided a Spotify Album link in donation: "${message}"`));
+          sendChatMessage(`@${userName} It looks like you used a Spotify album link in your donation. Use a track link instead for song requests. Please @ a mod with the correct link and we'll add it to the queue.`);
+          return;
+      }
+
       // Minimum donation amount ($5)
       const MIN_DONATION_AMOUNT = 5;
       if (amount < MIN_DONATION_AMOUNT) {
@@ -1167,6 +1177,12 @@ async function startServer() {
 
       // Check for request type
       const analysisResult = analyzeRequestText(userInput);
+
+      if (analysisResult.type === 'spotifyAlbumUrl') {
+        console.warn(chalk.yellow(`[StreamElements] User ${userName} provided a Spotify Album link in redemption: "${userInput}"`));
+        sendChatMessage(`@${userName} It looks like you used a Spotify album link in your redemption. Please try again using a track link instead for requests.`);
+        return;
+      }
 
       // If no valid request type found, reject the request
       if (analysisResult.type === 'none') {

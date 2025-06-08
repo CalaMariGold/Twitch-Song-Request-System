@@ -124,9 +124,21 @@ function extractSpotifyUrlFromText(text) {
 }
 
 /**
+ * Find a Spotify Album URL in a text string
+ * @param {string} text - Text to search in
+ * @returns {string|null} Spotify Album URL or null if not found
+ */
+function extractSpotifyAlbumUrlFromText(text) {
+    if (!text) return null;
+    const regex = /(https?:\/\/open\.spotify\.com\/(?:intl-[a-z]{2}\/)?album\/[a-zA-Z0-9]{22})/i;
+    const match = text.match(regex);
+    return match ? match[1] : null;
+}
+
+/**
  * Check if text contains a YouTube URL, Spotify URL, or should be treated as a search query.
  * @param {string} text - Text to analyze
- * @returns {Object} { type: 'youtube'|'spotifyUrl'|'text'|'none', value: string|null }
+ * @returns {Object} { type: 'youtube'|'spotifyUrl'|'spotifyAlbumUrl'|'text'|'none', value: string|null }
  */
 function analyzeRequestText(text) {
     if (!text) {
@@ -141,10 +153,16 @@ function analyzeRequestText(text) {
         return { type: 'youtube', value: youtubeUrl };
     }
     
-    // Check for Spotify URL next
+    // Check for Spotify Track URL next
     const spotifyUrl = extractSpotifyUrlFromText(trimmedText);
     if (spotifyUrl) {
         return { type: 'spotifyUrl', value: spotifyUrl };
+    }
+
+    // Check for Spotify Album URL
+    const spotifyAlbumUrl = extractSpotifyAlbumUrlFromText(trimmedText);
+    if (spotifyAlbumUrl) {
+        return { type: 'spotifyAlbumUrl', value: spotifyAlbumUrl };
     }
     
     // If no URL found, treat the entire text as a search query
@@ -234,6 +252,7 @@ module.exports = {
     extractVideoId,
     extractYouTubeUrlFromText,
     extractSpotifyUrlFromText,
+    extractSpotifyAlbumUrlFromText,
     analyzeRequestText,
     checkBlacklist,
     validateDuration
