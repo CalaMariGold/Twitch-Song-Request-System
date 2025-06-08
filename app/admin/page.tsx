@@ -360,8 +360,26 @@ export default function AdminDashboard() {
       // closeSpotifyLinkDialog();
     };
 
+    const handleRemoveSpotifySuccess = ({ requestId, source }: { requestId: string; source: string }) => {
+      console.log(`Admin: Successfully removed Spotify data for ${requestId} from ${source}`);
+      toast({
+        title: "Spotify Data Removed",
+        description: `Successfully removed Spotify data from ${source}.`,
+      });
+    };
+
+    const handleRemoveSpotifyError = ({ requestId, message }: { requestId: string; message: string }) => {
+      console.error(`Admin: Error removing Spotify data for ${requestId}: ${message}`);
+      toast({
+        title: "Remove Spotify Error",
+        description: message || "An unknown error occurred.",
+      });
+    };
+
     socketInstance.on('updateSpotifySuccess', handleSpotifySuccess);
     socketInstance.on('updateSpotifyError', handleSpotifyError);
+    socketInstance.on('removeSpotifySuccess', handleRemoveSpotifySuccess);
+    socketInstance.on('removeSpotifyError', handleRemoveSpotifyError);
 
     // Add listener for moreHistoryData event
     socketInstance.on('moreHistoryData', (historyChunk: SongRequest[]) => {
@@ -421,6 +439,8 @@ export default function AdminDashboard() {
       // Clean up new listeners
       socketInstance.off('updateSpotifySuccess', handleSpotifySuccess);
       socketInstance.off('updateSpotifyError', handleSpotifyError);
+      socketInstance.off('removeSpotifySuccess', handleRemoveSpotifySuccess);
+      socketInstance.off('removeSpotifyError', handleRemoveSpotifyError);
       socketInstance.off('moreHistoryData');
       // Clean up count listeners
       socketInstance.off('totalCountsUpdate');
@@ -512,6 +532,22 @@ export default function AdminDashboard() {
     if (songToRemove) {
         toast({ title: "Song Removed", description: `Removed: ${songToRemove.title}` })
     }
+  }
+
+  const handleRemoveSpotifyData = (requestId: string, source: 'queue' | 'history' | 'activeSong') => {
+    if (!socket) {
+      console.log('Admin: No socket connection available')
+      return
+    }
+    console.log(`Admin: Removing Spotify data for ${requestId} from ${source}`)
+    console.log('Admin: Socket connected:', socket.connected)
+    socket.emit('adminRemoveSpotifyData', { requestId, source })
+    
+    // Add a small loading indicator
+    toast({
+      title: "Removing Spotify Data...",
+      description: `Removing Spotify data from ${source}`,
+    })
   }
 
   const handleClearQueue = () => {
@@ -1020,7 +1056,22 @@ export default function AdminDashboard() {
                     <div className="mt-2 pt-2 border-t border-gray-700">
                       <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 bg-[#1DB954]/10 rounded-md p-3">
                         <div className="flex items-center">
-                          <SpotifyIcon className="h-6 w-6 text-[#1DB954] mr-2" />
+                          <div className="relative mr-2">
+                            <SpotifyIcon className="h-6 w-6 text-[#1DB954]" />
+                            {/* Small red X to remove Spotify data */}
+                            <button
+                              onClick={() => {
+                                if (appState.activeSong) {
+                                  handleRemoveSpotifyData(appState.activeSong.id, 'activeSong');
+                                }
+                              }}
+                              className="absolute -top-1 -right-1 w-4 h-4 bg-red-600 hover:bg-red-700 rounded-full flex items-center justify-center text-white text-xs transition-colors"
+                              title="Remove Spotify Data"
+                              disabled={!isConnected}
+                            >
+                              <X size={10} />
+                            </button>
+                          </div>
                           <div>
                             <div className="text-white font-medium">{appState.activeSong.spotifyData.name}</div>
                             <div className="text-gray-400 text-sm">
@@ -1166,7 +1217,21 @@ export default function AdminDashboard() {
                                         {/* START: Added Spotify Details */}
                                         {song.spotifyData && (
                                             <div className="mt-1 text-xs flex items-center text-gray-400 gap-1.5" title={`Spotify: ${song.spotifyData.name} by ${song.spotifyData.artists?.map(a => a.name).join(', ')}`}>
-                                                <SpotifyIcon className="h-3 w-3 text-green-500 flex-shrink-0" />
+                                                <div className="relative flex-shrink-0">
+                                                  <SpotifyIcon className="h-3 w-3 text-green-500" />
+                                                  {/* Small red X to remove Spotify data */}
+                                                  <button
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      handleRemoveSpotifyData(song.id, 'queue');
+                                                    }}
+                                                    className="absolute -top-1 -right-1 w-3 h-3 bg-red-600 hover:bg-red-700 rounded-full flex items-center justify-center text-white text-xs transition-colors"
+                                                    title="Remove Spotify Data"
+                                                    disabled={!isConnected}
+                                                  >
+                                                    <X size={8} />
+                                                  </button>
+                                                </div>
                                                 <span className="truncate">
                                                     {song.spotifyData.name} - {song.spotifyData.artists?.map((a: { name: string }) => a.name).join(', ')}
                                                 </span>

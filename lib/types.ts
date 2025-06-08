@@ -153,6 +153,9 @@ export interface SocketEvents {
     // --- Spotify Update Events --- 
     updateSpotifySuccess: (payload: { requestId: string }) => void;
     updateSpotifyError: (payload: { requestId: string; message: string }) => void;
+    // --- Spotify Remove Events ---
+    removeSpotifySuccess: (payload: { requestId: string; source: string }) => void;
+    removeSpotifyError: (payload: { requestId: string; message: string }) => void;
     // --- User Specific Events --- 
     myRequestsUpdate?: (requests: SongRequest[]) => void; // Optional for user-specific features
     deleteRequestSuccess?: (payload: { requestId: string }) => void; // Optional confirmation
@@ -180,6 +183,8 @@ export interface SocketEvents {
     skipSong: () => void;
     // --- Admin Spotify Update Action --- 
     adminUpdateSpotifyLink: (payload: { requestId: string; spotifyUrl: string }) => void;
+    // --- Admin Spotify Remove Action ---
+    adminRemoveSpotifyData: (payload: { requestId: string; source: 'queue' | 'history' | 'activeSong' }) => void;
     // --- History Pagination Request ---
     getMoreHistory: (data: { offset: number; limit: number }) => void;
     

@@ -1111,6 +1111,61 @@ function updateHistoryDisplayOrder(orderedIds) {
 }
 
 /**
+ * Removes Spotify data from a specific song request in the active queue, history, or active song.
+ * @param {string} requestId - The unique request ID of the song.
+ * @param {string} table - The table to update ('active_queue', 'song_history', or 'active_song').
+ */
+function removeSpotifyDataFromSong(requestId, table = 'active_queue') {
+    if (!db) {
+        console.error(chalk.red('[Database] Database not initialized. Cannot remove Spotify data.'));
+        return false;
+    }
+    if (!requestId) {
+        console.warn(chalk.yellow('[Database] removeSpotifyDataFromSong called with invalid requestId.'));
+        return false;
+    }
+
+    const validTables = ['active_queue', 'song_history', 'active_song'];
+    if (!validTables.includes(table)) {
+        console.warn(chalk.yellow(`[Database] Invalid table "${table}". Valid tables: ${validTables.join(', ')}`));
+        return false;
+    }
+
+    try {
+        let stmt;
+        let result;
+        
+        console.log(chalk.cyan(`[DB] Attempting to remove Spotify data from ${table} for request ID: ${requestId}`));
+        
+        if (table === 'active_queue') {
+            stmt = db.prepare('UPDATE active_queue SET spotifyData = NULL WHERE request_id = ?');
+            result = stmt.run(requestId);
+        } else if (table === 'song_history') {
+            stmt = db.prepare('UPDATE song_history SET spotifyData = NULL WHERE id = ?');
+            result = stmt.run(requestId);
+        } else if (table === 'active_song') {
+            // For active_song table, we need to update all rows since there should only be one
+            // The frontend sends the original request ID, but active_song table might have a different structure
+            stmt = db.prepare('UPDATE active_song SET spotifyData = NULL');
+            result = stmt.run();
+            console.log(chalk.cyan(`[DB] Updated active_song table (all rows), changes: ${result.changes}`));
+        }
+
+        if (result.changes > 0) {
+            console.log(chalk.blue(`[DB] Successfully removed Spotify data from ${table} for request ID ${requestId}. Rows affected: ${result.changes}`));
+            return true;
+        } else {
+            console.log(chalk.yellow(`[DB] No record found in ${table} with request ID ${requestId}. No changes made.`));
+            
+            return false;
+        }
+    } catch (error) {
+        console.error(chalk.red(`[DB] Error removing Spotify data from ${table} for request ID ${requestId}:`), error);
+        return false;
+    }
+}
+
+/**
  * Retrieves a paginated list of song history for a specific user and the total count of their requests.
  * @param {string} userLogin - The Twitch login name of the user.
  * @param {number} limit - The maximum number of items to fetch.
@@ -1222,6 +1277,7 @@ module.exports = {
     incrementTodaysCount,
     resetTodaysCount,
     updateSongSpotifyDataAndDetailsInDbQueue,
+    removeSpotifyDataFromSong,
     getDb,
     updateHistoryDisplayOrder,
     getHistoryForUser

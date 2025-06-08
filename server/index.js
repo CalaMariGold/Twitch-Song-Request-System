@@ -95,7 +95,7 @@ const tmiClient = initTwitchChat({
 
 // Initialize database first, before we setup any routes or connections
 db.initDatabase(dbPath);
-const { updateSongSpotifyDataAndDetailsInDbQueue } = require('./database');
+const { updateSongSpotifyDataAndDetailsInDbQueue, removeSpotifyDataFromSong } = require('./database');
 
 // Server state - Initial state will be loaded from DB
 const state = {
@@ -518,6 +518,76 @@ io.on('connection', (socket) => {
         } catch (error) {
             console.error(chalk.red(`[Admin:${socket.id}] Error processing adminUpdateSpotifyLink for ${requestId}:`), error);
             socket.emit('updateSpotifyError', { requestId, message: 'An internal server error occurred.' });
+        }
+    }));
+
+    // Handle removing Spotify data from a request
+    socket.on('adminRemoveSpotifyData', requireAdmin(({ requestId, source }) => {
+        if (!requestId || !source) {
+            console.warn(chalk.yellow(`[Admin:${socket.id}] Invalid payload for adminRemoveSpotifyData.`));
+            socket.emit('removeSpotifyError', { requestId, message: 'Invalid request data.' });
+            return;
+        }
+
+        try {
+            let found = false;
+            let dbTable = '';
+
+            // Handle different sources
+            if (source === 'queue') {
+                const requestIndex = state.queue.findIndex(req => req.id === requestId);
+                if (requestIndex !== -1) {
+                    state.queue[requestIndex].spotifyData = null;
+                    found = true;
+                    dbTable = 'active_queue';
+                }
+            } else if (source === 'history') {
+                // Note: History is not stored in memory, but we can still update the database
+                found = true; // Assume found since we're only updating the database
+                dbTable = 'song_history';
+            } else if (source === 'activeSong') {
+                if (state.activeSong && state.activeSong.id === requestId) {
+                    state.activeSong.spotifyData = null;
+                    found = true;
+                    dbTable = 'active_song';
+                }
+            }
+
+            if (!found) {
+                console.warn(chalk.yellow(`[Admin:${socket.id}] Could not find request ${requestId} in ${source}.`));
+                socket.emit('removeSpotifyError', { requestId, message: `Request not found in ${source}.` });
+                return;
+            }
+
+            // Update database
+            const dbSuccess = removeSpotifyDataFromSong(requestId, dbTable);
+            if (!dbSuccess) {
+                console.warn(chalk.yellow(`[Admin:${socket.id}] Failed to remove Spotify data from database for ${requestId}.`));
+                socket.emit('removeSpotifyError', { requestId, message: 'Failed to update database.' });
+                return;
+            }
+
+            // Broadcast updates based on source
+            if (source === 'queue') {
+                io.emit('queueUpdate', state.queue);
+                console.log(chalk.cyan(`[Admin:${socket.id}] Broadcasted queue update after removing Spotify data for ${requestId}.`));
+            } else if (source === 'activeSong') {
+                io.emit('activeSong', state.activeSong);
+                console.log(chalk.cyan(`[Admin:${socket.id}] Broadcasted active song update after removing Spotify data for ${requestId}.`));
+            } else if (source === 'history') {
+                // For history, emit a history update with fresh data from database
+                const recentHistory = db.getRecentHistory();
+                io.emit('historyUpdate', recentHistory);
+                console.log(chalk.cyan(`[Admin:${socket.id}] Broadcasted history update after removing Spotify data for ${requestId}.`));
+            }
+
+            // Send success confirmation back to the admin
+            socket.emit('removeSpotifySuccess', { requestId, source });
+            console.log(chalk.green(`[Admin:${socket.id}] Successfully removed Spotify data for request ${requestId} from ${source}.`));
+
+        } catch (error) {
+            console.error(chalk.red(`[Admin:${socket.id}] Error processing adminRemoveSpotifyData for ${requestId}:`), error);
+            socket.emit('removeSpotifyError', { requestId, message: 'An internal server error occurred.' });
         }
     }));
 
