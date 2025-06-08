@@ -18,32 +18,36 @@ export function middleware(request: NextRequest) {
     return NextResponse.next()
   }
 
-  // Get the twitch_user cookie
-  const twitchUserCookie = request.cookies.get('twitch_user')
+  // Get the twitch_auth cookie (httpOnly secure cookie)
+  const twitchAuthCookie = request.cookies.get('twitch_auth')
   
   // If no cookie, redirect to login
-  if (!twitchUserCookie) {
+  if (!twitchAuthCookie) {
     return NextResponse.redirect(new URL('/?error=auth_required', request.url))
   }
 
   try {
     // Parse the cookie value
-    const userData = JSON.parse(decodeURIComponent(twitchUserCookie.value))
+    const userData = JSON.parse(decodeURIComponent(twitchAuthCookie.value))
     
-    // Check if the user is admin
-    const isAdmin = ADMIN_USERNAMES.some(
+    // Check if the user is admin directly from the cookie's isAdmin flag
+    // This provides a second layer of verification beyond what's in the cookie
+    const isAdminFromUsername = ADMIN_USERNAMES.some(
       adminName => adminName.toLowerCase() === userData.login.toLowerCase()
     )
 
+    // User must have both the isAdmin flag in the cookie AND their username must be in ADMIN_USERNAMES
+    const isAuthorized = userData.isAdmin === true && isAdminFromUsername
+
     // If not admin, redirect to home with error
-    if (!isAdmin) {
+    if (!isAuthorized) {
       return NextResponse.redirect(new URL('/?error=not_admin', request.url))
     }
 
     // Allow access to admin route for admins
     return NextResponse.next()
   } catch (error) {
-    console.error('Error parsing twitch user cookie:', error)
+    console.error('Error parsing twitch auth cookie:', error)
     // If there's an error, redirect to login
     return NextResponse.redirect(new URL('/?error=auth_required', request.url))
   }

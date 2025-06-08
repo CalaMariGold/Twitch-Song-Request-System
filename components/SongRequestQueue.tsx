@@ -35,6 +35,13 @@ import { cn } from "@/lib/utils"
  * Main queue component that displays current queue, history, and active song
  */
 
+// Type for user data from the display cookie
+interface TwitchUserDisplay {
+  login: string
+  display_name: string
+  profile_image_url: string
+}
+
 export default function SongRequestQueue() {
   const [state, setState] = useState<AppState>({
     queue: [],
@@ -49,7 +56,7 @@ export default function SongRequestQueue() {
   const [searchTerm, setSearchTerm] = useState("")
   const [socket, setSocket] = useState<Socket | null>(null)
   const [isConnected, setIsConnected] = useState(false)
-  const [currentUser, setCurrentUser] = useState<{id?: string, login?: string} | null>(null)
+  const [currentUser, setCurrentUser] = useState<TwitchUserDisplay | null>(null)
   const [requestPlan, setRequestPlan] = useState<PlannedRequest[]>([])
   const [isYoutubeDialogOpen, setIsYoutubeDialogOpen] = useState(false)
   const [historyPage, setHistoryPage] = useState(1)
@@ -68,21 +75,21 @@ export default function SongRequestQueue() {
 
   // Function to handle song drag-and-drop in request plan
   const onDragEnd = (result: DropResult) => {
-    if (!result.destination || !currentUser?.id) return;
+    if (!result.destination || !currentUser?.login) return;
     
     const items = Array.from(requestPlan);
     const [reorderedItem] = items.splice(result.source.index, 1);
     items.splice(result.destination.index, 0, reorderedItem);
     
     setRequestPlan(items);
-    saveRequestPlan(currentUser.id, items);
+    saveRequestPlan(currentUser.login, items);
   };
   
   // Function to handle removing a song from the request plan
   const handleRemoveFromRequestPlan = (songId: string) => {
-    if (!currentUser?.id) return;
+    if (!currentUser?.login) return;
     
-    const updatedPlan = removeFromRequestPlan(currentUser.id, songId);
+    const updatedPlan = removeFromRequestPlan(currentUser.login, songId);
     setRequestPlan(updatedPlan);
   };
 
@@ -96,7 +103,7 @@ export default function SongRequestQueue() {
     onRemove,
     socket
   }: { 
-    currentUser: { id?: string, login?: string } | null,
+    currentUser: TwitchUserDisplay | null,
     requestPlan: PlannedRequest[],
     searchTerm: string,
     isLoading: boolean,
@@ -112,13 +119,13 @@ export default function SongRequestQueue() {
     
     // Handle requesting a song from the plan
     const handleRequestSong = (song: PlannedRequest) => {
-      if (!socket) return;
+      if (!socket || !currentUser?.login) return;
       
       socket.emit('addSong', {
         youtubeUrl: song.youtubeUrl,
-        requester: currentUser?.login || 'Unknown User',
+        requester: currentUser.login,
         requestType: 'channelPoint' // Assuming channel points for manual requests
-      }, (error: any) => {
+      } as Partial<SongRequest> & { requester: string; youtubeUrl?: string; message?: string }, (error: any) => {
         if (error) {
           console.error('Error requesting song:', error);
           return;
@@ -158,8 +165,8 @@ export default function SongRequestQueue() {
             currentUser={currentUser}
             socket={socket}
             onAddToRequestPlan={(newSong) => {
-              if (currentUser?.id) {
-                const updatedPlan = addToRequestPlan(currentUser.id, newSong);
+              if (currentUser?.login) {
+                const updatedPlan = addToRequestPlan(currentUser.login, newSong);
                 setRequestPlan(updatedPlan);
               }
             }}
@@ -315,7 +322,7 @@ export default function SongRequestQueue() {
     setEditSpotifyError,
     setEditSpotifySuccess
   }: { 
-    currentUser: { id?: string, login?: string } | null,
+    currentUser: TwitchUserDisplay | null,
     state: AppState,
     searchTerm: string,
     isLoading: boolean,
@@ -326,27 +333,17 @@ export default function SongRequestQueue() {
     setEditSpotifyError: React.Dispatch<React.SetStateAction<string | null>>,
     setEditSpotifySuccess: React.Dispatch<React.SetStateAction<boolean>>
   }) {
-    // Filter for user's queue songs
-    const myQueueSongs = currentUser?.login
-      ? state.queue.filter((song: SongRequest) => 
-          (song.requesterLogin?.toLowerCase() === currentUser.login?.toLowerCase()) ||
-          (song.requester.toLowerCase() === currentUser.login?.toLowerCase())
-        ).filter(song => 
-          song.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          song.artist?.toLowerCase().includes(searchTerm.toLowerCase())
-        )
-      : []
-      
-    // Filter for user's history songs
-    const myHistorySongs = currentUser?.login
-      ? state.history.filter((song: SongRequest) => 
-          (song.requesterLogin?.toLowerCase() === currentUser.login?.toLowerCase()) ||
-          (song.requester.toLowerCase() === currentUser.login?.toLowerCase())
-        ).filter(song => 
-          song.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          song.artist?.toLowerCase().includes(searchTerm.toLowerCase())
-        )
-      : []
+    const lowerCaseLogin = currentUser?.login?.toLowerCase();
+    
+    // Filter queue and history based on login name
+    const myQueueSongs = state.queue.filter(song => 
+        (song.requesterLogin?.toLowerCase() === lowerCaseLogin || song.requester.toLowerCase() === lowerCaseLogin) &&
+        (song.title?.toLowerCase().includes(searchTerm.toLowerCase()) || song.artist?.toLowerCase().includes(searchTerm.toLowerCase()))
+    );
+    const myHistorySongs = state.history.filter(song => 
+        (song.requesterLogin?.toLowerCase() === lowerCaseLogin || song.requester.toLowerCase() === lowerCaseLogin) &&
+        (song.title?.toLowerCase().includes(searchTerm.toLowerCase()) || song.artist?.toLowerCase().includes(searchTerm.toLowerCase()))
+    );
     
     const hasNoRequests = myQueueSongs.length === 0 && myHistorySongs.length === 0
       
@@ -433,20 +430,22 @@ export default function SongRequestQueue() {
         return acc
       }, {} as Record<string, string>)
       
-      const userJson = cookies['twitch_user']
-      if (userJson) {
+      // Read the display cookie
+      const userDisplayJson = cookies['twitch_user_display']
+      if (userDisplayJson) {
         try {
-          const decoded = decodeURIComponent(userJson)
-          const userData = JSON.parse(decoded)
+          const decoded = decodeURIComponent(userDisplayJson)
+          const userData: TwitchUserDisplay = JSON.parse(decoded)
           setCurrentUser(userData)
           
-          // Load request plan if user is logged in
-          if (userData.id) {
-            const loadedPlan = getRequestPlan(userData.id);
+          // Load request plan using login name if user is logged in
+          if (userData.login) {
+            // Use login name as the key for request plan
+            const loadedPlan = getRequestPlan(userData.login);
             setRequestPlan(loadedPlan);
           }
         } catch (e) {
-          console.error('Failed to parse user cookie:', e)
+          console.error('Failed to parse user display cookie:', e)
           setCurrentUser(null); // Clear user if cookie is invalid
           setRequestPlan([]); // Clear plan if user is logged out/invalid
         }
@@ -458,15 +457,24 @@ export default function SongRequestQueue() {
 
     readUserFromCookie()
     
-    // Setup listener for auth success to refresh user data
+    // Setup listener for auth success/logout to refresh user data
     const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'auth_success') {
+      // Listen for custom events or changes that indicate login/logout
+      if (e.key === 'logout' || e.key === 'login') { 
         readUserFromCookie()
+      } else if (e.key === 'twitch_user_display') { // Also listen for direct cookie changes
+        readUserFromCookie();
       }
     }
     
     window.addEventListener('storage', handleStorageChange)
-    return () => window.removeEventListener('storage', handleStorageChange)
+    // Additionally, listen for cookie changes if storage events aren't reliable across tabs/windows
+    const intervalId = setInterval(readUserFromCookie, 5000); // Check cookie every 5 seconds
+
+    return () => {
+       window.removeEventListener('storage', handleStorageChange);
+       clearInterval(intervalId); // Clear interval on cleanup
+    }
   }, [])
 
   // Socket connection management

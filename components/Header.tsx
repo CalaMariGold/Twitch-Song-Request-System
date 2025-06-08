@@ -12,7 +12,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { LogIn, AlertCircle, Shield, LogOut, Settings, Music2, Home, ChevronDown, User } from "lucide-react"
-import { getTwitchAuthUrl } from "@/lib/auth"
+import { getTwitchAuthUrl, ADMIN_USERNAMES } from "@/lib/auth"
 import { ConnectionStatus } from "@/components/ConnectionStatus"
 import { useEffect, useState } from "react"
 import { useSearchParams, usePathname } from 'next/navigation'
@@ -31,21 +31,21 @@ const ERROR_MESSAGES = {
   not_admin: "Access denied: You don't have admin privileges"
 }
 
-interface TwitchUser {
-  id: string
+interface TwitchUserDisplay {
   login: string
   display_name: string
   profile_image_url: string
-  isAdmin: boolean
 }
 
 export function Header({ isConnected }: HeaderProps) {
-  const [user, setUser] = useState<TwitchUser | null>(null)
+  const [user, setUser] = useState<TwitchUserDisplay | null>(null)
   const [error, setError] = useState<string | null>(null)
   const searchParams = useSearchParams()
   const pathname = usePathname()
   const isAdminPage = pathname?.includes('/admin')
   const [currentTimeEst, setCurrentTimeEst] = useState('')
+  
+  const potentialAdmin = user && ADMIN_USERNAMES.some(adminName => adminName.toLowerCase() === user.login.toLowerCase());
 
   const readUserFromCookie = () => {
     const cookies = document.cookie.split(';').reduce((acc, cookie) => {
@@ -54,22 +54,28 @@ export function Header({ isConnected }: HeaderProps) {
       return acc
     }, {} as Record<string, string>)
     
-    const userJson = cookies['twitch_user']
-    if (userJson) {
+    const userDisplayJson = cookies['twitch_user_display'];
+    if (userDisplayJson) {
       try {
-        const decoded = decodeURIComponent(userJson)
+        const decoded = decodeURIComponent(userDisplayJson)
         const userData = JSON.parse(decoded)
         setUser(userData)
       } catch (e) {
-        console.error('Failed to parse user cookie:', e)
+        console.error('Failed to parse user display cookie:', e)
+        setUser(null);
       }
+    } else {
+      setUser(null);
     }
   }
 
   const handleLogout = () => {
-    document.cookie = 'twitch_token=; Max-Age=0; path=/'
+    document.cookie = 'twitch_auth=; Max-Age=0; path=/; secure=; samesite=lax'
+    document.cookie = 'twitch_user_display=; Max-Age=0; path=/; secure=; samesite=lax'
     document.cookie = 'twitch_user=; Max-Age=0; path=/'
+    document.cookie = 'twitch_token=; Max-Age=0; path=/' 
     setUser(null)
+    window.location.href = '/'
   }
 
   useEffect(() => {
@@ -84,10 +90,22 @@ export function Header({ isConnected }: HeaderProps) {
     if (authSuccess === 'success') {
       readUserFromCookie()
       window.history.replaceState({}, '', window.location.pathname)
+    } else {
+      readUserFromCookie()
     }
+    
+    const handleStorage = (event: StorageEvent) => {
+        if (event.key === 'logout' || event.key === 'login') {
+            readUserFromCookie();
+        }
+    };
+    window.addEventListener('storage', handleStorage);
 
-    readUserFromCookie()
-  }, [searchParams])
+    return () => {
+        window.removeEventListener('storage', handleStorage);
+    };
+
+  }, [])
 
   useEffect(() => {
     const updateTime = () => {
@@ -95,10 +113,10 @@ export function Header({ isConnected }: HeaderProps) {
       setCurrentTimeEst(estTime)
     }
 
-    updateTime() // Initial update
-    const intervalId = setInterval(updateTime, 1000) // Update every second
+    updateTime()
+    const intervalId = setInterval(updateTime, 1000)
 
-    return () => clearInterval(intervalId) // Cleanup interval on unmount
+    return () => clearInterval(intervalId)
   }, [])
 
   return (
@@ -158,12 +176,6 @@ export function Header({ isConnected }: HeaderProps) {
                     <div className="flex flex-col">
                       <span className="font-medium">{user.display_name}</span>
                       <span className="text-xs text-gray-400">@{user.login}</span>
-                      {user.isAdmin && (
-                        <span className="text-xs text-purple-400 flex items-center gap-1 mt-1">
-                          <Shield size={12} />
-                          Admin
-                        </span>
-                      )}
                     </div>
                   </div>
                   <DropdownMenuSeparator className="bg-gray-700" />
@@ -179,7 +191,7 @@ export function Header({ isConnected }: HeaderProps) {
                       <span>View Twitch Profile</span>
                     </DropdownMenuItem>
                   </Link>
-                  {user.isAdmin && (
+                  {potentialAdmin && (
                     <Link href="/admin">
                       <DropdownMenuItem className="cursor-pointer hover:bg-gray-700 focus:bg-gray-700">
                         <Shield className="mr-2 h-4 w-4" />

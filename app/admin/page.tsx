@@ -91,19 +91,17 @@ import { StatisticsCard } from "@/components/StatisticsCard"
 import { formatTimestamp, formatDuration, extractYouTubeId, SpotifyIcon, calculateTotalQueueDuration } from "@/lib/utils"
 import { DragDropContext, Draggable, Droppable, DropResult } from '@hello-pangea/dnd'
 
-interface TwitchUser {
-  id: string
+interface TwitchUserDisplay {
   login: string
   display_name: string
   profile_image_url: string
-  isAdmin: boolean
 }
 
 export default function AdminDashboard() {
   // State
   const [songUrl, setSongUrl] = useState("")
   const [requesterUsername, setRequesterUsername] = useState("")
-  const [user, setUser] = useState<TwitchUser | null>(null)
+  const [user, setUser] = useState<TwitchUserDisplay | null>(null)
   const [isConnected, setIsConnected] = useState(false)
   const [appState, setAppState] = useState<AppState>({
     queue: [],
@@ -168,21 +166,44 @@ export default function AdminDashboard() {
         if (key) acc[key] = value;
         return acc;
       }, {} as Record<string, string>);
-      const userJson = cookies['twitch_user'];
-      if (userJson) {
+      
+      // Try to get login from display cookie first (for better UX)
+      const userDisplayJson = cookies['twitch_user_display'];
+      let loginName = '';
+      
+      if (userDisplayJson) {
         try {
-          const userData = JSON.parse(decodeURIComponent(userJson));
-          if (userData && userData.login) {
-            console.log(`Admin: Authenticating socket connection for user ${userData.login}`);
-            socketInstance.emit('authenticateAdmin', { login: userData.login });
-          } else {
-            console.error('Admin: Failed to get login from user cookie for socket auth.');
+          const displayData = JSON.parse(decodeURIComponent(userDisplayJson));
+          if (displayData && displayData.login) {
+            loginName = displayData.login;
           }
         } catch (e) {
-          console.error('Admin: Failed to parse user cookie for socket auth:', e);
+          console.error('Admin: Failed to parse user display cookie:', e);
         }
+      }
+      
+      // For authentication, we need to check the auth cookie (sent by the client but can't be read by JS)
+      // This is a security measure - we try to authenticate with the login name
+      // The server will verify this against the ADMIN_USERNAMES environment variable
+      if (loginName) {
+        console.log(`Admin: Authenticating socket connection for user ${loginName}`);
+        socketInstance.emit('authenticateAdmin', { login: loginName });
       } else {
-        console.warn('Admin: twitch_user cookie not found for socket authentication.');
+        // Fallback to legacy cookie for backward compatibility
+        const legacyUserJson = cookies['twitch_user'];
+        if (legacyUserJson) {
+          try {
+            const userData = JSON.parse(decodeURIComponent(legacyUserJson));
+            if (userData && userData.login) {
+              console.log(`Admin: Authenticating socket connection with legacy cookie for user ${userData.login}`);
+              socketInstance.emit('authenticateAdmin', { login: userData.login });
+            }
+          } catch (e) {
+            console.error('Admin: Failed to parse legacy user cookie:', e);
+          }
+        } else {
+          console.warn('Admin: No auth cookies found for socket authentication.');
+        }
       }
       // --- END NEW ---
 
@@ -407,14 +428,34 @@ export default function AdminDashboard() {
       return acc
     }, {} as Record<string, string>)
     
-    const userJson = cookies['twitch_user']
-    if (userJson) {
+    const userDisplayJson = cookies['twitch_user_display']
+    if (userDisplayJson) {
       try {
-        const decoded = decodeURIComponent(userJson)
+        const decoded = decodeURIComponent(userDisplayJson)
         const userData = JSON.parse(decoded)
-        setUser(userData)
+        setUser(userData) // This now matches the state type
       } catch (e) {
-        console.error('Failed to parse user cookie:', e)
+        console.error('Failed to parse user display cookie in admin page:', e)
+        setUser(null)
+      }
+    } else {
+      const legacyUserJson = cookies['twitch_user'];
+      if (legacyUserJson) {
+          try {
+            const decoded = decodeURIComponent(legacyUserJson);
+            const userData = JSON.parse(decoded);
+            // Adapt legacy data to the new state structure
+            setUser({ 
+                login: userData.login, 
+                display_name: userData.display_name, 
+                profile_image_url: userData.profile_image_url 
+            }); // This also matches the state type
+          } catch (e) {
+            console.error('Failed to parse legacy user cookie in admin page:', e);
+            setUser(null);
+          }
+      } else {
+        setUser(null)
       }
     }
   }, [])
@@ -833,20 +874,22 @@ export default function AdminDashboard() {
                 <DropdownMenuLabel className="font-normal">
                   <div className="flex flex-col space-y-1">
                     <p className="text-sm font-medium leading-none">{user.display_name}</p>
-                    <p className="text-xs leading-none text-gray-400">{user.login}</p>
+                    <p className="text-xs leading-none text-gray-400">@{user.login}</p>
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator className="bg-gray-700" />
-                {user.isAdmin && (
-                  <DropdownMenuItem className="cursor-pointer hover:bg-gray-700 focus:bg-gray-700">
-                    <Shield className="mr-2 h-4 w-4" />
-                    <span>Admin Privileges</span>
-                  </DropdownMenuItem>
-                )}
+                 {/* Removed isAdmin check here - rely on middleware */} 
                  <DropdownMenuItem className="cursor-pointer hover:bg-gray-700 focus:bg-gray-700" onClick={() => window.open('/', '_blank')}>
-                  <List className="mr-2 h-4 w-4" />
-                  <span>Public Queue</span>
-                </DropdownMenuItem>
+                   <List className="mr-2 h-4 w-4" />
+                   <span>Public Queue</span>
+                 </DropdownMenuItem>
+                 {/* Link to admin is always present if logged in, access is controlled by middleware */}
+                 <Link href="/admin">
+                    <DropdownMenuItem className="cursor-pointer hover:bg-gray-700 focus:bg-gray-700">
+                       <Shield className="mr-2 h-4 w-4" />
+                       <span>Admin Dashboard</span>
+                     </DropdownMenuItem>
+                 </Link> {/* Closing Link tag was missing here */} 
                 <DropdownMenuSeparator className="bg-gray-700" />
                 <DropdownMenuItem onClick={handleLogout} className="cursor-pointer text-red-400 hover:bg-red-900/50 focus:bg-red-900/50 focus:text-red-300 hover:text-red-300">
                   <LogOut className="mr-2 h-4 w-4" />
@@ -1195,7 +1238,7 @@ export default function AdminDashboard() {
                <div className="flex justify-between items-center mb-3 px-1">
                   <h3 className="text-lg font-semibold text-white">Played History</h3>
                </div>
-               {/* --- Modified History List for DND --- */} 
+               {/* --- Modified History List for DND --- */}
                <ScrollArea className="h-[80vh] w-full rounded-md border border-gray-700 p-4 bg-gray-800">
                     {appState.isLoading ? (
                        <div className="flex items-center justify-center h-full"><Loader2 className="w-8 h-8 animate-spin text-gray-400" /></div>

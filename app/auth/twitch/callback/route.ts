@@ -22,13 +22,25 @@ export async function GET(request: Request) {
     // Create response with redirect
     const response = NextResponse.redirect(`${process.env.NEXT_PUBLIC_APP_URL}?auth=success`)
 
-    // Set cookies in the response
-    response.cookies.set('twitch_user', JSON.stringify({
+    // Set two cookies: one for authentication (httpOnly) and one for UI display (non-httpOnly)
+    // Secure auth cookie that can't be accessed by JavaScript
+    response.cookies.set('twitch_auth', JSON.stringify({
       id: userInfo.id,
       login: userInfo.login,
+      isAdmin: isAdmin(userInfo.login)
+    }), {
+      httpOnly: true, // Can't be accessed by JavaScript
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: tokenData.expires_in,
+      path: '/'
+    })
+    
+    // Non-sensitive UI data that can be accessed by JavaScript
+    response.cookies.set('twitch_user_display', JSON.stringify({
       display_name: userInfo.display_name,
       profile_image_url: userInfo.profile_image_url,
-      isAdmin: isAdmin(userInfo.login)
+      login: userInfo.login
     }), {
       httpOnly: false,
       secure: process.env.NODE_ENV === 'production',
