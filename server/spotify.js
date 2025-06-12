@@ -713,15 +713,15 @@ function extractSpotifyTrackId(url) {
 async function getSpotifyTrackDetailsById(trackId) {
   if (!trackId) return null;
 
-  const token = await getSpotifyToken();
-  if (!token) {
-    console.error(chalk.red('[Spotify] Failed to get Spotify token for direct track fetch.'));
-    return null;
-  }
-
-  const url = `https://api.spotify.com/v1/tracks/${trackId}`;
-
   try {
+    const token = await getSpotifyToken();
+    if (!token) {
+      console.error(chalk.red('[Spotify] Failed to get Spotify token for direct track fetch.'));
+      return null;
+    }
+
+    const url = `https://api.spotify.com/v1/tracks/${trackId}`;
+
     const response = await fetch(url, {
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -731,6 +731,15 @@ async function getSpotifyTrackDetailsById(trackId) {
     if (!response.ok) {
       const errorBody = await response.text();
       console.error(chalk.red(`[Spotify] Error fetching track ${trackId}: ${response.status} ${response.statusText}`), errorBody);
+      
+      if (response.status === 401) {
+        // Token might have expired, clear it and try again
+        console.warn(chalk.yellow('[Spotify] Token expired, attempting refresh...'));
+        spotifyToken = null;
+        tokenExpiryTime = null;
+        return getSpotifyTrackDetailsById(trackId); // Recursive call to retry
+      }
+      
       if (response.status === 404) return null;
       return null;
     }
