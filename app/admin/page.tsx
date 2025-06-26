@@ -434,13 +434,6 @@ export default function AdminDashboard() {
       setSongsPlayedToday(data.count);
     });
 
-    // --- Add a listener for history order changed signal ---
-    socketInstance.on('historyOrderChanged', () => {
-      console.log('Admin: History order changed signal received');
-      // Don't update the local historyList here, as it's already been updated
-      // This is just for notifying other clients
-    });
-
     setSocket(socketInstance)
 
     return () => {
@@ -832,57 +825,7 @@ export default function AdminDashboard() {
     }
   }, [socket, editingRequestId, youTubeLinkInput]); 
 
-  // --- DND Handler for History --- 
-  const onHistoryDragEnd = (result: DropResult) => {
-    const { source, destination } = result;
-
-    // Dropped outside the list
-    if (!destination) {
-      return;
-    }
-
-    // No change in position
-    if (destination.droppableId === source.droppableId && destination.index === source.index) {
-        return;
-    }
-
-    // Reorder the local historyList state for immediate feedback
-    const items = Array.from(historyList);
-    const [reorderedItem] = items.splice(source.index, 1);
-    items.splice(destination.index, 0, reorderedItem);
-
-    setHistoryList(items);
-
-    // Extract the IDs in the new order (ensure they are strings)
-    const orderedIds = items.map((item) => String(item.id)); // Convert ID to string explicitly
-
-    // Emit the update to the backend
-    if (socket) {
-      // Use properly typed event emission
-      socket.emit("updateHistoryOrder", orderedIds);
-      console.log("Emitted updateHistoryOrder:", orderedIds); // For debugging
-      
-      // Show initial toast
-      toast({
-        title: "Updating History Order", 
-        description: "Saving new order...",
-        duration: 3000
-      });
-      
-      // Listen for the broadcast update once for this specific reorder operation
-      const updateListener = () => {
-        toast({
-          title: "History Order Updated",
-          description: "The new order has been saved.",
-          duration: 2000
-        });
-        socket?.off('historyOrderChanged', updateListener);
-      };
-      
-      socket.once('historyOrderChanged', updateListener);
-    }
-  };
-  // --- END --- 
+ 
 
   // Add function to load more history
   const loadMoreHistory = useCallback(() => {
@@ -1386,48 +1329,21 @@ export default function AdminDashboard() {
                <div className="flex justify-between items-center mb-3 px-1">
                   <h3 className="text-lg font-semibold text-white">Played History</h3>
                </div>
-               {/* --- Modified History List for DND --- */}
                <ScrollArea className="h-[80vh] w-full rounded-md border border-gray-700 p-4 bg-gray-800 overflow-hidden">
                     {appState.isLoading ? (
                        <div className="flex items-center justify-center h-full"><Loader2 className="w-8 h-8 animate-spin text-gray-400" /></div>
                     ) : historyList.length > 0 ? (
                       <>
-                        <DragDropContext onDragEnd={onHistoryDragEnd}>
-                          <Droppable droppableId="historyDroppable">
-                            {(provided) => (
-                               <ul 
-                                  className="space-y-2"
-                                  {...provided.droppableProps}
-                                  ref={provided.innerRef}
-                               >
-                                {historyList.map((song, index) => (
-                                  <Draggable key={song.id} draggableId={String(song.id)} index={index}>
-                                    {(provided, snapshot) => (
-                                      <li 
-                                        ref={provided.innerRef}
-                                        {...provided.draggableProps}
-                                        // Drag handle is now a separate element below
-                                        className={`flex items-center space-x-3 p-3 rounded-md bg-gray-800 hover:bg-gray-700/80 transition mb-2 group w-full ${snapshot.isDragging ? 'opacity-70 border border-purple-500 shadow-lg' : ''}`}
-                                        style={{
-                                          ...provided.draggableProps.style,
-                                          // Override any width/positioning that might come from DND
-                                          width: '790px',
-                                          maxWidth: '790px'
-                                        }}
-                                      >
-                                        {/* Drag Handle */} 
-                                        <div 
-                                          {...provided.dragHandleProps}
-                                          className="flex-shrink-0 w-6 text-center cursor-grab text-gray-500 hover:text-gray-300 transition-colors"
-                                          title="Drag to reorder"
-                                        >
-                                            <GripVertical size={20} />
-                                        </div>
-                                        
-                                        {/* Index (Visual Only) */}
-                                        <div className="flex-shrink-0 font-semibold text-gray-400 w-6 text-center">
-                                          {index + 1}. 
-                                        </div>
+                        <ul className="space-y-2 w-full max-w-[790px] overflow-visible">
+                          {historyList.map((song, index) => (
+                            <li 
+                              key={song.id}
+                              className="flex items-center space-x-3 p-3 rounded-md bg-gray-800 hover:bg-gray-700/80 transition mb-2 group w-full max-w-full overflow-visible"
+                            >
+                              {/* Index */}
+                              <div className="flex-shrink-0 font-semibold text-gray-400 w-6 text-center">
+                                {index + 1}. 
+                              </div>
                                         
                                         {/* Existing Thumbnail */}
                                         <div className="relative w-16 h-9 rounded-md overflow-hidden flex-shrink-0 border border-gray-700">
@@ -1445,7 +1361,7 @@ export default function AdminDashboard() {
                                         </div>
                                         
                                         {/* Song Info */} 
-                                        <div className="flex-1 min-w-0 pr-2">
+                                        <div className="flex-1 min-w-0 pr-2 overflow-visible">
                                            <p className="font-medium text-white truncate" title={song.title}>{song.title || 'Unknown Title'}</p>
                                            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1">
                                               {/* ... Artist Badge, Duration, Requester Info ... */} 
@@ -1512,7 +1428,7 @@ export default function AdminDashboard() {
                                         </div>
                                         
                                         {/* Actions & Timestamp */} 
-                                        <div className="flex-shrink-0 flex flex-col items-end w-[125px]">
+                                        <div className="flex-shrink-0 flex flex-col items-end w-[120px] overflow-visible">
                                            <div className="flex space-x-1 mb-1 justify-end">
                                               <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handleReturnToQueue(song)}>
                                                 <Play className="h-4 w-4 text-green-500 hover:text-green-400" />
@@ -1543,14 +1459,8 @@ export default function AdminDashboard() {
                                             )}
                                         </div>
                                       </li>
-                                    )}
-                                  </Draggable>
-                                ))}
-                                {provided.placeholder}
-                             </ul>
-                           )}
-                         </Droppable>
-                       </DragDropContext>
+                                    ))}
+                        </ul>
                          
                          {/* Move Load More Button inside ScrollArea */}
                          {hasMoreHistory && (
