@@ -1028,9 +1028,9 @@ export default function AdminDashboard() {
       )}
 
       {/* Main Content Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 w-full max-w-full">
         {/* Left Column: Queue & History */}
-        <div className="lg:col-span-2 space-y-6">
+        <div className="lg:col-span-2 space-y-6 min-w-0 w-full">
           {/* Current Active Song Section */}
           <div className="bg-gray-800 rounded-lg shadow-md p-4">
              <h2 className="text-xl font-semibold mb-3 flex items-center">
@@ -1184,7 +1184,7 @@ export default function AdminDashboard() {
           </div>
 
           {/* Queue and History Tabs */}
-          <Tabs defaultValue="queue" className="w-full">
+          <Tabs defaultValue="queue" className="w-full max-w-full min-w-0">
             <TabsList className="grid w-full grid-cols-2 bg-gray-800">
               <TabsTrigger value="queue" className="data-[state=active]:bg-gray-700 data-[state=active]:text-white">
                   <List className="mr-2 h-4 w-4" /> Current Queue ({totalQueueCount}) - <Clock className="inline-block mx-1" size={14} /> {totalQueueDurationFormatted}
@@ -1200,7 +1200,7 @@ export default function AdminDashboard() {
                     <Trash2 className="mr-1 h-3 w-3" /> Clear Queue
                   </Button>
                 </div>
-                <ScrollArea className="h-[80vh] w-full rounded-md border border-gray-700 p-4 bg-gray-800">
+                <ScrollArea className="h-[80vh] w-full rounded-md border border-gray-700 p-4 bg-gray-800 overflow-hidden">
                     {appState.isLoading ? (
                        <div className="flex items-center justify-center h-full"><Loader2 className="w-8 h-8 animate-spin text-gray-400" /></div>
                     ) : appState.queue.length > 0 ? (
@@ -1387,18 +1387,19 @@ export default function AdminDashboard() {
                   <h3 className="text-lg font-semibold text-white">Played History</h3>
                </div>
                {/* --- Modified History List for DND --- */}
-               <ScrollArea className="h-[80vh] w-full rounded-md border border-gray-700 p-4 bg-gray-800">
+               <ScrollArea className="h-[80vh] w-full rounded-md border border-gray-700 p-4 bg-gray-800 overflow-hidden">
                     {appState.isLoading ? (
                        <div className="flex items-center justify-center h-full"><Loader2 className="w-8 h-8 animate-spin text-gray-400" /></div>
                     ) : historyList.length > 0 ? (
-                      <DragDropContext onDragEnd={onHistoryDragEnd}>
-                        <Droppable droppableId="historyDroppable">
-                          {(provided) => (
-                             <ul 
-                                className="space-y-2"
-                                {...provided.droppableProps}
-                                ref={provided.innerRef}
-                             >
+                      <>
+                        <DragDropContext onDragEnd={onHistoryDragEnd}>
+                          <Droppable droppableId="historyDroppable">
+                            {(provided) => (
+                               <ul 
+                                  className="space-y-2"
+                                  {...provided.droppableProps}
+                                  ref={provided.innerRef}
+                               >
                                 {historyList.map((song, index) => (
                                   <Draggable key={song.id} draggableId={String(song.id)} index={index}>
                                     {(provided, snapshot) => (
@@ -1406,8 +1407,13 @@ export default function AdminDashboard() {
                                         ref={provided.innerRef}
                                         {...provided.draggableProps}
                                         // Drag handle is now a separate element below
-                                        className={`flex items-center space-x-3 p-3 rounded-md bg-gray-800 hover:bg-gray-700/80 transition mb-2 group ${snapshot.isDragging ? 'opacity-70 border border-purple-500 shadow-lg' : ''}`}
-                                        style={provided.draggableProps.style} // Apply DND styles
+                                        className={`flex items-center space-x-3 p-3 rounded-md bg-gray-800 hover:bg-gray-700/80 transition mb-2 group w-full ${snapshot.isDragging ? 'opacity-70 border border-purple-500 shadow-lg' : ''}`}
+                                        style={{
+                                          ...provided.draggableProps.style,
+                                          // Override any width/positioning that might come from DND
+                                          width: '100%',
+                                          maxWidth: '100%'
+                                        }}
                                       >
                                         {/* Drag Handle */} 
                                         <div 
@@ -1418,12 +1424,12 @@ export default function AdminDashboard() {
                                             <GripVertical size={20} />
                                         </div>
                                         
-                                        {/* Index (Visual Only) */} 
+                                        {/* Index (Visual Only) */}
                                         <div className="flex-shrink-0 font-semibold text-gray-400 w-6 text-center">
                                           {index + 1}. 
                                         </div>
                                         
-                                        {/* Existing Thumbnail */} 
+                                        {/* Existing Thumbnail */}
                                         <div className="relative w-16 h-9 rounded-md overflow-hidden flex-shrink-0 border border-gray-700">
                                           {song.thumbnailUrl ? (
                                             <img 
@@ -1438,9 +1444,9 @@ export default function AdminDashboard() {
                                           )}
                                         </div>
                                         
-                                        {/* Existing Song Info */} 
-                                        <div className="flex-1 min-w-0 overflow-hidden">
-                                           <p className="font-medium text-white truncate overflow-hidden whitespace-nowrap" title={song.title}>{song.title || 'Unknown Title'}</p>
+                                        {/* Song Info */} 
+                                        <div className="flex-1 min-w-0 pr-2">
+                                           <p className="font-medium text-white truncate" title={song.title}>{song.title || 'Unknown Title'}</p>
                                            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1">
                                               {/* ... Artist Badge, Duration, Requester Info ... */} 
                                               {song.channelId ? (
@@ -1464,7 +1470,7 @@ export default function AdminDashboard() {
                                                   <AvatarImage src={song.requesterAvatar ?? undefined} alt={song.requester} />
                                                   <AvatarFallback className="text-[8px]">{song.requester.slice(0,1)}</AvatarFallback>
                                                 </Avatar>
-                                                <Link href={`https://www.twitch.tv/${song.requesterLogin || song.requester.toLowerCase()}`} target="_blank" rel="noopener noreferrer" className="hover:text-gray-300 underline transition-colors">
+                                                <Link href={`https://www.twitch.tv/${song.requesterLogin || song.requester.toLowerCase()}`} target="_blank" rel="noopener noreferrer" className="hover:text-gray-300 underline transition-colors truncate">
                                                   {song.requester}
                                                 </Link>
                                               </div>
@@ -1505,24 +1511,24 @@ export default function AdminDashboard() {
                                             {/* END: Added Spotify Details */} 
                                         </div>
                                         
-                                        {/* Existing Actions & Timestamp */} 
-                                        <div className="flex-shrink-0 flex flex-col items-end w-auto max-w-[160px]">
-                                           <div className="flex flex-wrap gap-1 justify-end items-center max-w-full">
-                                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0 flex-shrink-0" onClick={() => handleReturnToQueue(song)}>
+                                        {/* Actions & Timestamp */} 
+                                        <div className="flex-shrink-0 flex flex-col items-end w-[125px]">
+                                           <div className="flex space-x-1 mb-1 justify-end">
+                                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handleReturnToQueue(song)}>
                                                 <Play className="h-4 w-4 text-green-500 hover:text-green-400" />
                                               </Button>
-                                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0 flex-shrink-0" onClick={() => handleRemoveFromHistory(song.id)}>
+                                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handleRemoveFromHistory(song.id)}>
                                                 <Trash2 className="h-4 w-4 text-red-500 hover:text-red-400" />
                                               </Button>
                                               {song.youtubeUrl && (
-                                               <a href={song.youtubeUrl} target="_blank" rel="noopener noreferrer" aria-label="Watch on YouTube" className="flex-shrink-0">
+                                               <a href={song.youtubeUrl} target="_blank" rel="noopener noreferrer" aria-label="Watch on YouTube">
                                                 <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
                                                   <Youtube className="h-4 w-4 text-red-600 hover:text-red-500" />
                                                 </Button>
                                                </a>
                                               )}
                                               {song.spotifyData && song.spotifyData.url && (
-                                                <a href={song.spotifyData.url} target="_blank" rel="noopener noreferrer" aria-label="Listen on Spotify" className="flex-shrink-0">
+                                                <a href={song.spotifyData.url} target="_blank" rel="noopener noreferrer" aria-label="Listen on Spotify">
                                                   <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
                                                     <SpotifyIcon className="h-4 w-4 text-green-500 hover:text-green-400" />
                                                   </Button>
@@ -1530,11 +1536,12 @@ export default function AdminDashboard() {
                                               )}
                                             </div>
                                             {song.timestamp && (
-                                              <span className="text-xs text-gray-500 mt-1 text-right truncate max-w-full">
-                                                Completed: {formatTimestamp(song.timestamp)}
-                                              </span>
+                                              <div className="text-xs text-gray-500 text-right leading-tight w-full">
+                                                <div className="truncate">Completed:</div>
+                                                <div className="font-mono text-[10px] truncate" title={formatTimestamp(song.timestamp)}>{formatTimestamp(song.timestamp)}</div>
+                                              </div>
                                             )}
-                                          </div>
+                                        </div>
                                       </li>
                                     )}
                                   </Draggable>
@@ -1544,39 +1551,40 @@ export default function AdminDashboard() {
                            )}
                          </Droppable>
                        </DragDropContext>
+                         
+                         {/* Move Load More Button inside ScrollArea */}
+                         {hasMoreHistory && (
+                           <div className="mt-6 flex justify-center">
+                             <Button
+                               variant="outline"
+                               className="bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600 hover:border-gray-500"
+                               onClick={loadMoreHistory}
+                               disabled={isLoadingMoreHistory}
+                             >
+                               {isLoadingMoreHistory ? (
+                                 <>
+                                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                   Loading...
+                                 </>
+                               ) : (
+                                 <>Load More History</>
+                               )}
+                             </Button>
+                           </div>
+                         )}
+                         
+                         {/* Show message when there's no more history to load */}
+                         {!hasMoreHistory && (
+                           <div className="mt-4 text-center text-gray-500 text-sm">
+                             End of history reached
+                           </div>
+                         )}
+                      </>
                     ) : (
                       <p className="text-gray-400 italic text-center py-10">No song history available.</p>
                     )}
                  </ScrollArea>
                   {/* --- END Modified History List --- */} 
-
-                  {/* Add Load More Button for history pagination */} 
-                  {hasMoreHistory && historyList.length > 0 && (
-                    <div className="mt-6 flex justify-center">
-                      <Button
-                        variant="outline"
-                        className="bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600 hover:border-gray-500"
-                        onClick={loadMoreHistory}
-                        disabled={isLoadingMoreHistory}
-                      >
-                        {isLoadingMoreHistory ? (
-                          <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Loading...
-                          </>
-                        ) : (
-                          <>Load More History</>
-                        )}
-                      </Button>
-                    </div>
-                  )}
-                  
-                  {/* Show message when there's no more history to load */}
-                  {!hasMoreHistory && historyList.length > 0 && (
-                    <div className="mt-4 text-center text-gray-500 text-sm">
-                      End of history reached
-                    </div>
-                  )}
             </TabsContent>
           </Tabs>
 
@@ -1592,7 +1600,7 @@ export default function AdminDashboard() {
         </div>
 
         {/* Right Column: Controls & Settings */}
-        <div className="lg:col-span-1 space-y-6">
+        <div className="lg:col-span-1 space-y-6 min-w-0 w-full">
           {/* Manual Add Card */}
           <Card className="bg-gray-800 border-gray-700">
             <CardHeader>
