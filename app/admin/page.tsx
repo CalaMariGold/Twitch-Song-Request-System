@@ -1506,8 +1506,8 @@ export default function AdminDashboard() {
                                         </div>
                                         
                                         {/* Existing Actions & Timestamp */} 
-                                        <div className="flex-shrink-0 flex flex-col items-end min-w-0">
-                                           <div className="flex space-x-1 flex-wrap gap-y-1 justify-end">
+                                        <div className="flex-shrink-0 flex flex-col items-end w-auto max-w-[160px]">
+                                           <div className="flex flex-wrap gap-1 justify-end items-center max-w-full">
                                               <Button variant="ghost" size="sm" className="h-8 w-8 p-0 flex-shrink-0" onClick={() => handleReturnToQueue(song)}>
                                                 <Play className="h-4 w-4 text-green-500 hover:text-green-400" />
                                               </Button>
@@ -1530,7 +1530,7 @@ export default function AdminDashboard() {
                                               )}
                                             </div>
                                             {song.timestamp && (
-                                              <span className="text-xs text-gray-500 mt-1">
+                                              <span className="text-xs text-gray-500 mt-1 text-right truncate max-w-full">
                                                 Completed: {formatTimestamp(song.timestamp)}
                                               </span>
                                             )}
