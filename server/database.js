@@ -731,8 +731,8 @@ function deleteHistoryItem(id) {
  */
 function getRecentHistory() {
     try {
-        // Order by display_order DESC now, limit to 20
-        const historyItems = db.prepare('SELECT * FROM song_history ORDER BY display_order DESC LIMIT 20').all();
+        // Order by completedAt DESC instead of display_order for automatic chronological sorting
+        const historyItems = db.prepare('SELECT * FROM song_history ORDER BY completedAt DESC LIMIT 20').all();
         
         return historyItems.map(item => {
             let spotifyData = null;
@@ -798,8 +798,8 @@ function getHistoryWithOffset(limit, offset) {
     }
 
     try {
-        // Use placeholders for safety, order by display_order DESC
-        const stmt = db.prepare('SELECT * FROM song_history ORDER BY display_order DESC LIMIT ? OFFSET ?');
+        // Use placeholders for safety, order by completedAt DESC for automatic chronological sorting
+        const stmt = db.prepare('SELECT * FROM song_history ORDER BY completedAt DESC LIMIT ? OFFSET ?');
         const historyItems = stmt.all(limit, offset);
 
         return historyItems.map(item => {
