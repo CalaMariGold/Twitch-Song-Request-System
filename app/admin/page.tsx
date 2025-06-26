@@ -1506,23 +1506,23 @@ export default function AdminDashboard() {
                                         </div>
                                         
                                         {/* Existing Actions & Timestamp */} 
-                                        <div className="flex-shrink-0 flex flex-col items-end">
-                                           <div className="flex space-x-1">
-                                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handleReturnToQueue(song)}>
+                                        <div className="flex-shrink-0 flex flex-col items-end min-w-0">
+                                           <div className="flex space-x-1 flex-wrap gap-y-1 justify-end">
+                                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0 flex-shrink-0" onClick={() => handleReturnToQueue(song)}>
                                                 <Play className="h-4 w-4 text-green-500 hover:text-green-400" />
                                               </Button>
-                                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handleRemoveFromHistory(song.id)}>
+                                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0 flex-shrink-0" onClick={() => handleRemoveFromHistory(song.id)}>
                                                 <Trash2 className="h-4 w-4 text-red-500 hover:text-red-400" />
                                               </Button>
                                               {song.youtubeUrl && (
-                                               <a href={song.youtubeUrl} target="_blank" rel="noopener noreferrer" aria-label="Watch on YouTube">
+                                               <a href={song.youtubeUrl} target="_blank" rel="noopener noreferrer" aria-label="Watch on YouTube" className="flex-shrink-0">
                                                 <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
                                                   <Youtube className="h-4 w-4 text-red-600 hover:text-red-500" />
                                                 </Button>
                                                </a>
                                               )}
                                               {song.spotifyData && song.spotifyData.url && (
-                                                <a href={song.spotifyData.url} target="_blank" rel="noopener noreferrer" aria-label="Listen on Spotify">
+                                                <a href={song.spotifyData.url} target="_blank" rel="noopener noreferrer" aria-label="Listen on Spotify" className="flex-shrink-0">
                                                   <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
                                                     <SpotifyIcon className="h-4 w-4 text-green-500 hover:text-green-400" />
                                                   </Button>
