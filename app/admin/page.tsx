@@ -1411,8 +1411,8 @@ export default function AdminDashboard() {
                                         style={{
                                           ...provided.draggableProps.style,
                                           // Override any width/positioning that might come from DND
-                                          width: '100%',
-                                          maxWidth: '100%'
+                                          width: '80%',
+                                          maxWidth: '80%'
                                         }}
                                       >
                                         {/* Drag Handle */} 
