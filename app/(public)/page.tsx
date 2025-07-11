@@ -295,9 +295,10 @@ export default function PublicDashboard() {
                      <AlertTriangle size={16} className="text-red-400" /> Song Rules
                    </h4>
                    <ul className="list-disc list-inside text-brand-purple-light/80 space-y-0.5 pl-1 text-xs">
-                    <li>No Deathcore</li>
+                    <li>No Deathcore/Death Metal</li>
                     <li>No Jazz</li>
-                    <li>No YouTuber/Fandom songs (ie FNAF)</li>
+                    <li>No YouTuber music (ie KSI)</li>
+                    <li>No Fandom songs (ie FNAF)</li>
                     <li>No AI-Generated Music</li>
                   </ul>
                 </div>
