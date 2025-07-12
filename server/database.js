@@ -1214,6 +1214,39 @@ function removeSpotifyDataFromSong(requestId, table = 'active_queue') {
 }
 
 /**
+ * Updates the completedAt timestamp for a specific song in the history.
+ * @param {string} historyId - The ID of the history item to update.
+ * @param {string} newTimestamp - The new timestamp in ISO format.
+ * @returns {boolean} True if update was successful, false otherwise.
+ */
+function updateHistoryTimestamp(historyId, newTimestamp) {
+    if (!db) {
+        console.error(chalk.red('[Database] Database not initialized. Cannot update history timestamp.'));
+        return false;
+    }
+    if (!historyId || !newTimestamp) {
+        console.warn(chalk.yellow('[Database] updateHistoryTimestamp called with invalid parameters.'));
+        return false;
+    }
+
+    try {
+        const stmt = db.prepare('UPDATE song_history SET completedAt = ? WHERE id = ?');
+        const result = stmt.run(newTimestamp, historyId);
+        
+        if (result.changes > 0) {
+            console.log(chalk.blue(`[DB] Successfully updated timestamp for history item ${historyId} to ${newTimestamp}`));
+            return true;
+        } else {
+            console.log(chalk.yellow(`[DB] No history item found with ID ${historyId}. No changes made.`));
+            return false;
+        }
+    } catch (error) {
+        console.error(chalk.red(`[DB] Error updating timestamp for history item ${historyId}:`), error);
+        return false;
+    }
+}
+
+/**
  * Retrieves a paginated list of song history for a specific user and the total count of their requests.
  * @param {string} userLogin - The Twitch login name of the user.
  * @param {number} limit - The maximum number of items to fetch.
@@ -1329,5 +1362,6 @@ module.exports = {
     removeSpotifyDataFromSong,
     getDb,
     updateHistoryDisplayOrder,
+    updateHistoryTimestamp,
     getHistoryForUser
 }; 

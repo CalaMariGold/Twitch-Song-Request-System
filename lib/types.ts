@@ -196,6 +196,8 @@ export interface SocketEvents {
     adminRemoveSpotifyData: (payload: { requestId: string; source: 'queue' | 'history' | 'activeSong' }) => void;
     // --- History Pagination Request ---
     getMoreHistory: (data: { offset: number; limit: number }) => void;
+    // --- History Timestamp Update ---
+    updateHistoryTimestamp: (data: { id: string; timestamp: string }) => void;
     
     // --- Public/User Actions --- 
     getYouTubeDetails: (youtubeUrl: string, callback: (error: { message: string } | null, details?: YouTubeVideoDetails) => void) => void;

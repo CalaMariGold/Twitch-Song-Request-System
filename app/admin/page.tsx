@@ -135,6 +135,9 @@ export default function AdminDashboard() {
   const [totalQueueCount, setTotalQueueCount] = useState(0)
   const [songsPlayedToday, setSongsPlayedToday] = useState(0)
   const [historyList, setHistoryList] = useState<SongRequest[]>([])
+  const [isTimestampDialogOpen, setIsTimestampDialogOpen] = useState(false)
+  const [editingTimestampId, setEditingTimestampId] = useState<string | null>(null)
+  const [timestampInputValue, setTimestampInputValue] = useState<string>("")
   const { toast } = useToast()
 
   // Define closeSpotifyLinkDialog early so it can be used in useEffect
@@ -780,6 +783,56 @@ export default function AdminDashboard() {
     });
   }
 
+  const handleEditTimestamp = (song: SongRequest) => {
+    setEditingTimestampId(song.id)
+    // Convert to datetime-local format (YYYY-MM-DDTHH:mm)
+    if (song.timestamp) {
+      const date = new Date(song.timestamp)
+      const localDateTime = new Date(date.getTime() - date.getTimezoneOffset() * 60000)
+        .toISOString()
+        .slice(0, 16)
+      setTimestampInputValue(localDateTime)
+    } else {
+      // Default to current time if no timestamp
+      const now = new Date()
+      const localDateTime = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
+        .toISOString()
+        .slice(0, 16)
+      setTimestampInputValue(localDateTime)
+    }
+    setIsTimestampDialogOpen(true)
+  }
+
+  const handleSaveTimestamp = () => {
+    if (!socket || !editingTimestampId || !timestampInputValue) {
+      return
+    }
+
+    // Convert datetime-local back to ISO string
+    const isoTimestamp = new Date(timestampInputValue).toISOString()
+    
+    socket.emit('updateHistoryTimestamp', {
+      id: editingTimestampId,
+      timestamp: isoTimestamp
+    })
+
+    // Close dialog and reset state
+    setIsTimestampDialogOpen(false)
+    setEditingTimestampId(null)
+    setTimestampInputValue("")
+
+    toast({
+      title: "Timestamp Updated",
+      description: "Song timestamp has been updated successfully.",
+    })
+  }
+
+  const handleCancelTimestampEdit = () => {
+    setIsTimestampDialogOpen(false)
+    setEditingTimestampId(null)
+    setTimestampInputValue("")
+  }
+
   // Calculate total queue duration
   const { formatted: totalQueueDurationFormatted } = calculateTotalQueueDuration(appState.queue)
 
@@ -918,6 +971,45 @@ export default function AdminDashboard() {
                className="bg-purple-600 hover:bg-purple-700"
              >
                Update Spotify URL
+             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Timestamp Edit Dialog */}
+      <Dialog open={isTimestampDialogOpen} onOpenChange={setIsTimestampDialogOpen}>
+        <DialogContent className="sm:max-w-[400px] bg-gray-850 border-gray-700 text-white">
+          <DialogHeader>
+            <DialogTitle>Edit Song Timestamp</DialogTitle>
+            <DialogDescription className="text-gray-400">
+              Change the completion time of this song. This will affect the ordering in the history.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="timestamp-input" className="text-right">
+                Date & Time
+              </Label>
+              <Input
+                id="timestamp-input"
+                type="datetime-local"
+                value={timestampInputValue}
+                onChange={(e) => setTimestampInputValue(e.target.value)}
+                className="col-span-3 bg-gray-700 border-gray-600 text-white focus:border-blue-500 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+          <DialogFooter className="bg-gray-850">
+             <Button type="button" variant="outline" onClick={handleCancelTimestampEdit}>
+               Cancel
+             </Button>
+             <Button 
+               type="button" 
+               onClick={handleSaveTimestamp} 
+               disabled={!isConnected || !timestampInputValue} 
+               className="bg-blue-600 hover:bg-blue-700"
+             >
+               Update Timestamp
              </Button>
           </DialogFooter>
         </DialogContent>
@@ -1430,6 +1522,9 @@ export default function AdminDashboard() {
                                         {/* Actions & Timestamp */} 
                                         <div className="flex-shrink-0 flex flex-col items-end w-[120px] overflow-visible">
                                            <div className="flex space-x-1 mb-1 justify-end">
+                                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handleEditTimestamp(song)} title="Edit Timestamp">
+                                                <Edit className="h-4 w-4 text-blue-500 hover:text-blue-400" />
+                                              </Button>
                                               <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handleReturnToQueue(song)}>
                                                 <Play className="h-4 w-4 text-green-500 hover:text-green-400" />
                                               </Button>

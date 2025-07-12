@@ -1177,6 +1177,24 @@ io.on('connection', (socket) => {
         }
     }))
 
+    // Add handler for updating history item timestamp
+    socket.on('updateHistoryTimestamp', requireAdmin((data) => {
+        if (!data || !data.id || !data.timestamp) {
+            console.warn(chalk.yellow(`[Admin:${socket.id}] Invalid data for updateHistoryTimestamp:`, data));
+            return;
+        }
+
+        const success = db.updateHistoryTimestamp(data.id, data.timestamp);
+        if (success) {
+            // Fetch and send updated history to all clients
+            const recentHistory = db.getRecentHistory();
+            io.emit('historyUpdate', recentHistory);
+            console.log(chalk.magenta(`[Admin:${socket.id}] History item ${data.id} timestamp updated to ${data.timestamp}`));
+        } else {
+            console.error(chalk.red(`[Admin:${socket.id}] Failed to update timestamp for history item ${data.id}`));
+        }
+    }))
+
     // Add handler for skipping a song
     socket.on('skipSong', requireAdmin(() => {
         const songToSkip = state.activeSong;
