@@ -139,6 +139,14 @@ export default function AdminDashboard() {
   const [editingTimestampId, setEditingTimestampId] = useState<string | null>(null)
   const [timestampInputValue, setTimestampInputValue] = useState<string>("")
   const { toast } = useToast()
+  // Add state for admin history search
+  const [adminHistorySearch, setAdminHistorySearch] = useState("");
+  const [adminSearchResults, setAdminSearchResults] = useState<SongRequest[]>([]);
+  const [isAdminSearching, setIsAdminSearching] = useState(false);
+  const [adminSearchTotal, setAdminSearchTotal] = useState(0);
+  const [adminSearchPage, setAdminSearchPage] = useState(1);
+  const [isLoadingAdminSearch, setIsLoadingAdminSearch] = useState(false);
+  const ADMIN_SEARCH_PAGE_SIZE = 20;
 
   // Define closeSpotifyLinkDialog early so it can be used in useEffect
   const closeSpotifyLinkDialog = useCallback(() => {
@@ -510,6 +518,46 @@ export default function AdminDashboard() {
       }
     }
   }, [])
+
+  // Effect: When adminHistorySearch changes, trigger backend search or reset
+  useEffect(() => {
+    if (!socket) return;
+    if (adminHistorySearch.trim() === "") {
+      setIsAdminSearching(false);
+      setAdminSearchResults([]);
+      setAdminSearchTotal(0);
+      setAdminSearchPage(1);
+      return;
+    }
+    setIsAdminSearching(true);
+    setIsLoadingAdminSearch(true);
+    setAdminSearchPage(1);
+    (socket as any).emit('searchHistory', { query: adminHistorySearch, limit: ADMIN_SEARCH_PAGE_SIZE, offset: 0 }, (res: any) => {
+      if (res && !res.error) {
+        setAdminSearchResults(res.results || []);
+        setAdminSearchTotal(res.total || 0);
+      } else {
+        setAdminSearchResults([]);
+        setAdminSearchTotal(0);
+      }
+      setIsLoadingAdminSearch(false);
+    });
+  }, [adminHistorySearch, socket]);
+
+  // Function to load more admin search results
+  const loadMoreAdminSearchResults = () => {
+    if (!socket || isLoadingAdminSearch) return;
+    setIsLoadingAdminSearch(true);
+    const nextOffset = adminSearchPage * ADMIN_SEARCH_PAGE_SIZE;
+    (socket as any).emit('searchHistory', { query: adminHistorySearch, limit: ADMIN_SEARCH_PAGE_SIZE, offset: nextOffset }, (res: any) => {
+      if (res && !res.error) {
+        setAdminSearchResults(prev => [...prev, ...(res.results || [])]);
+        setAdminSearchTotal(res.total || 0);
+        setAdminSearchPage(prev => prev + 1);
+      }
+      setIsLoadingAdminSearch(false);
+    });
+  };
 
   // Handlers
   const handlePlaySong = (song: SongRequest) => {
@@ -1452,178 +1500,210 @@ export default function AdminDashboard() {
                 </ScrollArea>
             </TabsContent>
             <TabsContent value="history">
-               <div className="flex justify-between items-center mb-3 px-1">
-                  <h3 className="text-lg font-semibold text-white">Played History</h3>
-               </div>
-               <ScrollArea className="h-[80vh] w-full rounded-md border border-gray-700 p-4 bg-gray-800 overflow-hidden">
-                    {appState.isLoading ? (
-                       <div className="flex items-center justify-center h-full"><Loader2 className="w-8 h-8 animate-spin text-gray-400" /></div>
-                    ) : historyList.length > 0 ? (
-                      <>
-                        <ul className="space-y-2 w-full max-w-[790px] overflow-visible">
-                          {historyList.map((song, index) => (
-                            <li 
-                              key={song.id}
-                              className="flex items-center space-x-3 p-3 rounded-md bg-gray-800 hover:bg-gray-700/80 transition mb-2 group w-full max-w-full overflow-visible"
-                            >
-                              {/* Index */}
-                              <div className="flex-shrink-0 font-semibold text-gray-400 w-6 text-center">
-                                {index + 1}. 
-                              </div>
-                                        
-                                        {/* Existing Thumbnail */}
-                                        <div className="relative w-16 h-9 rounded-md overflow-hidden flex-shrink-0 border border-gray-700">
-                                          {song.thumbnailUrl ? (
-                                            <img 
-                                              src={song.thumbnailUrl} 
-                                              alt={song.title || 'Video thumbnail'}
-                                              className="w-full h-full object-cover"
-                                            />
+              <div className="flex justify-between items-center mb-3 px-1">
+                <h3 className="text-lg font-semibold text-white">Played History</h3>
+                <Input
+                  type="text"
+                  placeholder="Search songs, artists, or requesters..."
+                  value={adminHistorySearch}
+                  onChange={e => setAdminHistorySearch(e.target.value)}
+                  className="w-96 bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:border-purple-500 focus:ring-purple-500 ml-4"
+                />
+              </div>
+              <ScrollArea className="h-[80vh] w-full rounded-md border border-gray-700 p-4 bg-gray-800 overflow-hidden">
+                {appState.isLoading ? (
+                  <div className="flex items-center justify-center h-full"><Loader2 className="w-8 h-8 animate-spin text-gray-400" /></div>
+                ) : (isAdminSearching ? adminSearchResults.length > 0 : historyList.length > 0) ? (
+                  <>
+                    <ul className="space-y-2 w-full max-w-[790px] overflow-visible">
+                      {(isAdminSearching ? adminSearchResults : historyList).map((song, index) => (
+                        <li 
+                          key={song.id}
+                          className="flex items-center space-x-3 p-3 rounded-md bg-gray-800 hover:bg-gray-700/80 transition mb-2 group w-full max-w-full overflow-visible"
+                        >
+                          {/* Index */}
+                          <div className="flex-shrink-0 font-semibold text-gray-400 w-6 text-center">
+                            {index + 1}. 
+                          </div>
+                                    
+                                    {/* Existing Thumbnail */}
+                                    <div className="relative w-16 h-9 rounded-md overflow-hidden flex-shrink-0 border border-gray-700">
+                                      {song.thumbnailUrl ? (
+                                        <img 
+                                          src={song.thumbnailUrl} 
+                                          alt={song.title || 'Video thumbnail'}
+                                          className="w-full h-full object-cover"
+                                        />
+                                      ) : (
+                                        <div className="w-full h-full rounded-md bg-gray-700 flex items-center justify-center">
+                                          <Music size={20} className="text-gray-400"/>
+                                        </div>
+                                      )}
+                                    </div>
+                                    
+                                    {/* Song Info */} 
+                                    <div className="flex-1 min-w-0 pr-2 overflow-visible">
+                                       <p className="font-medium text-white truncate" title={song.title}>{song.title || 'Unknown Title'}</p>
+                                       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1">
+                                          {/* ... Artist Badge, Duration, Requester Info ... */} 
+                                          {song.channelId ? (
+                                            <Link href={`https://www.youtube.com/channel/${song.channelId}`} target="_blank" rel="noopener noreferrer" className="hover:text-purple-300 transition-colors group/artist">
+                                              <Badge variant="outline" className="text-xs font-normal cursor-pointer group-hover/artist:border-purple-400 group-hover/artist:text-purple-300 transition-colors">
+                                                {song.artist || 'Unknown Artist'}
+                                              </Badge>
+                                            </Link>
                                           ) : (
-                                            <div className="w-full h-full rounded-md bg-gray-700 flex items-center justify-center">
-                                              <Music size={20} className="text-gray-400"/>
+                                            <Badge variant="outline" className="text-xs font-normal">
+                                              {song.artist || 'Unknown Artist'}
+                                            </Badge>
+                                          )}
+                                          <span className="text-xs text-gray-400 flex items-center">
+                                            <Clock className="inline-block mr-1" size={12} />
+                                            {formatDuration(song.durationSeconds) || '?:??'}
+                                          </span>
+                                          <div className="text-xs text-gray-400 flex items-center gap-1">
+                                            by{' '}
+                                            <Avatar className="w-3 h-3 rounded-full inline-block">
+                                              <AvatarImage src={song.requesterAvatar ?? undefined} alt={song.requester} />
+                                              <AvatarFallback className="text-[8px]">{song.requester.slice(0,1)}</AvatarFallback>
+                                            </Avatar>
+                                            <Link href={`https://www.twitch.tv/${song.requesterLogin || song.requester.toLowerCase()}`} target="_blank" rel="noopener noreferrer" className="hover:text-gray-300 underline transition-colors truncate">
+                                              {song.requester}
+                                            </Link>
+                                          </div>
+                                           {/* Request type badges */} 
+                                           {song.requestType === 'donation' && (
+                                             <Badge variant="secondary" className="px-1.5 py-0.5 text-xs bg-green-800 text-green-200 border-green-700">
+                                               Dono
+                                             </Badge>
+                                           )}
+                                           {song.requestType === 'channelPoint' && (
+                                             <Badge variant="outline" className="px-1.5 py-0.5 text-xs bg-purple-800 text-purple-200 border-purple-700">
+                                               Points
+                                             </Badge>
+                                           )}
+                                        </div>
+                                        {/* START: Added Spotify Details */} 
+                                        {song.spotifyData && (
+                                            <div className="mt-1 text-xs flex items-center text-gray-400 gap-1.5" title={`Spotify: ${song.spotifyData.name} by ${song.spotifyData.artists?.map((a: {name: string}) => a.name).join(', ')}`}>
+                                                <SpotifyIcon className="h-3 w-3 text-green-500 flex-shrink-0" />
+                                                <span className="truncate">
+                                                    {song.spotifyData.name} - {song.spotifyData.artists?.map((a: { name: string }) => a.name).join(', ')}
+                                                </span>
+                                                {/* Display URL link if it exists */} 
+                                                {song.spotifyData.url && (
+                                                  <a 
+                                                    href={song.spotifyData.url} 
+                                                    target="_blank" 
+                                                    rel="noopener noreferrer" 
+                                                    title="Open on Spotify"
+                                                    className="ml-1 text-gray-500 hover:text-green-400 transition-colors"
+                                                    onClick={(e) => e.stopPropagation()} // Prevent triggering other actions
+                                                  >
+                                                    <LinkIcon size={12} />
+                                                  </a>
+                                                )}
                                             </div>
+                                        )}
+                                        {/* END: Added Spotify Details */} 
+                                    </div>
+                                    
+                                    {/* Actions & Timestamp */} 
+                                    <div className="flex-shrink-0 flex flex-col items-end w-[120px] overflow-visible">
+                                       <div className="flex space-x-1 mb-1 justify-end">
+                                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handleEditTimestamp(song)} title="Edit Timestamp">
+                                            <Edit className="h-4 w-4 text-blue-500 hover:text-blue-400" />
+                                          </Button>
+                                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handleReturnToQueue(song)}>
+                                            <Play className="h-4 w-4 text-green-500 hover:text-green-400" />
+                                          </Button>
+                                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handleRemoveFromHistory(song.id)}>
+                                            <Trash2 className="h-4 w-4 text-red-500 hover:text-red-400" />
+                                          </Button>
+                                          {song.youtubeUrl && (
+                                           <a href={song.youtubeUrl} target="_blank" rel="noopener noreferrer" aria-label="Watch on YouTube">
+                                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                                              <Youtube className="h-4 w-4 text-red-600 hover:text-red-500" />
+                                            </Button>
+                                           </a>
+                                          )}
+                                          {song.spotifyData && song.spotifyData.url && (
+                                            <a href={song.spotifyData.url} target="_blank" rel="noopener noreferrer" aria-label="Listen on Spotify">
+                                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                                                <SpotifyIcon className="h-4 w-4 text-green-500 hover:text-green-400" />
+                                              </Button>
+                                            </a>
                                           )}
                                         </div>
-                                        
-                                        {/* Song Info */} 
-                                        <div className="flex-1 min-w-0 pr-2 overflow-visible">
-                                           <p className="font-medium text-white truncate" title={song.title}>{song.title || 'Unknown Title'}</p>
-                                           <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1">
-                                              {/* ... Artist Badge, Duration, Requester Info ... */} 
-                                              {song.channelId ? (
-                                                <Link href={`https://www.youtube.com/channel/${song.channelId}`} target="_blank" rel="noopener noreferrer" className="hover:text-purple-300 transition-colors group/artist">
-                                                  <Badge variant="outline" className="text-xs font-normal cursor-pointer group-hover/artist:border-purple-400 group-hover/artist:text-purple-300 transition-colors">
-                                                    {song.artist || 'Unknown Artist'}
-                                                  </Badge>
-                                                </Link>
-                                              ) : (
-                                                <Badge variant="outline" className="text-xs font-normal">
-                                                  {song.artist || 'Unknown Artist'}
-                                                </Badge>
-                                              )}
-                                              <span className="text-xs text-gray-400 flex items-center">
-                                                <Clock className="inline-block mr-1" size={12} />
-                                                {formatDuration(song.durationSeconds) || '?:??'}
-                                              </span>
-                                              <div className="text-xs text-gray-400 flex items-center gap-1">
-                                                by{' '}
-                                                <Avatar className="w-3 h-3 rounded-full inline-block">
-                                                  <AvatarImage src={song.requesterAvatar ?? undefined} alt={song.requester} />
-                                                  <AvatarFallback className="text-[8px]">{song.requester.slice(0,1)}</AvatarFallback>
-                                                </Avatar>
-                                                <Link href={`https://www.twitch.tv/${song.requesterLogin || song.requester.toLowerCase()}`} target="_blank" rel="noopener noreferrer" className="hover:text-gray-300 underline transition-colors truncate">
-                                                  {song.requester}
-                                                </Link>
-                                              </div>
-                                               {/* Request type badges */} 
-                                               {song.requestType === 'donation' && (
-                                                 <Badge variant="secondary" className="px-1.5 py-0.5 text-xs bg-green-800 text-green-200 border-green-700">
-                                                   Dono
-                                                 </Badge>
-                                               )}
-                                               {song.requestType === 'channelPoint' && (
-                                                 <Badge variant="outline" className="px-1.5 py-0.5 text-xs bg-purple-800 text-purple-200 border-purple-700">
-                                                   Points
-                                                 </Badge>
-                                               )}
-                                            </div>
-                                            {/* START: Added Spotify Details */} 
-                                            {song.spotifyData && (
-                                                <div className="mt-1 text-xs flex items-center text-gray-400 gap-1.5" title={`Spotify: ${song.spotifyData.name} by ${song.spotifyData.artists?.map((a: {name: string}) => a.name).join(', ')}`}>
-                                                    <SpotifyIcon className="h-3 w-3 text-green-500 flex-shrink-0" />
-                                                    <span className="truncate">
-                                                        {song.spotifyData.name} - {song.spotifyData.artists?.map((a: { name: string }) => a.name).join(', ')}
-                                                    </span>
-                                                    {/* Display URL link if it exists */} 
-                                                    {song.spotifyData.url && (
-                                                      <a 
-                                                        href={song.spotifyData.url} 
-                                                        target="_blank" 
-                                                        rel="noopener noreferrer" 
-                                                        title="Open on Spotify"
-                                                        className="ml-1 text-gray-500 hover:text-green-400 transition-colors"
-                                                        onClick={(e) => e.stopPropagation()} // Prevent triggering other actions
-                                                      >
-                                                        <LinkIcon size={12} />
-                                                      </a>
-                                                    )}
-                                                </div>
-                                            )}
-                                            {/* END: Added Spotify Details */} 
-                                        </div>
-                                        
-                                        {/* Actions & Timestamp */} 
-                                        <div className="flex-shrink-0 flex flex-col items-end w-[120px] overflow-visible">
-                                           <div className="flex space-x-1 mb-1 justify-end">
-                                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handleEditTimestamp(song)} title="Edit Timestamp">
-                                                <Edit className="h-4 w-4 text-blue-500 hover:text-blue-400" />
-                                              </Button>
-                                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handleReturnToQueue(song)}>
-                                                <Play className="h-4 w-4 text-green-500 hover:text-green-400" />
-                                              </Button>
-                                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handleRemoveFromHistory(song.id)}>
-                                                <Trash2 className="h-4 w-4 text-red-500 hover:text-red-400" />
-                                              </Button>
-                                              {song.youtubeUrl && (
-                                               <a href={song.youtubeUrl} target="_blank" rel="noopener noreferrer" aria-label="Watch on YouTube">
-                                                <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                                                  <Youtube className="h-4 w-4 text-red-600 hover:text-red-500" />
-                                                </Button>
-                                               </a>
-                                              )}
-                                              {song.spotifyData && song.spotifyData.url && (
-                                                <a href={song.spotifyData.url} target="_blank" rel="noopener noreferrer" aria-label="Listen on Spotify">
-                                                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                                                    <SpotifyIcon className="h-4 w-4 text-green-500 hover:text-green-400" />
-                                                  </Button>
-                                                </a>
-                                              )}
-                                            </div>
-                                            {song.timestamp && (
-                                              <div className="text-xs text-gray-500 text-right leading-tight w-full">
-                                                <div className="truncate">Completed:</div>
-                                                <div className="font-mono text-[10px] truncate" title={formatTimestamp(song.timestamp)}>{formatTimestamp(song.timestamp)}</div>
-                                              </div>
-                                            )}
-                                        </div>
-                                      </li>
-                                    ))}
-                        </ul>
-                         
-                         {/* Move Load More Button inside ScrollArea */}
-                         {hasMoreHistory && (
-                           <div className="mt-6 flex justify-center">
-                             <Button
-                               variant="outline"
-                               className="bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600 hover:border-gray-500"
-                               onClick={loadMoreHistory}
-                               disabled={isLoadingMoreHistory}
-                             >
-                               {isLoadingMoreHistory ? (
-                                 <>
-                                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                   Loading...
-                                 </>
-                               ) : (
-                                 <>Load More History</>
-                               )}
-                             </Button>
-                           </div>
-                         )}
-                         
-                         {/* Show message when there's no more history to load */}
-                         {!hasMoreHistory && (
-                           <div className="mt-4 text-center text-gray-500 text-sm">
-                             End of history reached
-                           </div>
-                         )}
-                      </>
+                                        {song.timestamp && (
+                                          <div className="text-xs text-gray-500 text-right leading-tight w-full">
+                                            <div className="truncate">Completed:</div>
+                                            <div className="font-mono text-[10px] truncate" title={formatTimestamp(song.timestamp)}>{formatTimestamp(song.timestamp)}</div>
+                                          </div>
+                                        )}
+                                    </div>
+                                  </li>
+                                ))}
+                    </ul>
+                    {/* Load More for search or normal history */}
+                    {isAdminSearching ? (
+                      adminSearchResults.length < adminSearchTotal && (
+                        <div className="mt-6 flex justify-center">
+                          <Button
+                            variant="outline"
+                            className="bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600 hover:border-gray-500"
+                            onClick={loadMoreAdminSearchResults}
+                            disabled={isLoadingAdminSearch}
+                          >
+                            {isLoadingAdminSearch ? (
+                              <>
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                Loading...
+                              </>
+                            ) : (
+                              <>Load More Results</>
+                            )}
+                          </Button>
+                        </div>
+                      )
                     ) : (
-                      <p className="text-gray-400 italic text-center py-10">No song history available.</p>
+                      hasMoreHistory && historyList.length > 0 && (
+                        <div className="mt-6 flex justify-center">
+                          <Button
+                            variant="outline"
+                            className="bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600 hover:border-gray-500"
+                            onClick={loadMoreHistory}
+                            disabled={isLoadingMoreHistory}
+                          >
+                            {isLoadingMoreHistory ? (
+                              <>
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                Loading...
+                              </>
+                            ) : (
+                              <>Load More History</>
+                            )}
+                          </Button>
+                        </div>
+                      )
                     )}
-                 </ScrollArea>
-                  {/* --- END Modified History List --- */} 
+                    {/* End of history message for search */}
+                    {isAdminSearching && adminSearchResults.length >= adminSearchTotal && adminSearchResults.length > 0 && (
+                      <div className="mt-4 text-center text-gray-500 text-sm">
+                        End of search results
+                      </div>
+                    )}
+                    {/* End of history message for normal history */}
+                    {!isAdminSearching && !hasMoreHistory && historyList.length > 0 && (
+                      <div className="mt-4 text-center text-gray-500 text-sm">
+                        End of history reached
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-gray-400 italic text-center py-10">No song history available.</p>
+                )}
+              </ScrollArea>
             </TabsContent>
           </Tabs>
 
