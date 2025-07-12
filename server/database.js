@@ -150,7 +150,6 @@ function initDatabase(dbPath) {
         }
         // --- End migration logic --- 
         ensureSpotifyColumnsExist();
-        ensureHistoryDisplayOrderColumnExists();
 
         // Index Creation
         const createHistoryIndexes = `
@@ -179,44 +178,7 @@ function initDatabase(dbPath) {
     }
 }
 
-// Function to ensure the display_order column exists and is populated
-function ensureHistoryDisplayOrderColumnExists() {
-    try {
-        const historyColumns = db.prepare("PRAGMA table_info(song_history)").all();
-        const displayOrderColExists = historyColumns.some(col => col.name === 'display_order');
 
-        if (!displayOrderColExists) {
-            console.log(chalk.blue('[Database] Adding display_order column to song_history table'));
-            db.exec('ALTER TABLE song_history ADD COLUMN display_order INTEGER');
-
-            console.log(chalk.blue('[Database] Populating initial display_order values for existing history...'));
-            // Use ROW_NUMBER() to assign order based on completion time (newest = 0)
-            // Wrap in a transaction for efficiency
-            db.transaction(() => {
-                const updateStmt = db.prepare(`
-                    WITH OrderedHistory AS (
-                        SELECT 
-                            id, 
-                            ROW_NUMBER() OVER (ORDER BY completedAt DESC) - 1 as rn
-                        FROM song_history
-                    )
-                    UPDATE song_history
-                    SET display_order = (SELECT rn FROM OrderedHistory WHERE OrderedHistory.id = song_history.id)
-                    WHERE id IN (SELECT id FROM OrderedHistory);
-                `);
-                const info = updateStmt.run();
-                console.log(chalk.green(`[Database] Populated display_order for ${info.changes} history rows.`));
-            })();
-
-            // Add an index after populating
-            console.log(chalk.blue('[Database] Creating index on display_order column'));
-            db.exec('CREATE INDEX IF NOT EXISTS idx_history_display_order ON song_history (display_order ASC)');
-        }
-
-    } catch (migrationError) {
-        console.error(chalk.red('[Database] Error during display_order column migration/population:'), migrationError);
-    }
-}
 
 // Function to ensure Spotify columns exist and youtubeUrl is NULLable
 function ensureSpotifyColumnsExist() {
@@ -359,11 +321,11 @@ function prepareStatements() {
             INSERT INTO song_history (
                 youtubeUrl, title, artist, channelId, durationSeconds, 
                 requester, requesterLogin, requesterAvatar, thumbnailUrl, 
-                requestType, completedAt, spotifyData, display_order 
+                requestType, completedAt, spotifyData 
             ) VALUES (
                 @youtubeUrl, @title, @artist, @channelId, @durationSeconds, 
                 @requester, @requesterLogin, @requesterAvatar, @thumbnailUrl, 
-                @requestType, @completedAt, @spotifyData, @displayOrder
+                @requestType, @completedAt, @spotifyData 
             )
         `);
         insertQueueStmt = db.prepare(`
@@ -653,10 +615,6 @@ function logCompletedSong(song) {
             const spotifyDataJson = song.spotifyData ? JSON.stringify(song.spotifyData) : null;
             const completedAt = song.completedAt || new Date().toISOString();
             
-            // Calculate next display order
-            const maxOrderResult = db.prepare('SELECT MAX(display_order) as max_order FROM song_history').get();
-            const nextDisplayOrder = (maxOrderResult?.max_order ?? -1) + 1;
-            
             const historyParams = {
                 youtubeUrl: song.youtubeUrl || null,
                 title: song.title || 'Unknown Title',
@@ -669,8 +627,7 @@ function logCompletedSong(song) {
                 thumbnailUrl: song.thumbnailUrl || null,
                 requestType: song.requestType || 'unknown',
                 completedAt: completedAt,
-                spotifyData: spotifyDataJson,
-                displayOrder: nextDisplayOrder
+                spotifyData: spotifyDataJson
             };
             insertHistoryStmt.run(historyParams);
             
@@ -771,8 +728,7 @@ function getRecentHistory() {
                 thumbnailUrl: item.thumbnailUrl,
                 requestType: item.requestType,
                 source: 'database_history',
-                spotifyData: spotifyData,
-                displayOrder: item.display_order
+                spotifyData: spotifyData
             };
         });
     } catch (err) {
@@ -839,8 +795,7 @@ function getHistoryWithOffset(limit, offset) {
                 thumbnailUrl: item.thumbnailUrl,
                 requestType: item.requestType,
                 source: 'database_history',
-                spotifyData: spotifyData,
-                displayOrder: item.display_order
+                spotifyData: spotifyData
             };
         });
     } catch (err) {
@@ -1108,56 +1063,6 @@ function updateSongYouTubeUrlAndDetailsInDbQueue(appRequestId, youtubeUrl, title
   }
 }
 
-// Function to update display order for history
-function updateHistoryDisplayOrder(orderedIds) {
-    if (!db) {
-        console.error(chalk.red('[Database] Database not initialized. Cannot update history order.'));
-        return false;
-    }
-    if (!Array.isArray(orderedIds) || orderedIds.length === 0) {
-        console.warn(chalk.yellow('[Database] updateHistoryDisplayOrder called with invalid or empty array.'));
-        return false; // Nothing to do
-    }
-
-    try {
-        // First verify that all IDs exist in the database
-        const checkIdsStmt = db.prepare('SELECT COUNT(*) as count FROM song_history WHERE id = ?');
-        const invalidIds = [];
-        
-        for (const id of orderedIds) {
-            const result = checkIdsStmt.get(id);
-            if (result.count === 0) {
-                invalidIds.push(id);
-            }
-        }
-        
-        if (invalidIds.length > 0) {
-            console.warn(chalk.yellow(`[Database] Some IDs don't exist in song_history: ${invalidIds.join(', ')}`));
-            // Continue with valid IDs only
-        }
-        
-        // Use a transaction for atomicity
-        const updateTransaction = db.transaction((ids) => {
-            const updateStmt = db.prepare('UPDATE song_history SET display_order = ? WHERE id = ?');
-            let changes = 0;
-            for (let i = 0; i < ids.length; i++) {
-                const id = ids[i];
-                const order = ids.length - i - 1; // Reverse order: highest index (newest) gets lowest display_order
-                const result = updateStmt.run(order, id);
-                changes += result.changes;
-            }
-            return changes;
-        });
-
-        const totalChanges = updateTransaction(orderedIds);
-        console.log(chalk.grey(`[DB Write] Updated display_order for ${totalChanges} history rows.`));
-        return totalChanges > 0;
-    } catch (err) {
-        console.error(chalk.red('[Database] Failed to update history display order:'), err);
-        return false;
-    }
-}
-
 /**
  * Removes Spotify data from a specific song request in the active queue, history, or active song.
  * @param {string} requestId - The unique request ID of the song.
@@ -1280,7 +1185,7 @@ function getHistoryForUser(userLogin, limit, offset) {
         }
 
         // Then, get the paginated history for the user, ordered by most recent
-        const historyStmt = db.prepare('SELECT * FROM song_history WHERE requesterLogin = ? COLLATE NOCASE ORDER BY display_order DESC LIMIT ? OFFSET ?');
+        const historyStmt = db.prepare('SELECT * FROM song_history WHERE requesterLogin = ? COLLATE NOCASE ORDER BY completedAt DESC LIMIT ? OFFSET ?');
         const historyItems = historyStmt.all(userLogin, limit, offset);
 
         const formattedHistory = historyItems.map(item => {
@@ -1320,8 +1225,7 @@ function getHistoryForUser(userLogin, limit, offset) {
                 thumbnailUrl: item.thumbnailUrl,
                 requestType: item.requestType,
                 source: 'database_history',
-                spotifyData: spotifyData,
-                displayOrder: item.display_order
+                spotifyData: spotifyData
             };
         });
 
@@ -1361,7 +1265,6 @@ module.exports = {
     updateSongYouTubeUrlAndDetailsInDbQueue,
     removeSpotifyDataFromSong,
     getDb,
-    updateHistoryDisplayOrder,
     updateHistoryTimestamp,
     getHistoryForUser
 }; 

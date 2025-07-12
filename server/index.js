@@ -1268,37 +1268,6 @@ io.on('connection', (socket) => {
             socket.emit('userHistoryData', { history, total, offset: data.offset });
         }
     });
-
-    // Handle History Reordering --- 
-    socket.on('updateHistoryOrder', requireAdmin((orderedIds) => {
-        if (!Array.isArray(orderedIds)) {
-            console.warn(chalk.yellow(`[Admin:${socket.id}] Received invalid data for updateHistoryOrder:`), orderedIds);
-            // Optionally emit error back
-            return;
-        }
-        
-        console.log(chalk.magenta(`[Admin:${socket.id}] Received updateHistoryOrder request for ${orderedIds.length} items.`));
-
-        try {
-            const success = db.updateHistoryDisplayOrder(orderedIds);
-            if (success) {
-                // Fetch and broadcast the *updated* recent history to ALL clients - REMOVE THIS BLOCK
-                // const recentHistory = db.getRecentHistory(); 
-                // io.emit('historyUpdate', recentHistory); 
-                // Emit a signal that order has changed --- 
-                io.emit('historyOrderChanged'); // Keep this signal
-                // --- END --- 
-                console.log(chalk.cyan(`[Admin:${socket.id}] Successfully updated history order and broadcasted signal.`)); // Updated log message
-            } else {
-                // Log error or maybe inform admin?
-                console.error(chalk.red(`[Admin:${socket.id}] Failed to update history order in database.`));
-            }
-        } catch (error) {
-            console.error(chalk.red(`[Admin:${socket.id}] Error processing updateHistoryOrder:`), error);
-            // Optionally emit error back
-        }
-    }));
-    // --- END --- 
 })
 
 // Start the server and load initial data
