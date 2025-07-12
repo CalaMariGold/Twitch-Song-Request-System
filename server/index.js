@@ -1409,6 +1409,40 @@ io.on('connection', (socket) => {
             if (callback) callback({ error: 'Search failed.' });
         }
     });
+
+    // Add handler for replacing requester name in history
+    socket.on('replaceRequesterNameInHistory', requireAdmin((data, ack) => {
+        const { oldName, newName } = data || {};
+        if (!oldName || !newName) {
+            if (ack) ack({ success: false, message: 'Both old and new names are required.' });
+            return;
+        }
+        const updatedCount = db.replaceRequesterNameInHistory(oldName, newName);
+        // Fetch and send updated history to all clients
+        const recentHistory = db.getRecentHistory();
+        io.emit('historyUpdate', recentHistory);
+        // Optionally refresh all-time stats if any rows were changed
+        if (updatedCount > 0) {
+            try {
+                const updatedStats = fetchAllTimeStats(db.getDb());
+                io.emit('allTimeStatsUpdate', updatedStats);
+            } catch (error) {
+                console.error(chalk.red('[Statistics] Error refreshing stats after requester name replacement:'), error);
+            }
+        }
+        if (ack) ack({ success: true, updatedCount });
+    }));
+
+    // Add handler for previewing requester name replacement in history
+    socket.on('previewRequesterNameReplacement', requireAdmin((data, ack) => {
+        const { oldName } = data || {};
+        if (!oldName) {
+            if (ack) ack({ success: false, message: 'Old name is required.' });
+            return;
+        }
+        const entries = db.getHistoryEntriesByRequesterName(oldName);
+        if (ack) ack({ success: true, entries });
+    }));
 })
 
 // Start the server and load initial data

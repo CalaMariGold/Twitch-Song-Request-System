@@ -1237,6 +1237,76 @@ function getHistoryForUser(userLogin, limit, offset) {
     }
 }
 
+/**
+ * Replaces all occurrences of a requester name in song_history with a new name (case-insensitive).
+ * Updates both 'requester' and 'requesterLogin' fields.
+ * @param {string} oldName - The old requester name to replace (case-insensitive).
+ * @param {string} newName - The new requester name to set.
+ * @returns {number} The number of rows updated.
+ */
+function replaceRequesterNameInHistory(oldName, newName) {
+    if (!db) {
+        console.error(chalk.red('[Database] Database not initialized. Cannot replace requester name.'));
+        return 0;
+    }
+    if (!oldName || !newName) {
+        console.warn(chalk.yellow('[Database] replaceRequesterNameInHistory called with invalid parameters.'));
+        return 0;
+    }
+    try {
+        // Update both 'requester' and 'requesterLogin' fields where either matches oldName (case-insensitive)
+        const stmt = db.prepare(`
+            UPDATE song_history
+            SET requester = @newName, requesterLogin = @newName
+            WHERE LOWER(requester) = LOWER(@oldName) OR LOWER(requesterLogin) = LOWER(@oldName)
+        `);
+        const result = stmt.run({ oldName, newName });
+        if (result.changes > 0) {
+            console.log(chalk.blue(`[DB] Updated requester name from "${oldName}" to "${newName}" in song_history. Rows affected: ${result.changes}`));
+        } else {
+            console.log(chalk.yellow(`[DB] No history items found for requester name "${oldName}".`));
+        }
+        return result.changes;
+    } catch (error) {
+        console.error(chalk.red(`[Database] Error updating requester name in history from "${oldName}" to "${newName}":`), error);
+        return 0;
+    }
+}
+
+/**
+ * Fetches all history entries for a given requester name (case-insensitive, matches either 'requester' or 'requesterLogin').
+ * Returns an array of { id, title, artist, completedAt } objects.
+ * @param {string} requesterName
+ * @returns {Array<{id: string, title: string, artist: string, completedAt: string}>}
+ */
+function getHistoryEntriesByRequesterName(requesterName) {
+    if (!db) {
+        console.error(chalk.red('[Database] Database not initialized. Cannot fetch history entries by requester name.'));
+        return [];
+    }
+    if (!requesterName) {
+        console.warn(chalk.yellow('[Database] getHistoryEntriesByRequesterName called with invalid requesterName.'));
+        return [];
+    }
+    try {
+        const stmt = db.prepare(`
+            SELECT id, title, artist, completedAt FROM song_history
+            WHERE LOWER(requester) = LOWER(?) OR LOWER(requesterLogin) = LOWER(?)
+            ORDER BY completedAt DESC
+        `);
+        const rows = stmt.all(requesterName, requesterName);
+        return rows.map(row => ({
+            id: row.id.toString(),
+            title: row.title,
+            artist: row.artist,
+            completedAt: row.completedAt
+        }));
+    } catch (error) {
+        console.error(chalk.red(`[Database] Error fetching history entries for requester name "${requesterName}":`), error);
+        return [];
+    }
+}
+
 module.exports = {
     initDatabase,
     closeDatabase,
@@ -1266,5 +1336,7 @@ module.exports = {
     removeSpotifyDataFromSong,
     getDb,
     updateHistoryTimestamp,
-    getHistoryForUser
+    getHistoryForUser,
+    replaceRequesterNameInHistory,
+    getHistoryEntriesByRequesterName
 }; 

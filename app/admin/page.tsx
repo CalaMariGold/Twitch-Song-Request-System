@@ -149,6 +149,15 @@ export default function AdminDashboard() {
   const ADMIN_SEARCH_PAGE_SIZE = 20;
   // Add state for Clear Queue confirmation dialog
   const [isClearQueueDialogOpen, setIsClearQueueDialogOpen] = useState(false);
+  // State for requester name replacement
+  const [oldRequesterName, setOldRequesterName] = useState("");
+  const [newRequesterName, setNewRequesterName] = useState("");
+  const [isReplacingRequester, setIsReplacingRequester] = useState(false);
+  // State for confirmation dialog and preview
+  const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewEntries, setPreviewEntries] = useState<{ id: string; title: string; artist: string; completedAt: string }[]>([]);
+  const [previewError, setPreviewError] = useState<string | null>(null);
 
   // Define closeSpotifyLinkDialog early so it can be used in useEffect
   const closeSpotifyLinkDialog = useCallback(() => {
@@ -964,6 +973,94 @@ export default function AdminDashboard() {
     newQueue[songIndex] = newSong;
     socket.emit('updateQueue', newQueue);
     toast({ title: "Converted to Mari's Choice", description: `Song #${songIndex + 1} is now a Mari's Choice template.` });
+  };
+
+  // Handler for replacing requester name in history
+  const handleReplaceRequesterName = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!socket || !oldRequesterName.trim() || !newRequesterName.trim()) {
+      toast({ title: "Error", description: "Both old and new names are required." });
+      return;
+    }
+    setIsReplacingRequester(true);
+    (socket as any).emit(
+      "replaceRequesterNameInHistory",
+      { oldName: oldRequesterName.trim(), newName: newRequesterName.trim() },
+      (result: { success: boolean; updatedCount?: number; message?: string }) => {
+        setIsReplacingRequester(false);
+        if (result && result.success) {
+          toast({
+            title: "Requester Name Updated",
+            description: `Replaced ${result.updatedCount} entr${result.updatedCount === 1 ? "y" : "ies"} in history.`,
+            duration: 4000,
+          });
+          setOldRequesterName("");
+          setNewRequesterName("");
+        } else {
+          toast({
+            title: "Error",
+            description: result?.message || "Failed to update requester name.",
+          });
+        }
+      }
+    );
+  };
+
+  // Handler for preview and dialog open
+  const handlePreviewRequesterName = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPreviewError(null);
+    setPreviewEntries([]);
+    if (!socket || !oldRequesterName.trim() || !newRequesterName.trim()) {
+      toast({ title: "Error", description: "Both old and new names are required." });
+      return;
+    }
+    setPreviewLoading(true);
+    (socket as any).emit(
+      "previewRequesterNameReplacement",
+      { oldName: oldRequesterName.trim() },
+      (result: { success: boolean; entries?: any[]; message?: string }) => {
+        setPreviewLoading(false);
+        if (result && result.success) {
+          setPreviewEntries(result.entries || []);
+          setIsConfirmDialogOpen(true);
+        } else {
+          setPreviewError(result?.message || "Failed to fetch preview.");
+        }
+      }
+    );
+  };
+
+  // Handler for actual replacement (after confirmation)
+  const handleConfirmReplaceRequesterName = async () => {
+    if (!socket || !oldRequesterName.trim() || !newRequesterName.trim()) {
+      toast({ title: "Error", description: "Both old and new names are required." });
+      return;
+    }
+    setIsReplacingRequester(true);
+    (socket as any).emit(
+      "replaceRequesterNameInHistory",
+      { oldName: oldRequesterName.trim(), newName: newRequesterName.trim() },
+      (result: { success: boolean; updatedCount?: number; message?: string }) => {
+        setIsReplacingRequester(false);
+        setIsConfirmDialogOpen(false);
+        if (result && result.success) {
+          toast({
+            title: "Requester Name Updated",
+            description: `Replaced ${result.updatedCount} entr${result.updatedCount === 1 ? "y" : "ies"} in history.`,
+            duration: 4000,
+          });
+          setOldRequesterName("");
+          setNewRequesterName("");
+          setPreviewEntries([]);
+        } else {
+          toast({
+            title: "Error",
+            description: result?.message || "Failed to update requester name.",
+          });
+        }
+      }
+    );
   };
 
   // Render Logic
@@ -1839,6 +1936,88 @@ export default function AdminDashboard() {
               </ScrollArea>
             </CardContent>
           </Card>
+
+          {/* Replace Requester Name in History Card */}
+          <Card className="bg-gray-800 border-gray-700">
+            <CardHeader>
+              <CardTitle className="text-white flex items-center"><Users className="mr-2 h-5 w-5" /> Replace Requester Name in History</CardTitle>
+              <CardDescription>Change all history entries from one requester name to another.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handlePreviewRequesterName} className="space-y-3">
+                <Input
+                  type="text"
+                  placeholder="Old Requester Name (case-insensitive)"
+                  value={oldRequesterName}
+                  onChange={e => setOldRequesterName(e.target.value)}
+                  className="bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:border-purple-500 focus:ring-purple-500"
+                  required
+                />
+                <Input
+                  type="text"
+                  placeholder="New Requester Name"
+                  value={newRequesterName}
+                  onChange={e => setNewRequesterName(e.target.value)}
+                  className="bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:border-purple-500 focus:ring-purple-500"
+                  required
+                />
+                <Button
+                  type="submit"
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                  disabled={previewLoading || isReplacingRequester}
+                >
+                  {previewLoading ? <Loader2 className="inline-block mr-2 h-4 w-4 animate-spin" /> : null}
+                  Preview & Replace Name
+                </Button>
+                {previewError && <div className="text-red-400 text-sm mt-2">{previewError}</div>}
+              </form>
+            </CardContent>
+          </Card>
+
+          {/* Confirmation Dialog for Replace Requester Name */}
+          <Dialog open={isConfirmDialogOpen} onOpenChange={setIsConfirmDialogOpen}>
+            <DialogContent className="sm:max-w-[600px] bg-gray-850 border-gray-700 text-white">
+              <DialogHeader>
+                <DialogTitle>Confirm Replace Requester Name</DialogTitle>
+                <DialogDescription className="text-gray-400">
+                  {previewEntries.length === 0 ? (
+                    <>No history entries found for <b>{oldRequesterName}</b>.</>
+                  ) : (
+                    <>
+                      This will change the requester name for <b>{previewEntries.length}</b> entr{previewEntries.length === 1 ? "y" : "ies"} from <b>{oldRequesterName}</b> to <b>{newRequesterName}</b>.<br />
+                      <span className="text-xs text-gray-500">Below is a list of affected songs (title / artist):</span>
+                    </>
+                  )}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="max-h-64 overflow-y-auto my-2">
+                {previewEntries.length > 0 && (
+                  <ul className="space-y-1 text-sm">
+                    {previewEntries.map(entry => (
+                      <li key={entry.id} className="flex justify-between border-b border-gray-700 py-1">
+                        <span className="truncate max-w-[60%]">{entry.title}</span>
+                        <span className="truncate text-gray-400 max-w-[35%]">{entry.artist}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              <DialogFooter className="bg-gray-850 flex-col sm:flex-row gap-2">
+                <Button type="button" variant="outline" onClick={() => setIsConfirmDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                  disabled={isReplacingRequester || previewEntries.length === 0}
+                  onClick={handleConfirmReplaceRequesterName}
+                >
+                  {isReplacingRequester ? <Loader2 className="inline-block mr-2 h-4 w-4 animate-spin" /> : null}
+                  Confirm Replace
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
 
           {/* Blacklist Card */}
           <Card className="bg-gray-800 border-gray-700">
