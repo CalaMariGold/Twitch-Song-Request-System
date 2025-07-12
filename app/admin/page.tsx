@@ -2087,30 +2087,6 @@ export default function AdminDashboard() {
                 <CardDescription>Configure song request parameters.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-               {/* Example Setting: Max Duration */}
-               <div className="flex items-center justify-between">
-                 <Label htmlFor="maxDuration" className="text-sm font-medium">Max Song Duration (minutes)</Label>
-                 <Input 
-                   id="maxDuration" 
-                   type="number" 
-                   min="1" 
-                   step="1"
-                   value={appState.settings.maxDuration || 10} 
-                   onChange={(e) => {
-                       const newDuration = parseInt(e.target.value);
-                       if (socket && !isNaN(newDuration) && newDuration > 0) {
-                           console.log("Admin: Updating max duration to", newDuration);
-                           // Assuming 'setMaxDuration' event expects minutes
-                           socket.emit('setMaxDuration', newDuration); 
-                           // Optimistically update UI - server should send settingsUpdate
-                           setAppState(prev => ({...prev, settings: {...prev.settings, maxDuration: newDuration}}));
-                           toast({ title: "Settings Updated", description: `Max duration set to ${newDuration} minutes.` });
-                       }
-                   }}
-                   className="w-20 bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:border-purple-500 focus:ring-purple-500" 
-                 />
-               </div>
-
                {/* Songs Played Today Counter */}
                <div className="flex items-center justify-between">
                  <Label className="text-sm font-medium">Songs Played Today</Label>

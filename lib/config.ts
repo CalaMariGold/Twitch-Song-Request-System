@@ -73,7 +73,6 @@ export const socketEvents = {
   REMOVE_SONG: 'removeSong',
   CLEAR_QUEUE: 'clearQueue',
   RESET_SYSTEM: 'resetSystem',
-  SET_MAX_DURATION: 'setMaxDuration',
   UPDATE_ACTIVE_SONG: 'updateActiveSong',
   MARK_SONG_AS_FINISHED: 'markSongAsFinished',
   RETURN_TO_QUEUE: 'returnToQueue',

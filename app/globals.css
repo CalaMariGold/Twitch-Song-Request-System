@@ -90,3 +90,19 @@
     text-shadow: 0 0 8px theme('colors.brand.purple.glow / 70%');
   }
 } 
+
+@keyframes gradient-move {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.animate-gradient-move {
+  animation: gradient-move 4s ease-in-out infinite;
+} 

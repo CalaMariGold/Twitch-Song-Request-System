@@ -203,7 +203,7 @@ export default function PublicDashboard() {
               stats={allTimeStats}
               includeRequesters={true}
               title="All-Time Statistics"
-              description="Overall system usage stats."
+              description="Request stats since 4/25/2025."
               // Use brand colors, add blur and subtle glow
               className="bg-brand-purple-deep/70 border-brand-purple-neon/30 backdrop-blur-md shadow-glow-purple-sm"
               heightClass="h-[220px]"

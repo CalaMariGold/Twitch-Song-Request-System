@@ -80,7 +80,7 @@ export interface YouTubeVideoDetails {
  * Application Settings
  */
 export interface Settings {
-  maxDuration?: number; // in minutes
+  // maxDuration?: number;
 }
 
 /**
@@ -178,7 +178,6 @@ export interface SocketEvents {
     removeSong: (songId: string) => void;
     clearQueue: () => void;
     resetSystem?: () => void; // Make optional if not always implemented/used
-    setMaxDuration: (minutes: number) => void;
     resetTodaysCount: () => void;
     updateActiveSong: (song: SongRequest | null) => void;
     updateBlacklist: (newBlacklist: BlacklistItem[]) => void; // Assuming full list update based on frontend code
