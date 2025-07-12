@@ -893,6 +893,29 @@ export default function AdminDashboard() {
     socket.emit('getMoreHistory', { offset, limit: pageSize });
   }, [socket, historyPage, isLoadingMoreHistory, hasMoreHistory]);
 
+  // Add this handler inside AdminDashboard
+  const handleMakeMarisChoice = (songId: string) => {
+    if (!socket) return;
+    // Find the song in the queue
+    const songIndex = appState.queue.findIndex(song => song.id === songId);
+    if (songIndex === -1) return;
+    // Create a new song object with the template fields
+    const newSong = {
+      ...appState.queue[songIndex],
+      title: "Mari's Choice",
+      artist: "?????",
+      youtubeUrl: undefined,
+      spotifyData: undefined,
+      thumbnailUrl: undefined,
+      channelId: undefined,
+    };
+    // Replace the song in the queue
+    const newQueue = [...appState.queue];
+    newQueue[songIndex] = newSong;
+    socket.emit('updateQueue', newQueue);
+    toast({ title: "Converted to Mari's Choice", description: `Song #${songIndex + 1} is now a Mari's Choice template.` });
+  };
+
   // Render Logic
   if (appState.isLoading && !socket) {
     return (
@@ -1373,6 +1396,17 @@ export default function AdminDashboard() {
                                              disabled={!isConnected} // Disable if not connected
                                            >
                                              <Edit size={14} />
+                                           </Button>
+                                           {/* Mari's Choice Button */}
+                                           <Button
+                                             variant="ghost"
+                                             size="sm"
+                                             className="h-8 w-8 p-0 text-yellow-400 hover:text-yellow-300"
+                                             onClick={() => handleMakeMarisChoice(song.id)}
+                                             title="Convert to Mari's Choice template"
+                                             disabled={!isConnected}
+                                           >
+                                             <Star size={16} />
                                            </Button>
                                            {/* Existing Play/Remove buttons */}
                                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handlePlaySong(song)} title="Set Active" disabled={!isConnected}>
