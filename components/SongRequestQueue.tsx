@@ -81,6 +81,14 @@ export default function SongRequestQueue() {
   const [isLoadingMyRequests, setIsLoadingMyRequests] = useState(false);
   const [hasMoreMyRequests, setHasMoreMyRequests] = useState(true);
 
+  // Add state for search results and search mode
+  const [searchResults, setSearchResults] = useState<SongRequest[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchTotal, setSearchTotal] = useState(0);
+  const [searchPage, setSearchPage] = useState(1);
+  const [isLoadingSearch, setIsLoadingSearch] = useState(false);
+  const SEARCH_PAGE_SIZE = 20;
+
   // Calculate total queue duration
   const { formatted: totalQueueDurationFormatted } = calculateTotalQueueDuration(state.queue)
 
@@ -734,6 +742,46 @@ export default function SongRequestQueue() {
     }
   }, [activeTab, currentUser, socket, myRequestsHistory.length]);
 
+  // Effect: When searchTerm changes, trigger backend search or reset
+  useEffect(() => {
+    if (!socket) return;
+    if (searchTerm.trim() === "") {
+      setIsSearching(false);
+      setSearchResults([]);
+      setSearchTotal(0);
+      setSearchPage(1);
+      return;
+    }
+    setIsSearching(true);
+    setIsLoadingSearch(true);
+    setSearchPage(1);
+    socket.emit('searchHistory', { query: searchTerm, limit: SEARCH_PAGE_SIZE, offset: 0 }, (res: any) => {
+      if (res && !res.error) {
+        setSearchResults(res.results || []);
+        setSearchTotal(res.total || 0);
+      } else {
+        setSearchResults([]);
+        setSearchTotal(0);
+      }
+      setIsLoadingSearch(false);
+    });
+  }, [searchTerm, socket]);
+
+  // Function to load more search results
+  const loadMoreSearchResults = () => {
+    if (!socket || isLoadingSearch) return;
+    setIsLoadingSearch(true);
+    const nextOffset = searchPage * SEARCH_PAGE_SIZE;
+    socket.emit('searchHistory', { query: searchTerm, limit: SEARCH_PAGE_SIZE, offset: nextOffset }, (res: any) => {
+      if (res && !res.error) {
+        setSearchResults(prev => [...prev, ...(res.results || [])]);
+        setSearchTotal(res.total || 0);
+        setSearchPage(prev => prev + 1);
+      }
+      setIsLoadingSearch(false);
+    });
+  };
+
   // Filter handlers
   const filteredQueue = useCallback(() => 
     state.queue.filter((song: SongRequest) => 
@@ -919,35 +967,61 @@ export default function SongRequestQueue() {
           <TabsContent value="history" className="mt-4">
             <ErrorBoundary>
               <SongList 
-                songs={filteredHistory()} 
+                songs={isSearching ? searchResults : filteredHistory()} 
                 isHistory={true} 
                 currentUser={currentUser}
                 socket={socket}
               />
-              
-              {/* Add a "Load More" button for history if there's potentially more to load */}
-              {hasMoreHistory && state.history.length > 0 && (
-                <div className="mt-6 flex justify-center">
-                  <Button
-                    variant="outline"
-                    className="bg-brand-purple-dark/50 border-brand-purple-neon/20 text-brand-purple-light hover:bg-brand-purple-dark/70 hover:border-brand-purple-neon/40 hover:text-white transition-all"
-                    onClick={loadMoreHistory}
-                    disabled={isLoadingMoreHistory}
-                  >
-                    {isLoadingMoreHistory ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Loading...
-                      </>
-                    ) : (
-                      <>Load More History</>
-                    )}
-                  </Button>
+              {/* Load More for search or normal history */}
+              {isSearching ? (
+                searchResults.length < searchTotal && (
+                  <div className="mt-6 flex justify-center">
+                    <Button
+                      variant="outline"
+                      className="bg-brand-purple-dark/50 border-brand-purple-neon/20 text-brand-purple-light hover:bg-brand-purple-dark/70 hover:border-brand-purple-neon/40 hover:text-white transition-all"
+                      onClick={loadMoreSearchResults}
+                      disabled={isLoadingSearch}
+                    >
+                      {isLoadingSearch ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Loading...
+                        </>
+                      ) : (
+                        <>Load More Results</>
+                      )}
+                    </Button>
+                  </div>
+                )
+              ) : (
+                hasMoreHistory && state.history.length > 0 && (
+                  <div className="mt-6 flex justify-center">
+                    <Button
+                      variant="outline"
+                      className="bg-brand-purple-dark/50 border-brand-purple-neon/20 text-brand-purple-light hover:bg-brand-purple-dark/70 hover:border-brand-purple-neon/40 hover:text-white transition-all"
+                      onClick={loadMoreHistory}
+                      disabled={isLoadingMoreHistory}
+                    >
+                      {isLoadingMoreHistory ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Loading...
+                        </>
+                      ) : (
+                        <>Load More History</>
+                      )}
+                    </Button>
+                  </div>
+                )
+              )}
+              {/* End of history message for search */}
+              {isSearching && searchResults.length >= searchTotal && searchResults.length > 0 && (
+                <div className="mt-4 text-center text-brand-purple-light/60 text-sm">
+                  End of search results
                 </div>
               )}
-              
-              {/* Show message when there's no more history to load */}
-              {!hasMoreHistory && state.history.length > 0 && (
+              {/* End of history message for normal history */}
+              {!isSearching && !hasMoreHistory && state.history.length > 0 && (
                 <div className="mt-4 text-center text-brand-purple-light/60 text-sm">
                   End of history reached
                 </div>

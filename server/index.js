@@ -1268,6 +1268,77 @@ io.on('connection', (socket) => {
             socket.emit('userHistoryData', { history, total, offset: data.offset });
         }
     });
+
+    // Add after other socket event handlers
+    socket.on('searchHistory', (data, callback) => {
+        if (!data || typeof data.query !== 'string') {
+            if (callback) callback({ error: 'Invalid search query.' });
+            return;
+        }
+        const query = data.query.trim();
+        const limit = typeof data.limit === 'number' && data.limit > 0 ? data.limit : 20;
+        const offset = typeof data.offset === 'number' && data.offset >= 0 ? data.offset : 0;
+        if (!query) {
+            // If query is empty, fallback to normal history pagination
+            const history = db.getHistoryWithOffset(limit, offset);
+            const total = db.getTotalHistoryCount();
+            if (callback) callback({ results: history, total });
+            return;
+        }
+        // Search in title, artist, or requester (case-insensitive, partial match)
+        try {
+            const stmt = db.getDb().prepare(
+                `SELECT * FROM song_history WHERE 
+                    LOWER(title) LIKE ? OR LOWER(artist) LIKE ? OR LOWER(requester) LIKE ?
+                 ORDER BY completedAt DESC LIMIT ? OFFSET ?`
+            );
+            const likeQuery = `%${query.toLowerCase()}%`;
+            const rows = stmt.all(likeQuery, likeQuery, likeQuery, limit, offset);
+            // Get total count for this search
+            const countStmt = db.getDb().prepare(
+                `SELECT COUNT(*) as count FROM song_history WHERE 
+                    LOWER(title) LIKE ? OR LOWER(artist) LIKE ? OR LOWER(requester) LIKE ?`
+            );
+            const total = countStmt.get(likeQuery, likeQuery, likeQuery).count;
+            // Map rows to SongRequest objects (reuse logic from getHistoryWithOffset)
+            const results = rows.map(item => {
+                let spotifyData = null;
+                if (item.spotifyData) {
+                    try { spotifyData = JSON.parse(item.spotifyData); } catch {}
+                }
+                let timestamp = item.completedAt;
+                try {
+                    if (timestamp && !timestamp.includes('T')) {
+                        const date = new Date(timestamp);
+                        if (!isNaN(date.getTime())) {
+                            timestamp = date.toISOString();
+                        }
+                    }
+                } catch {}
+                return {
+                    id: item.id.toString(),
+                    youtubeUrl: item.youtubeUrl,
+                    title: item.title,
+                    artist: item.artist,
+                    channelId: item.channelId,
+                    requester: item.requester,
+                    requesterLogin: item.requesterLogin,
+                    requesterAvatar: item.requesterAvatar,
+                    timestamp: timestamp,
+                    duration: item.durationSeconds ? require('./helpers').formatDurationFromSeconds(item.durationSeconds) : null,
+                    durationSeconds: item.durationSeconds,
+                    thumbnailUrl: item.thumbnailUrl,
+                    requestType: item.requestType,
+                    source: 'database_history',
+                    spotifyData: spotifyData
+                };
+            });
+            if (callback) callback({ results, total });
+        } catch (err) {
+            console.error('[searchHistory] Error:', err);
+            if (callback) callback({ error: 'Search failed.' });
+        }
+    });
 })
 
 // Start the server and load initial data
