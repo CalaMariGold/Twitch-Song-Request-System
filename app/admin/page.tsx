@@ -147,6 +147,8 @@ export default function AdminDashboard() {
   const [adminSearchPage, setAdminSearchPage] = useState(1);
   const [isLoadingAdminSearch, setIsLoadingAdminSearch] = useState(false);
   const ADMIN_SEARCH_PAGE_SIZE = 20;
+  // Add state for Clear Queue confirmation dialog
+  const [isClearQueueDialogOpen, setIsClearQueueDialogOpen] = useState(false);
 
   // Define closeSpotifyLinkDialog early so it can be used in useEffect
   const closeSpotifyLinkDialog = useCallback(() => {
@@ -1302,9 +1304,31 @@ export default function AdminDashboard() {
             <TabsContent value="queue">
                <div className="flex justify-between items-center mb-3 px-1">
                   <h3 className="text-lg font-semibold text-white">Queue</h3>
-                  <Button variant="destructive" size="sm" onClick={handleClearQueue} disabled={appState.queue.length === 0} className="h-8 text-xs">
-                    <Trash2 className="mr-1 h-3 w-3" /> Clear Queue
-                  </Button>
+                  {/* Confirmation Dialog for Clear Queue */}
+                  <Dialog open={isClearQueueDialogOpen} onOpenChange={setIsClearQueueDialogOpen}>
+                    <DialogTrigger asChild>
+                      <Button variant="destructive" size="sm" disabled={appState.queue.length === 0} className="h-8 text-xs"
+                        onClick={() => setIsClearQueueDialogOpen(true)}>
+                        <Trash2 className="mr-1 h-3 w-3" /> Clear Queue
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Are you sure?</DialogTitle>
+                        <DialogDescription>
+                          This will remove <b>all songs</b> from the queue. This action cannot be undone.
+                        </DialogDescription>
+                      </DialogHeader>
+                      <DialogFooter>
+                        <Button variant="outline" onClick={() => setIsClearQueueDialogOpen(false)}>
+                          Cancel
+                        </Button>
+                        <Button variant="destructive" onClick={() => { handleClearQueue(); setIsClearQueueDialogOpen(false); }}>
+                          Yes, clear queue
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
                 </div>
                 <ScrollArea className="h-[80vh] w-full rounded-md border border-gray-700 p-4 bg-gray-800 overflow-hidden">
                     {appState.isLoading ? (
