@@ -17,7 +17,6 @@ const nextConfig = {
     experimental: {
         proxyTimeout: 120000, // 2 minutes timeout
     },
-    serverExternalPackages: ['socket.io', 'socket.io-client'],
     async rewrites() {
         return [
             {
