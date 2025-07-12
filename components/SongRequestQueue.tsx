@@ -891,6 +891,64 @@ export default function SongRequestQueue() {
     currentUserRef.current = currentUser;
   }, [currentUser]);
 
+  // --- My Requests Search State ---
+  const [isSearchingMyRequests, setIsSearchingMyRequests] = useState(false);
+  const [myRequestsSearchResults, setMyRequestsSearchResults] = useState<SongRequest[]>([]);
+  const [myRequestsSearchTotal, setMyRequestsSearchTotal] = useState(0);
+  const [myRequestsSearchPage, setMyRequestsSearchPage] = useState(1);
+  const [isLoadingMyRequestsSearch, setIsLoadingMyRequestsSearch] = useState(false);
+  const MY_REQUESTS_SEARCH_PAGE_SIZE = 20;
+
+  // Effect: Trigger Search When Needed
+  useEffect(() => {
+    if (!socket || activeTab !== 'my-requests' || !currentUser?.login) return;
+    if (searchTerm.trim() === "") {
+      setIsSearchingMyRequests(false);
+      setMyRequestsSearchResults([]);
+      setMyRequestsSearchTotal(0);
+      setMyRequestsSearchPage(1);
+      return;
+    }
+    setIsSearchingMyRequests(true);
+    setIsLoadingMyRequestsSearch(true);
+    setMyRequestsSearchPage(1);
+    socket.emit('searchUserHistory', {
+      userLogin: currentUser.login,
+      query: searchTerm,
+      limit: MY_REQUESTS_SEARCH_PAGE_SIZE,
+      offset: 0
+    }, (res: any) => {
+      if (res && !res.error) {
+        setMyRequestsSearchResults(res.results || []);
+        setMyRequestsSearchTotal(res.total || 0);
+      } else {
+        setMyRequestsSearchResults([]);
+        setMyRequestsSearchTotal(0);
+      }
+      setIsLoadingMyRequestsSearch(false);
+    });
+  }, [searchTerm, socket, activeTab, currentUser]);
+
+  // Load More Search Results Function
+  const loadMoreMyRequestsSearchResults = () => {
+    if (!socket || isLoadingMyRequestsSearch || !currentUser?.login) return;
+    setIsLoadingMyRequestsSearch(true);
+    const nextOffset = myRequestsSearchPage * MY_REQUESTS_SEARCH_PAGE_SIZE;
+    socket.emit('searchUserHistory', {
+      userLogin: currentUser.login,
+      query: searchTerm,
+      limit: MY_REQUESTS_SEARCH_PAGE_SIZE,
+      offset: nextOffset
+    }, (res: any) => {
+      if (res && !res.error) {
+        setMyRequestsSearchResults(prev => [...prev, ...(res.results || [])]);
+        setMyRequestsSearchTotal(res.total || 0);
+        setMyRequestsSearchPage(prev => prev + 1);
+      }
+      setIsLoadingMyRequestsSearch(false);
+    });
+  };
+
   return (
     <ErrorBoundary>
       <div className="w-full max-w-4xl mx-auto p-6 bg-brand-purple-deep/70 text-white rounded-lg shadow-xl border border-brand-purple-neon/20 backdrop-blur-md shadow-glow-purple">
@@ -1048,34 +1106,114 @@ export default function SongRequestQueue() {
           </TabsContent>
           <TabsContent value="my-requests" className="mt-4">
             <ErrorBoundary>
-              <MyRequestsTab 
-                currentUser={currentUser} 
-                state={state} 
-                searchTerm={searchTerm} 
-                isLoading={state.isLoading} 
-                socket={socket}
-                myRequestsHistory={myRequestsHistory}
-                myRequestsTotal={myRequestsTotal}
-                hasMoreMyRequests={hasMoreMyRequests}
-                isLoadingMyRequests={isLoadingMyRequests}
-                loadMoreMyRequests={() => {
-                  if (!socket || !currentUser?.login || isLoadingMyRequests) return;
-                  setIsLoadingMyRequests(true);
-                  socket.emit('getUserHistory', {
-                    userLogin: currentUser.login,
-                    limit: constants.HISTORY_PAGE_SIZE,
-                    offset: myRequestsOffset
-                  });
-                }}
-                setEditingSongId={setEditingSongId}
-                setCurrentSpotifyUrl={setCurrentSpotifyUrl}
-                setCurrentYouTubeUrl={setCurrentYouTubeUrl}
-                setIsEditSongLinksDialogOpen={setIsEditSongLinksDialogOpen}
-                setEditSpotifyError={setEditSpotifyError}
-                setEditSpotifySuccess={setEditSpotifySuccess}
-                setEditYouTubeError={setEditYouTubeError}
-                setEditYouTubeSuccess={setEditYouTubeSuccess}
-              />
+              {/* Show loading animation when searching */}
+              {isSearchingMyRequests && isLoadingMyRequestsSearch && (
+                <div className="flex items-center justify-center h-32">
+                  <Loader2 className="w-8 h-8 animate-spin text-brand-pink-neon" />
+                  <span className="ml-3 text-brand-purple-light/80 text-base">Searching...</span>
+                </div>
+              )}
+              {/* Show 'No songs found' message if search is done and no results */}
+              {isSearchingMyRequests && !isLoadingMyRequestsSearch && myRequestsSearchResults.length === 0 && (
+                <div className="flex flex-col items-center justify-center h-32">
+                  <Search size={32} className="text-brand-purple-light/70 mb-2" />
+                  <p className="text-brand-purple-light/70 text-base">No songs found</p>
+                  <p className="text-brand-purple-light/40 text-sm mt-1">Try a different search term.</p>
+                </div>
+              )}
+              {/* Only show SongList if not loading and there are results, or if not searching */}
+              {(!isSearchingMyRequests || (!isLoadingMyRequestsSearch && myRequestsSearchResults.length > 0)) && (
+                <MyRequestsTab
+                  currentUser={currentUser}
+                  state={state}
+                  searchTerm={searchTerm}
+                  isLoading={state.isLoading}
+                  socket={socket}
+                  myRequestsHistory={isSearchingMyRequests ? myRequestsSearchResults : myRequestsHistory}
+                  myRequestsTotal={isSearchingMyRequests ? myRequestsSearchTotal : myRequestsTotal}
+                  hasMoreMyRequests={isSearchingMyRequests ? (myRequestsSearchResults.length < myRequestsSearchTotal) : hasMoreMyRequests}
+                  isLoadingMyRequests={isSearchingMyRequests ? isLoadingMyRequestsSearch : isLoadingMyRequests}
+                  loadMoreMyRequests={isSearchingMyRequests ? loadMoreMyRequestsSearchResults : () => {
+                    if (!socket || !currentUser?.login || isLoadingMyRequests) return;
+                    setIsLoadingMyRequests(true);
+                    socket.emit('getUserHistory', {
+                      userLogin: currentUser.login,
+                      limit: constants.HISTORY_PAGE_SIZE,
+                      offset: myRequestsOffset
+                    });
+                  }}
+                  setEditingSongId={setEditingSongId}
+                  setCurrentSpotifyUrl={setCurrentSpotifyUrl}
+                  setCurrentYouTubeUrl={setCurrentYouTubeUrl}
+                  setIsEditSongLinksDialogOpen={setIsEditSongLinksDialogOpen}
+                  setEditSpotifyError={setEditSpotifyError}
+                  setEditSpotifySuccess={setEditSpotifySuccess}
+                  setEditYouTubeError={setEditYouTubeError}
+                  setEditYouTubeSuccess={setEditYouTubeSuccess}
+                />
+              )}
+              {/* Load More for search or normal my requests */}
+              {isSearchingMyRequests ? (
+                myRequestsSearchResults.length < myRequestsSearchTotal && myRequestsSearchResults.length > 0 && (
+                  <div className="mt-6 flex justify-center">
+                    <Button
+                      variant="outline"
+                      className="bg-brand-purple-dark/50 border-brand-purple-neon/20 text-brand-purple-light hover:bg-brand-purple-dark/70 hover:border-brand-purple-neon/40 hover:text-white transition-all"
+                      onClick={loadMoreMyRequestsSearchResults}
+                      disabled={isLoadingMyRequestsSearch}
+                    >
+                      {isLoadingMyRequestsSearch ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Loading...
+                        </>
+                      ) : (
+                        <>Load More Results</>
+                      )}
+                    </Button>
+                  </div>
+                )
+              ) : (
+                hasMoreMyRequests && myRequestsHistory.length > 0 && (
+                  <div className="mt-6 flex justify-center">
+                    <Button
+                      variant="outline"
+                      className="bg-brand-purple-dark/50 border-brand-purple-neon/20 text-brand-purple-light hover:bg-brand-purple-dark/70 hover:border-brand-purple-neon/40 hover:text-white transition-all"
+                      onClick={() => {
+                        if (!socket || !currentUser?.login || isLoadingMyRequests) return;
+                        setIsLoadingMyRequests(true);
+                        socket.emit('getUserHistory', {
+                          userLogin: currentUser.login,
+                          limit: constants.HISTORY_PAGE_SIZE,
+                          offset: myRequestsOffset
+                        });
+                      }}
+                      disabled={isLoadingMyRequests}
+                    >
+                      {isLoadingMyRequests ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Loading...
+                        </>
+                      ) : (
+                        <>Load More History</>
+                      )}
+                    </Button>
+                  </div>
+                )
+              )}
+              {/* End of results message for search */}
+              {isSearchingMyRequests && myRequestsSearchResults.length >= myRequestsSearchTotal && myRequestsSearchResults.length > 0 && (
+                <div className="mt-4 text-center text-brand-purple-light/60 text-sm">
+                  End of search results
+                </div>
+              )}
+              {/* End of history message for normal my requests */}
+              {!isSearchingMyRequests && !hasMoreMyRequests && myRequestsHistory.length > 0 && (
+                <div className="mt-4 text-center text-brand-purple-light/60 text-sm">
+                  End of history reached
+                </div>
+              )}
             </ErrorBoundary>
           </TabsContent>
           <TabsContent value="request-plan" className="mt-4">
