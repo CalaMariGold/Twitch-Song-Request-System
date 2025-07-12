@@ -966,12 +966,30 @@ export default function SongRequestQueue() {
           </TabsContent>
           <TabsContent value="history" className="mt-4">
             <ErrorBoundary>
-              <SongList 
-                songs={isSearching ? searchResults : filteredHistory()} 
-                isHistory={true} 
-                currentUser={currentUser}
-                socket={socket}
-              />
+              {/* Show loading animation when searching */}
+              {isSearching && isLoadingSearch && (
+                <div className="flex items-center justify-center h-32">
+                  <Loader2 className="w-8 h-8 animate-spin text-brand-pink-neon" />
+                  <span className="ml-3 text-brand-purple-light/80 text-base">Searching...</span>
+                </div>
+              )}
+              {/* Show 'No songs found' message if search is done and no results */}
+              {isSearching && !isLoadingSearch && searchResults.length === 0 && (
+                <div className="flex flex-col items-center justify-center h-32">
+                  <Search size={32} className="text-brand-purple-light/70 mb-2" />
+                  <p className="text-brand-purple-light/70 text-base">No songs found</p>
+                  <p className="text-brand-purple-light/40 text-sm mt-1">Try a different search term.</p>
+                </div>
+              )}
+              {/* Only show SongList if not loading and there are results, or if not searching */}
+              {(!isSearching || (!isLoadingSearch && searchResults.length > 0)) && (
+                <SongList 
+                  songs={isSearching ? searchResults : filteredHistory()} 
+                  isHistory={true} 
+                  currentUser={currentUser}
+                  socket={socket}
+                />
+              )}
               {/* Load More for search or normal history */}
               {isSearching ? (
                 searchResults.length < searchTotal && (
