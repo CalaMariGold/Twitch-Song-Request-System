@@ -16,8 +16,8 @@ const nextConfig = {
     // Increase serverComponentsExternalPackages
     experimental: {
         proxyTimeout: 120000, // 2 minutes timeout
-        serverComponentsExternalPackages: ['socket.io', 'socket.io-client'],
     },
+    serverExternalPackages: ['socket.io', 'socket.io-client'],
     async rewrites() {
         return [
             {
