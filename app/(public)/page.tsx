@@ -49,13 +49,11 @@ export default function PublicDashboard() {
     
     socketInstance.on('connect', () => {
       setIsConnected(true)
-      console.log('Connected to Socket.IO server (Public Page)')
       socketInstance.emit('getAllTimeStats')
     })
     
     socketInstance.on('disconnect', () => {
       setIsConnected(false)
-      console.log('Disconnected from Socket.IO server (Public Page)')
     })
     
     socketInstance.on('connect_error', (error) => {
@@ -82,22 +80,16 @@ export default function PublicDashboard() {
     })
     
     socketInstance.on('songFinished', (finishedSong: SongRequest) => {
-      console.log('Song finished and moved to history:', finishedSong.title)
       // The server will also send historyUpdate so we don't need to update history directly here
     })
     
     // Add listener for history order changes
     socketInstance.on('historyOrderChanged', () => {
-      console.log('Public page: History order changed signal received')
       // No need to do anything here as we'll get a historyUpdate event with the new order
     })
     
     // Handle initial state - critical for loading history correctly on first connection
     socketInstance.on('initialState', (initialState: any) => {
-      console.log('Received initial state on public page:', 
-        `Queue: ${initialState.queue?.length || 0} items, ` +
-        `History: ${initialState.history?.length || 0} items`
-      )
       setQueueState(prev => ({
         ...prev,
         queue: initialState.queue || [],
@@ -109,26 +101,22 @@ export default function PublicDashboard() {
     
     // Handle statistics updates
     socketInstance.on('allTimeStatsUpdate', (stats: AllTimeStats) => {
-      console.log('Public: Received all-time stats')
       setAllTimeStats(stats)
       setIsLoadingStats(false)
     })
 
     socketInstance.on('allTimeStatsError', (error: { message: string }) => {
-      console.error('Public: Failed to load all-time stats:', error.message)
       setIsLoadingStats(false)
     })
     
     // Listen for total count updates
     socketInstance.on('totalCountsUpdate', (counts: { history: number; queue: number }) => {
-      console.log('Public: Received total counts:', counts);
       setTotalHistoryCount(counts.history);
       setTotalQueueCount(counts.queue);
     });
     
     // Listen for today's count update
     socketInstance.on('todaysCountUpdate', (data: { count: number }) => {
-      console.log('Public: Received today\'s count:', data);
       setSongsPlayedToday(data.count);
     });
     

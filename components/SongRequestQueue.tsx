@@ -544,7 +544,6 @@ export default function SongRequestQueue() {
     // Use an absolute path for the socket connection
     // When NEXT_PUBLIC_SOCKET_URL is empty, it will use the current domain
     const socketHost = process.env.NEXT_PUBLIC_SOCKET_URL || '';
-    console.log(`Attempting to connect WebSocket to: ${socketHost || 'current domain'}`);
 
     // Track connection attempts
     let connectionAttempts = 0;
@@ -562,7 +561,6 @@ export default function SongRequestQueue() {
     })
 
     newSocket.on('connect', () => {
-      console.log('Connected to WebSocket server')
       setIsConnected(true)
       connectionAttempts = 0; // Reset counter on successful connection
       // Request initial state only after connection is established
@@ -596,7 +594,6 @@ export default function SongRequestQueue() {
 
     // Handle initial state from server
     newSocket.on('initialState', (serverState: Partial<AppState>) => {
-      console.log('Received initial state:', serverState);
       setState((prev: AppState) => ({
         ...prev,
         queue: serverState.queue || [],
@@ -645,7 +642,6 @@ export default function SongRequestQueue() {
     })
 
     newSocket.on(socketEvents.ACTIVE_SONG, (song: SongRequest | null) => {
-      console.log('Active song updated:', song)
       setState((prev: AppState) => ({
         ...prev,
         activeSong: song,
@@ -654,7 +650,6 @@ export default function SongRequestQueue() {
 
     // Add a listener for moreHistoryData events
     newSocket.on('moreHistoryData', (historyChunk: SongRequest[]) => {
-      console.log('Received more history data:', historyChunk);
       
       if (historyChunk.length === 0) {
         // No more history to load
@@ -676,7 +671,6 @@ export default function SongRequestQueue() {
 
     // Listen for total count updates
     newSocket.on('totalCountsUpdate', (counts: { history: number; queue: number }) => {
-      console.log('Received total counts:', counts);
       setTotalHistoryCount(counts.history);
       setTotalQueueCount(counts.queue);
       // Update queue state length for UI consistency if needed, though queue itself is handled by queueUpdate
@@ -698,7 +692,6 @@ export default function SongRequestQueue() {
 
     // --- Listen for history order change signal --- 
     newSocket.on('historyOrderChanged', () => {
-      console.log('History order changed signal received. Refetching state.');
       // Refetch the initial state to get the latest ordered history
       newSocket.emit('getState'); 
       // Reset pagination for history if needed
