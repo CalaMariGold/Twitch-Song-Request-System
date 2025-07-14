@@ -210,6 +210,7 @@ export default function PublicDashboard() {
                       src="/shinyfest 2025 poster.png" 
                       alt="ShinyFest 2025 Poster" 
                       fill
+                      sizes="(max-width: 768px) 100vw, 384px"
                       className="object-cover"
                       priority
                       quality={100}
