@@ -81,7 +81,7 @@ export function StatisticsCard({
             {includeRequesters && (
               <TabsContent value="requesters">
                 <ScrollArea className={`${heightClass} pr-2 rounded-md border border-brand-purple-dark/80 p-2 bg-gradient-to-b from-brand-purple-dark/40 to-brand-purple-deep/60`}>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  <ul className="grid grid-cols-1 md:grid-cols-2 gap-2">
                     {stats.topRequesters.length > 0 ? stats.topRequesters.map((r, i) => (
                       <li key={i} className={`text-brand-purple-light/90 pl-1.5 pr-2 py-1 rounded-md flex items-center justify-between ${i < 3 ? 'bg-brand-pink-neon/10 border border-brand-pink-neon/30 shadow-sm' : 'bg-brand-purple-dark/40 border border-brand-purple-dark/60'} list-none`}>
                         <div className="flex items-center gap-1.5">
@@ -95,14 +95,14 @@ export function StatisticsCard({
                         </div>
                       </li>
                     )) : <p className="text-brand-purple-light/70 italic text-center py-6 col-span-2">No requester data yet.</p>}
-                  </div>
+                  </ul>
                 </ScrollArea>
               </TabsContent>
             )}
             
             <TabsContent value="songs">
               <ScrollArea className={`${heightClass} pr-2 rounded-md border border-brand-purple-dark/80 p-2 bg-gradient-to-b from-brand-purple-dark/40 to-brand-purple-deep/60`}>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                <ul className="grid grid-cols-1 md:grid-cols-2 gap-2">
                   {stats.topSongs.length > 0 ? stats.topSongs.map((s, i) => (
                     <li key={i} className={`text-brand-purple-light/90 pl-1.5 pr-2 py-1 rounded-md ${i < 3 ? 'bg-brand-purple-neon/10 border border-brand-purple-neon/30 shadow-sm' : 'bg-brand-purple-dark/40 border border-brand-purple-dark/60'} list-none`}>
                       <div className="flex items-center gap-1.5">
@@ -123,13 +123,13 @@ export function StatisticsCard({
                       </div>
                     </li>
                   )) : <p className="text-brand-purple-light/70 italic text-center py-6 col-span-2">No songs with 2 or more plays yet.</p>}
-                </div>
+                </ul>
               </ScrollArea>
             </TabsContent>
             
             <TabsContent value="artists">
               <ScrollArea className={`${heightClass} pr-2 rounded-md border border-brand-purple-dark/80 p-2 bg-gradient-to-b from-brand-purple-dark/40 to-brand-purple-deep/60`}>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                <ul className="grid grid-cols-1 md:grid-cols-2 gap-2">
                   {stats.topArtists.length > 0 ? stats.topArtists.map((a, i) => (
                     <li key={i} className={`text-brand-purple-light/90 pl-1.5 pr-2 py-1 rounded-md flex items-center justify-between ${i < 3 ? 'bg-brand-purple-dark/30 border border-brand-pink-neon/20 shadow-sm' : 'bg-brand-purple-dark/40 border border-brand-purple-dark/60'} list-none`}>
                       <div className="flex items-center gap-1.5">
@@ -143,7 +143,7 @@ export function StatisticsCard({
                       </div>
                     </li>
                   )) : <p className="text-brand-purple-light/70 italic text-center py-6 col-span-2">No artists with 2 or more plays yet.</p>}
-                </div>
+                </ul>
               </ScrollArea>
             </TabsContent>
           </Tabs>
