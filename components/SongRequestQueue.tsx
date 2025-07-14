@@ -282,7 +282,7 @@ export default function SongRequestQueue() {
                               {/* Youtube button - Only show if youtubeUrl exists */}
                               {song.youtubeUrl && (
                                 <a href={song.youtubeUrl} target="_blank" rel="noopener noreferrer" aria-label="Watch on YouTube">
-                                  <Button variant="ghost" className="p-1 text-red-500 hover:text-red-400">
+                                  <Button variant="ghost" className="p-1 text-red-500 hover:text-red-400" aria-label="Watch on YouTube">
                                     <Youtube className="h-5 w-5" />
                                   </Button>
                                 </a>
@@ -291,7 +291,7 @@ export default function SongRequestQueue() {
                               {/* Spotify Link Button - Only show if Spotify data exists */}
                               {song.spotifyData && song.spotifyData.url && (
                                 <a href={String(song.spotifyData.url)} target="_blank" rel="noopener noreferrer" aria-label="Listen on Spotify">
-                                  <Button variant="ghost" className="p-1 text-green-500 hover:text-green-400">
+                                  <Button variant="ghost" className="p-1 text-green-500 hover:text-green-400" aria-label="Listen on Spotify">
                                     <SpotifyIcon className="h-5 w-5" />
                                   </Button>
                                 </a>
@@ -304,6 +304,7 @@ export default function SongRequestQueue() {
                                 className="p-1 text-brand-pink-neon/70 hover:text-brand-pink-neon hover:bg-brand-pink-neon/10 rounded-full transition-all"
                                 onClick={() => onRemove(song.id)}
                                 title="Remove from plan"
+                                aria-label="Remove from plan"
                               >
                                 <Trash2 size={18} />
                               </Button>
@@ -1538,6 +1539,7 @@ function SongList({
                           }
                         }}
                         title="Edit song links"
+                        aria-label="Edit song links"
                       >
                         <Edit size={18} />
                    </Button>
@@ -1559,6 +1561,7 @@ function SongList({
                         }
                       }}
                       title="Delete my request"
+                      aria-label="Delete my request"
                     >
                       <Trash2 size={18} />
                    </Button>
