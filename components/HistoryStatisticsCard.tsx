@@ -70,11 +70,12 @@ const HistoryStatisticsCard: React.FC<HistoryStatisticsCardProps> = ({
         </div>
         <div className="bg-brand-purple-dark/50 p-4 rounded-lg text-center border border-brand-purple-neon/20">
           <p className="text-xs text-brand-purple-light/80">By Request Type</p>
-          <div className="flex items-center justify-center gap-4 mt-2">
-            <span className="flex items-center gap-1 text-green-400 font-semibold">
+          <p className="text-[11px] text-brand-purple-light/60 italic mt-0 mb-2">(excluding CalaMariGold's songs)</p>
+          <div className="flex items-center justify-center gap-6 mt-0">
+            <span className="flex items-center gap-1 text-green-400 font-semibold text-lg">
               <DollarSign size={16} /> {donationCount}
             </span>
-            <span className="flex items-center gap-1 text-purple-400 font-semibold">
+            <span className="flex items-center gap-1 text-purple-400 font-semibold text-lg">
               <span className="inline-block w-4 h-4 rounded-full bg-brand-purple-neon" /> {channelPointCount}
             </span>
           </div>

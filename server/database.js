@@ -1323,11 +1323,12 @@ function getHistoryStats() {
 
         const averageDuration = totalCount > 0 ? Math.round(totalDuration / totalCount) : 0;
 
-        const donationStmt = db.prepare("SELECT COUNT(*) AS count FROM song_history WHERE requestType = 'donation'");
+        // Exclude songs where requesterLogin is 'calamarigold' (case-insensitive)
+        const donationStmt = db.prepare("SELECT COUNT(*) AS count FROM song_history WHERE requestType = 'donation' AND LOWER(requesterLogin) != 'calamarigold'");
         const donationResult = donationStmt.get();
         const donationCount = donationResult.count || 0;
 
-        const channelPointStmt = db.prepare("SELECT COUNT(*) AS count FROM song_history WHERE requestType = 'channelPoint'");
+        const channelPointStmt = db.prepare("SELECT COUNT(*) AS count FROM song_history WHERE requestType = 'channelPoint' AND LOWER(requesterLogin) != 'calamarigold'");
         const channelPointResult = channelPointStmt.get();
         const channelPointCount = channelPointResult.count || 0;
 
