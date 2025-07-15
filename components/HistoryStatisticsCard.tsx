@@ -74,7 +74,7 @@ const HistoryStatisticsCard: React.FC<HistoryStatisticsCardProps> = ({
             <span className="flex items-center gap-1 text-green-400 font-semibold">
               <DollarSign size={16} /> {donationCount}
             </span>
-            <span className="flex items-center gap-1 font-semibold">
+            <span className="flex items-center gap-1 text-purple-400 font-semibold">
               <span className="inline-block w-4 h-4 rounded-full bg-brand-purple-neon" /> {channelPointCount}
             </span>
           </div>
