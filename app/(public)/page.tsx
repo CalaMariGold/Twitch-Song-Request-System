@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import Link from "next/link"
 import Image from "next/image"
-import SongRequestQueue from "@/components/SongRequestQueue"
+import SongRequestQueue from "@/components/SongRequestQueue/SongRequestQueue"
 import AnimatedBackground from "@/components/AnimatedBackground"
 import { Button } from "@/components/ui/button"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
@@ -151,10 +151,6 @@ export default function PublicDashboard() {
       // Keep the default "localhost"
     }
   }
-  // IMPORTANT: For deployment, ensure NEXT_PUBLIC_APP_URL is set correctly in your environment variables.
-  // If deploying to multiple domains/subdomains, you might need multiple parent parameters.
-  // Example: &parent=yourdomain.com&parent=www.yourdomain.com
-  // Currently, this code only supports a single parent derived from NEXT_PUBLIC_APP_URL.
   // --- End of hostname extraction logic ---
   
   const twitchEmbedSrc = `https://player.twitch.tv/?channel=${twitchChannel}&parent=${parentHostname}&autoplay=false&muted=true`;
