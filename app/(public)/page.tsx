@@ -17,6 +17,7 @@ import Footer from "@/components/Footer"
 import QueueStatisticsCard from "@/components/QueueStatisticsCard";
 import HowToRequestCard from "@/components/HowToRequestCard";
 import PosterCard from "@/components/PosterCard";
+import HistoryStatisticsCard from "@/components/HistoryStatisticsCard";
 
 export default function PublicDashboard() {
   const [queueState, setQueueState] = useState<QueueState>({
@@ -33,6 +34,15 @@ export default function PublicDashboard() {
   const [totalQueueCount, setTotalQueueCount] = useState(0)
   const [totalHistoryCount, setTotalHistoryCount] = useState(0)
   const [songsPlayedToday, setSongsPlayedToday] = useState(0)
+  const [historyStats, setHistoryStats] = useState({
+    totalDurationFormatted: "-",
+    averageDurationFormatted: "-",
+    totalDuration: 0,
+    averageDuration: 0,
+    donationCount: 0,
+    channelPointCount: 0,
+    totalHistory: 0,
+  });
   
 
   // Socket Connection & State Fetching
@@ -100,6 +110,17 @@ export default function PublicDashboard() {
         activeSong: initialState.activeSong,
         isLoading: false
       }))
+      if (initialState.historyStats) {
+        setHistoryStats({
+          totalDurationFormatted: initialState.historyStats.totalDurationFormatted,
+          averageDurationFormatted: initialState.historyStats.averageDurationFormatted,
+          totalDuration: initialState.historyStats.totalDuration,
+          averageDuration: initialState.historyStats.averageDuration,
+          donationCount: initialState.historyStats.donationCount,
+          channelPointCount: initialState.historyStats.channelPointCount,
+          totalHistory: initialState.history?.length || 0,
+        });
+      }
     })
     
     // Handle statistics updates
@@ -167,7 +188,7 @@ export default function PublicDashboard() {
           <div className="md:col-span-3 space-y-6">
 
             {/* Twitch Embed */}
-            <div className="w-full aspect-video bg-black rounded-lg overflow-hidden shadow-lg border border-brand-purple-neon/20 shadow-glow-purple-sm mb-6"> 
+            <div className="w-full aspect-video bg-black rounded-lg overflow-hidden shadow-lg border border-brand-purple-neon/20 mb-6"> 
               <iframe
                 src={twitchEmbedSrc}
                 height="100%"
@@ -212,6 +233,13 @@ export default function PublicDashboard() {
               totalQueueCount={totalQueueCount}
               totalQueueDurationFormatted={totalQueueDurationFormatted}
               songsPlayedToday={songsPlayedToday}
+            />
+            <HistoryStatisticsCard
+              totalHistory={totalHistoryCount}
+              totalHistoryDuration={historyStats.totalDurationFormatted}
+              averageSongDuration={historyStats.averageDurationFormatted}
+              donationCount={historyStats.donationCount}
+              channelPointCount={historyStats.channelPointCount}
             />
           </div>
         </div>

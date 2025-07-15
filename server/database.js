@@ -1307,6 +1307,47 @@ function getHistoryEntriesByRequesterName(requesterName) {
     }
 }
 
+/**
+ * Gets statistics for the song history: total duration, average duration, donation count, and channel point count.
+ * @returns {{ totalDuration: number, averageDuration: number, donationCount: number, channelPointCount: number }}
+ */
+function getHistoryStats() {
+    try {
+        const totalDurationStmt = db.prepare('SELECT SUM(durationSeconds) AS totalDuration FROM song_history');
+        const totalDurationResult = totalDurationStmt.get();
+        const totalDuration = totalDurationResult.totalDuration || 0;
+
+        const countStmt = db.prepare('SELECT COUNT(*) AS count FROM song_history');
+        const countResult = countStmt.get();
+        const totalCount = countResult.count || 0;
+
+        const averageDuration = totalCount > 0 ? Math.round(totalDuration / totalCount) : 0;
+
+        const donationStmt = db.prepare("SELECT COUNT(*) AS count FROM song_history WHERE requestType = 'donation'");
+        const donationResult = donationStmt.get();
+        const donationCount = donationResult.count || 0;
+
+        const channelPointStmt = db.prepare("SELECT COUNT(*) AS count FROM song_history WHERE requestType = 'channelPoint'");
+        const channelPointResult = channelPointStmt.get();
+        const channelPointCount = channelPointResult.count || 0;
+
+        return {
+            totalDuration,
+            averageDuration,
+            donationCount,
+            channelPointCount
+        };
+    } catch (error) {
+        console.error('[Database] Error getting history stats:', error);
+        return {
+            totalDuration: 0,
+            averageDuration: 0,
+            donationCount: 0,
+            channelPointCount: 0
+        };
+    }
+}
+
 module.exports = {
     initDatabase,
     closeDatabase,
@@ -1338,5 +1379,6 @@ module.exports = {
     updateHistoryTimestamp,
     getHistoryForUser,
     replaceRequesterNameInHistory,
-    getHistoryEntriesByRequesterName
+    getHistoryEntriesByRequesterName,
+    getHistoryStats
 }; 

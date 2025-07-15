@@ -180,7 +180,15 @@ io.on('connection', (socket) => {
     // Send initial state including fetched history
     socket.emit('initialState', {
         ...state,
-        history: recentHistory // Include history from DB
+        history: recentHistory, // Include history from DB
+        historyStats: (() => {
+          const stats = db.getHistoryStats();
+          return {
+            ...stats,
+            totalDurationFormatted: formatDurationFromSeconds(stats.totalDuration),
+            averageDurationFormatted: formatDurationFromSeconds(stats.averageDuration)
+          };
+        })()
     })
     
     // Handle explicit getState request
@@ -189,7 +197,15 @@ io.on('connection', (socket) => {
        // Send current state including recent history
        socket.emit('initialState', {
             ...state,
-            history: recentHistory // Overwrite in-memory history with recent DB history
+            history: recentHistory, // Overwrite in-memory history with recent DB history
+            historyStats: (() => {
+              const stats = db.getHistoryStats();
+              return {
+                ...stats,
+                totalDurationFormatted: formatDurationFromSeconds(stats.totalDuration),
+                averageDurationFormatted: formatDurationFromSeconds(stats.averageDuration)
+              };
+            })()
         });
 
         // Also send total counts on explicit request
@@ -1445,6 +1461,18 @@ io.on('connection', (socket) => {
         const entries = db.getHistoryEntriesByRequesterName(oldName);
         if (ack) ack({ success: true, entries });
     }));
+
+    // Add a socket event for fetching history stats on demand
+    socket.on('getHistoryStats', (callback) => {
+      const stats = db.getHistoryStats();
+      if (callback) {
+        callback({
+          ...stats,
+          totalDurationFormatted: formatDurationFromSeconds(stats.totalDuration),
+          averageDurationFormatted: formatDurationFromSeconds(stats.averageDuration)
+        });
+      }
+    });
 })
 
 // Start the server and load initial data

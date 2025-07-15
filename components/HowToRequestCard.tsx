@@ -29,7 +29,7 @@ const HowToRequestCard: React.FC = () => (
           <Button 
             variant="default" 
             size="sm" 
-            className="w-full bg-gradient-to-r from-brand-pink-light to-brand-pink-neon text-brand-black font-bold hover:opacity-90 transition-opacity shadow-md hover:shadow-glow-pink-lg text-glow-white-xs transition-transform duration-200 hover:scale-[1.02]"
+            className="w-full bg-gradient-to-r from-brand-pink-light to-brand-pink-neon text-brand-black font-bold hover:opacity-90 shadow-md hover:shadow-glow-pink-lg text-glow-white-xs transition-transform duration-200 hover:scale-[1.02]"
           >
             Tip Here to Request <ExternalLink size={14} className="ml-1.5" />
           </Button>
