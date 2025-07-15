@@ -13,7 +13,9 @@ const {
   extractSpotifyUrlFromText,
   analyzeRequestText,
   checkBlacklist,
-  validateDuration
+  validateDuration,
+  isUserBlocked,
+  handleBlacklistRejection,
 } = require('./helpers')
 const { 
   extractSpotifyTrackId,
@@ -1551,15 +1553,7 @@ async function startServer() {
                     return;
                 }
 
-                const blacklistMatch = checkBlacklist(spotifyRequest.title, spotifyRequest.artist, state.blacklist);
-                if (blacklistMatch) {
-                    console.log(chalk.yellow(`[Blacklist] Item matching term "${blacklistMatch.term}" (type: ${blacklistMatch.type}) found for "${spotifyRequest.title}" by ${spotifyRequest.artist} - rejecting`));
-                    let blacklistMessage = `@${userName}, sorry, your request for "${spotifyRequest.title}"`;
-                    if (blacklistMatch.type === 'artist') {
-                        blacklistMessage += ` by "${spotifyRequest.artist}"`;
-                    }
-                    blacklistMessage += ` is currently blacklisted.`;
-                    sendChatMessage(blacklistMessage + ' https://calamarigoldrequests.com/');
+                if (handleBlacklistRejection({ title: spotifyRequest.title, artist: spotifyRequest.artist, blacklist: state.blacklist, userName, sendChatMessage })) {
                     return;
                 }
                 // --- End Validations ---
@@ -1608,16 +1602,7 @@ async function startServer() {
               return;
             }
 
-            // Check blacklist using the helper
-            const blacklistMatch = checkBlacklist(spotifyRequest.title, spotifyRequest.artist, state.blacklist);
-            if (blacklistMatch) {
-                console.log(chalk.yellow(`[Blacklist] Item matching term "${blacklistMatch.term}" (type: ${blacklistMatch.type}) found for "${spotifyRequest.title}" by ${spotifyRequest.artist} - rejecting`));
-                let blacklistMessage = `@${userName}, sorry, your request for "${spotifyRequest.title}"`;
-                if (blacklistMatch.type === 'artist') {
-                    blacklistMessage += ` by "${spotifyRequest.artist}"`;
-                }
-                blacklistMessage += ` is currently blacklisted.`;
-                sendChatMessage(blacklistMessage + ' https://calamarigoldrequests.com/');
+            if (handleBlacklistRejection({ title: spotifyRequest.title, artist: spotifyRequest.artist, blacklist: state.blacklist, userName, sendChatMessage })) {
                 return;
             }
 
@@ -1726,15 +1711,7 @@ async function startServer() {
                     return;
                 }
 
-                const blacklistMatch = checkBlacklist(spotifyRequest.title, spotifyRequest.artist, state.blacklist);
-                if (blacklistMatch) {
-                    console.log(chalk.yellow(`[Blacklist] Item matching term "${blacklistMatch.term}" (type: ${blacklistMatch.type}) found for "${spotifyRequest.title}" by ${spotifyRequest.artist} - rejecting`));
-                    let blacklistMessage = `@${userName}, sorry, your request for "${spotifyRequest.title}"`;
-                    if (blacklistMatch.type === 'artist') {
-                        blacklistMessage += ` by "${spotifyRequest.artist}"`;
-                    }
-                    blacklistMessage += ` is currently blacklisted.`;
-                    sendChatMessage(blacklistMessage + ' https://calamarigoldrequests.com/');
+                if (handleBlacklistRejection({ title: spotifyRequest.title, artist: spotifyRequest.artist, blacklist: state.blacklist, userName, sendChatMessage })) {
                     return;
                 }
                  // --- End Validations ---
@@ -1791,16 +1768,7 @@ async function startServer() {
               return;
             }
 
-            // Check blacklist using the helper
-            const blacklistMatch = checkBlacklist(spotifyRequest.title, spotifyRequest.artist, state.blacklist);
-            if (blacklistMatch) {
-                console.log(chalk.yellow(`[Blacklist] Item matching term "${blacklistMatch.term}" (type: ${blacklistMatch.type}) found for "${spotifyRequest.title}" by ${spotifyRequest.artist} - rejecting`));
-                let blacklistMessage = `@${userName}, sorry, your request for "${spotifyRequest.title}"`;
-                if (blacklistMatch.type === 'artist') {
-                    blacklistMessage += ` by "${spotifyRequest.artist}"`;
-                }
-                blacklistMessage += ` is currently blacklisted.`;
-                sendChatMessage(blacklistMessage + ' https://calamarigoldrequests.com/');
+            if (handleBlacklistRejection({ title: spotifyRequest.title, artist: spotifyRequest.artist, blacklist: state.blacklist, userName, sendChatMessage })) {
                 return;
             }
 
@@ -1901,7 +1869,7 @@ async function validateAndAddSong(request, bypassRestrictions = false) {
   const userName = request.requester; // Use the requester name from the initial request object
 
   // 1. Check if requester is blocked
-  if (!bypassRestrictions && state.blockedUsers.some(user => user.username.toLowerCase() === userName.toLowerCase())) {
+  if (!bypassRestrictions && isUserBlocked(userName, state.blockedUsers)) {
       console.log(chalk.yellow(`[Queue] User ${userName} is blocked - rejecting request.`));
       sendChatMessage(`@${userName}, you are currently blocked from making song requests. https://calamarigoldrequests.com/`);
       return; // Stop processing
@@ -2039,15 +2007,7 @@ async function validateAndAddSong(request, bypassRestrictions = false) {
   }
 
   // 5. Check Blacklist (using the determined title and artist)
-  const blacklistMatch = checkBlacklist(songTitle, songArtist, state.blacklist);
-  if (!bypassRestrictions && blacklistMatch) {
-      console.log(chalk.yellow(`[Blacklist] Item matching term "${blacklistMatch.term}" (type: ${blacklistMatch.type}) found for "${songTitle}" by ${songArtist} - rejecting`));
-      let blacklistMessage = `@${userName}, sorry, your request for "${songTitle}"`;
-      if (blacklistMatch.type === 'artist') {
-          blacklistMessage += ` by "${songArtist}"`;
-      }
-      blacklistMessage += ` is currently blacklisted.`;
-      sendChatMessage(blacklistMessage + ' https://calamarigoldrequests.com/');
+  if (!bypassRestrictions && handleBlacklistRejection({ title: songTitle, artist: songArtist, blacklist: state.blacklist, userName, sendChatMessage })) {
       return; // Stop processing this request
   }
 

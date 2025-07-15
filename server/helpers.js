@@ -218,6 +218,17 @@ function checkBlacklist(title, artist, blacklist) {
 }
 
 /**
+ * Checks if a user is blocked from making requests.
+ * @param {string} username - The username to check.
+ * @param {Array<Object>} blockedUsers - The blocked users array from the application state.
+ * @returns {boolean} True if the user is blocked, false otherwise.
+ */
+function isUserBlocked(username, blockedUsers) {
+    if (!blockedUsers || blockedUsers.length === 0) return false;
+    return blockedUsers.some(user => user.username.toLowerCase() === username.toLowerCase());
+}
+
+/**
  * Validates the duration of a song request based on its type.
  * @param {number} durationSeconds - The duration of the song in seconds.
  * @param {string} requestType - The type of request ('donation' or 'channelPoint').
@@ -245,6 +256,30 @@ function validateDuration(durationSeconds, requestType, maxDonationSeconds, maxC
     return null; // Duration is valid
 }
 
+/**
+ * Checks the blacklist and sends a rejection message if a match is found.
+ * @param {Object} params
+ * @param {string} params.title - The song title.
+ * @param {string} params.artist - The song artist.
+ * @param {Array<Object>} params.blacklist - The blacklist array from the application state.
+ * @param {string} params.userName - The user making the request.
+ * @param {Function} params.sendChatMessage - Function to send a chat message.
+ * @returns {boolean} True if the request was rejected, false otherwise.
+ */
+function handleBlacklistRejection({ title, artist, blacklist, userName, sendChatMessage }) {
+    const blacklistMatch = checkBlacklist(title, artist, blacklist);
+    if (blacklistMatch) {
+        let blacklistMessage = `@${userName}, sorry, your request for "${title}"`;
+        if (blacklistMatch.type === 'artist') {
+            blacklistMessage += ` by "${artist}"`;
+        }
+        blacklistMessage += ` is currently blacklisted.`;
+        sendChatMessage(blacklistMessage + ' https://calamarigoldrequests.com/');
+        return true;
+    }
+    return false;
+}
+
 module.exports = {
     formatDurationFromSeconds,
     parseIsoDuration,
@@ -255,5 +290,7 @@ module.exports = {
     extractSpotifyAlbumUrlFromText,
     analyzeRequestText,
     checkBlacklist,
-    validateDuration
+    isUserBlocked,
+    validateDuration,
+    handleBlacklistRejection
 }; 
