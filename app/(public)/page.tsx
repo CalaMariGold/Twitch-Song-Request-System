@@ -14,6 +14,9 @@ import { StatisticsCard } from "@/components/StatisticsCard"
 import { formatDuration, calculateTotalQueueDuration } from "@/lib/utils"
 import React from "react"
 import Footer from "@/components/Footer"
+import QueueStatisticsCard from "@/components/QueueStatisticsCard";
+import HowToRequestCard from "@/components/HowToRequestCard";
+import PosterCard from "@/components/PosterCard";
 
 export default function PublicDashboard() {
   const [queueState, setQueueState] = useState<QueueState>({
@@ -198,131 +201,18 @@ export default function PublicDashboard() {
           <div className="md:col-span-1 space-y-6">
 
             {/* ShinyFest Poster Card */}
-            <Card className="bg-gradient-to-br from-brand-pink-light/80 to-brand-pink-dark/80 border-brand-pink-neon/40 backdrop-blur-md shadow-glow-pink-md hover:shadow-glow-pink-lg transition-all duration-300 ease-in-out hover:scale-[1.01]">
-              <a href="https://calamarigold-shop.fourthwall.com/products/shinyfest-2025-concert-poster" target="_blank" rel="noopener noreferrer" className="block hover:opacity-90 transition-opacity">
-                <CardContent className="p-1 flex flex-col items-center text-center">
-                  <div className="relative w-full aspect-[5/7] mb-0 border-2 border-brand-pink-neon/30 rounded-md overflow-hidden shadow-inner shadow-brand-black/30">
-                    <Image 
-                      src="/shinyfest 2025 poster.png" 
-                      alt="ShinyFest 2025 Poster" 
-                      fill
-                      sizes="(max-width: 768px) 100vw, 384px"
-                      className="object-cover"
-                      priority
-                      quality={100}
-                    />
-                  </div>
-                  <p className="text-[11px] font-semibold text-white leading-snug pt-1 [text-shadow:1px_1px_3px_black]">
-                    ShinyFest 2025 poster now available for sale!
-                  </p>
-                </CardContent>
-              </a>
-            </Card>
+            <PosterCard />
 
             {/* How to Request Card */}
-            <Card className="bg-brand-purple-deep/70 border-brand-purple-neon/30 backdrop-blur-md shadow-glow-purple-sm">
-              <CardHeader className="pb-2 pt-3"> {/* Adjust header padding */}
-                <CardTitle className="text-brand-pink-light flex items-center gap-2 text-glow-pink">
-                  <Gift size={18} />
-                  How to Request
-                </CardTitle>
-              </CardHeader>
-              {/* Adjusted CardContent for cleaner look */}
-              <CardContent className="space-y-3 px-3 pb-3 pt-1 text-sm"> {/* Adjust content padding */}
-                {/* Donation Section */}
-                <div className="space-y-1.5"> {/* Slightly reduce spacing */}
-                  <h4 className="font-semibold text-white flex items-center gap-1.5 pt-1"> {/* Add padding top to move header effectively up */}
-                    <DollarSign size={16} className="text-green-400"/> Priority Request (Donation)
-                  </h4>
-                  <p className="text-brand-purple-light/90 text-xs">
-                    IMPORTANT: Include the YouTube link, Spotify link, OR Artist & Song Title in your donation message.
-                  </p>
-                  {/* Add margin top/bottom to the link/button wrapper */}
-                  <a 
-                    href="https://streamelements.com/calamarigold/tip" 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="block my-3.0" /* Added margin */
-                  >
-                    <Button 
-                      variant="default" 
-                      size="sm" 
-                      className="w-full bg-gradient-to-r from-brand-pink-light to-brand-pink-neon text-brand-black font-bold hover:opacity-90 transition-opacity shadow-md hover:shadow-glow-pink-lg text-glow-white-xs transition-transform duration-200 hover:scale-[1.02]"
-                    >
-                      Tip Here to Request <ExternalLink size={14} className="ml-1.5" />
-                    </Button>
-                  </a>
-                  <ul className="list-disc list-inside text-brand-purple-light/80 space-y-0.5 pl-1 text-xs">
-                    <li>Donations get queue priority!</li>
-                    <li>Songs less than 5 min: $5</li>
-                    <li>Songs greater than 5 min: $10</li>
-                    <li>Max 10 min duration</li>
-                  </ul>
-                </div>
-
-                <hr className="border-brand-purple-dark/50" />
-
-                {/* Channel Points Section */}
-                <div className="space-y-1">
-                   <h4 className="font-semibold text-white flex items-center gap-1.5">
-                     <Star size={16} className="text-yellow-400" /> Channel Point Request
-                   </h4>
-                   <p className="text-brand-purple-light/90 text-xs">
-                     Redeem the 'Request a Song!' reward on Twitch to add a song to the end of the queue.
-                   </p>
-                </div>
-                
-                <hr className="border-brand-purple-dark/50" />
-
-                {/* Song Rules Section */}
-                <div className="space-y-1">
-                   <h4 className="font-semibold text-white flex items-center gap-1.5">
-                     <AlertTriangle size={16} className="text-red-400" /> Song Rules
-                   </h4>
-                   <ul className="list-disc list-inside text-brand-purple-light/80 space-y-0.5 pl-1 text-xs">
-                    <li>No Deathcore/Death Metal</li>
-                    <li>No Jazz</li>
-                    <li>No YouTuber music (ie KSI)</li>
-                    <li>No Fandom songs (ie FNAF)</li>
-                    <li>No AI-Generated Music</li>
-                  </ul>
-                </div>
-              </CardContent>
-            </Card>
+            <HowToRequestCard />
 
             {/* Queue Statistics Card - Use brand colors, add blur and subtle glow */}
-            <Card className="bg-brand-purple-deep/70 border-brand-purple-neon/30 backdrop-blur-md shadow-glow-purple-sm">
-              <CardHeader>
-                <CardTitle className="text-brand-pink-light flex items-center gap-2 text-glow-pink">
-                  <BarChart2 size={18} />
-                  Queue Statistics
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {queueState.isLoading ? (
-                  <div className="text-center py-4 text-brand-purple-light/80">Loading stats...</div>
-                ) : (
-                  <div className="grid grid-cols-1 gap-4">
-                    {/* Update stat item backgrounds */}
-                    <div className="bg-brand-purple-dark/50 p-4 rounded-lg text-center border border-brand-purple-neon/20">
-                      <p className="text-xs text-brand-purple-light/80">In Queue</p>
-                      <p className="text-2xl font-bold text-white">{totalQueueCount}</p>
-                    </div>
-                    <div className="bg-brand-purple-dark/50 p-4 rounded-lg text-center border border-brand-purple-neon/20">
-                      <p className="text-xs text-brand-purple-light/80">Total Duration</p>
-                      <p className="text-2xl font-bold text-white flex items-center justify-center">
-                        <Clock className="inline-block mr-2" size={20} />
-                        {totalQueueDurationFormatted}
-                      </p>
-                    </div>
-                    <div className="bg-brand-purple-dark/50 p-4 rounded-lg text-center border border-brand-purple-neon/20">
-                      <p className="text-xs text-brand-purple-light/80">Songs Played Today</p>
-                      <p className="text-2xl font-bold text-white">{songsPlayedToday}</p>
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+            <QueueStatisticsCard
+              isLoading={queueState.isLoading}
+              totalQueueCount={totalQueueCount}
+              totalQueueDurationFormatted={totalQueueDurationFormatted}
+              songsPlayedToday={songsPlayedToday}
+            />
           </div>
         </div>
       </div>
