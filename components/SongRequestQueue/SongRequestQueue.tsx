@@ -381,7 +381,7 @@ export default function SongRequestQueue() {
 
   return (
     <ErrorBoundary>
-      <div className="w-full max-w-4xl mx-auto p-6 bg-brand-purple-deep/70 text-white rounded-lg shadow-xl border border-brand-purple-neon/20 backdrop-blur-md shadow-glow-purple">
+      <div className="w-full max-w-4xl mx-auto p-6 bg-brand-purple-deep/70 text-white rounded-lg shadow-xl border border-brand-purple-neon/20 backdrop-blur-md">
         <Header isConnected={isConnected} />
         <ActiveSong song={state.activeSong} isLoading={state.isLoading} />
 
