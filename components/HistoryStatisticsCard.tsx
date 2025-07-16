@@ -12,8 +12,9 @@ interface HistoryStatisticsCardProps {
 
 function formatDurationWithUnits(duration: string) {
   // Accepts a string like '1:23:45' or '12:34' and returns JSX with h, m, s units
-  if (!duration || typeof duration !== 'string') return duration;
+  if (!duration || typeof duration !== 'string') return <span>-</span>;
   const parts = duration.split(":").map(Number);
+  if (parts.some(isNaN)) return <span>-</span>;
   let hours = 0, minutes = 0, seconds = 0;
   if (parts.length === 3) {
     hours = parts[0];

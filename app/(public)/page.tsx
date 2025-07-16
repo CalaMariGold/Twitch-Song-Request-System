@@ -179,7 +179,7 @@ export default function PublicDashboard() {
   }
   // --- End of hostname extraction logic ---
   
-  const twitchEmbedSrc = `https://player.twitch.tv/?channel=${twitchChannel}&parent=${parentHostname}&autoplay=false&muted=true`;
+  const twitchEmbedSrc = `https://player.twitch.tv/?channel=${twitchChannel}&parent=${parentHostname}&autoplay=true&muted=true`;
 
   return (
     <main className="min-h-screen flex flex-col items-center p-8 pt-4"> {/* Reduced top padding slightly */}
