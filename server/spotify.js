@@ -424,6 +424,12 @@ async function getSpotifyEquivalent(song) {
     console.warn(chalk.yellow('[Spotify] Cannot search for song without title'));
     return null;
   }
+  // --- Drumless/No Drums check ---
+  const titleLower = song.title.toLowerCase();
+  if (titleLower.includes('drumless') || titleLower.includes('no drums')) {
+    console.log(chalk.yellow(`[Spotify] Skipping Spotify search for drumless/no drums song: "${song.title}"`));
+    return null;
+  }
 
   console.log(chalk.blue(`[Spotify] Starting search for YouTube song: "${song.title}" (Channel: "${song.artist || 'N/A'}")`));
 
@@ -553,6 +559,12 @@ async function getSpotifyEquivalent(song) {
 async function findSpotifyTrackBySearchQuery(query) {
   if (!query) {
     console.warn(chalk.yellow('[Spotify] Empty search query provided'));
+    return null;
+  }
+  // --- Drumless/No Drums check ---
+  const queryLower = query.toLowerCase();
+  if (queryLower.includes('drumless') || queryLower.includes('no drums')) {
+    console.log(chalk.yellow(`[Spotify] Skipping Spotify search for drumless/no drums query: "${query}"`));
     return null;
   }
 
