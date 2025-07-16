@@ -11,7 +11,7 @@ import React from "react";
 
 export function ActiveSong({ song, isLoading }: { song: SongRequest | null, isLoading: boolean }) {
   return (
-    <div className="mb-6 p-4 bg-gradient-to-r from-brand-purple-dark/80 to-brand-purple-deep/80 rounded-lg shadow-md border border-brand-pink-neon/30 shadow-glow-pink-sm relative overflow-hidden">
+    <div className="mb-6 p-4 bg-gradient-to-r from-brand-purple-dark/80 to-brand-purple-deep/80 rounded-lg shadow-md border border-brand-pink-neon/30 relative overflow-hidden">
       <motion.div 
         className="absolute -top-2 -right-2 w-12 h-12 opacity-50 pointer-events-none" 
         animate={{ 
@@ -90,14 +90,14 @@ export function ActiveSong({ song, isLoading }: { song: SongRequest | null, isLo
           <div className="flex space-x-1">
             {song.youtubeUrl && (
               <a href={song.youtubeUrl} target="_blank" rel="noopener noreferrer" aria-label="Watch on YouTube">
-                <Button variant="ghost" className="p-2 text-red-500 hover:text-red-400">
+                <Button variant="ghost" className="p-2 text-red-500 hover:text-red-400" aria-label="Watch on YouTube">
                   <Youtube className="h-6 w-6" />
                 </Button>
               </a>
             )}
             {song.spotifyData && song.spotifyData.url && (
               <a href={String(song.spotifyData.url)} target="_blank" rel="noopener noreferrer" aria-label="Listen on Spotify">
-                <Button variant="ghost" className="p-2 text-green-500 hover:text-green-400">
+                <Button variant="ghost" className="p-2 text-green-500 hover:text-green-400" aria-label="Listen on Spotify">
                   <SpotifyIcon className="h-5 w-5" />
                 </Button>
               </a>

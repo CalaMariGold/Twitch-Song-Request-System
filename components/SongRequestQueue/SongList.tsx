@@ -137,14 +137,14 @@ export function SongList({
                 <div className="flex space-x-1 items-center">
                   {song.youtubeUrl && (
                     <a href={song.youtubeUrl} target="_blank" rel="noopener noreferrer" aria-label="Watch on YouTube">
-                       <Button variant="ghost" className="p-1 text-red-500 hover:text-red-400 hover:bg-red-500/10 rounded-full transition-all">
+                       <Button variant="ghost" className="p-1 text-red-500 hover:text-red-400 hover:bg-red-500/10 rounded-full transition-all" aria-label="Watch on YouTube">
                          <Youtube className="h-5 w-5" />
                       </Button>
                     </a>
                   )}
                   {song.spotifyData && song.spotifyData.url && (
                     <a href={String(song.spotifyData.url)} target="_blank" rel="noopener noreferrer" aria-label="Listen on Spotify">
-                      <Button variant="ghost" className="p-1 text-green-500 hover:text-green-400 hover:bg-green-500/10 rounded-full transition-all">
+                      <Button variant="ghost" className="p-1 text-green-500 hover:text-green-400 hover:bg-green-500/10 rounded-full transition-all" aria-label="Listen on Spotify">
                          <SpotifyIcon className="h-5 w-5" />
                       </Button>
                     </a>
