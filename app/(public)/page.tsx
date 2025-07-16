@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import Link from "next/link"
 import Image from "next/image"
 import SongRequestQueue from "@/components/SongRequestQueue/SongRequestQueue"
@@ -43,6 +43,8 @@ export default function PublicDashboard() {
     channelPointCount: 0,
     totalHistory: 0,
   });
+  const [playerError, setPlayerError] = useState(false);
+  const playerRef = useRef<HTMLIFrameElement>(null);
   
 
   // Socket Connection & State Fetching
@@ -188,16 +190,32 @@ export default function PublicDashboard() {
           <div className="md:col-span-3 space-y-6">
 
             {/* Twitch Embed */}
-            <div className="w-full aspect-video bg-black rounded-lg overflow-hidden shadow-lg border border-brand-purple-neon/20 mb-6"> 
+            <div className="w-full aspect-video bg-black rounded-lg overflow-hidden shadow-lg border border-brand-purple-neon/20 mb-6 relative" role="region" aria-label="Twitch Stream Player">
               <iframe
+                ref={playerRef}
                 src={twitchEmbedSrc}
                 height="100%"
                 width="100%"
                 allowFullScreen={true}
                 title={`Twitch Player for ${twitchChannel}`}
+                aria-label={`Twitch Player for ${twitchChannel}`}
                 className="border-0"
-              >
-              </iframe>
+                loading="lazy"
+                sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
+                allow="autoplay; fullscreen; picture-in-picture"
+                onError={() => setPlayerError(true)}
+                tabIndex={0}
+              />
+              {playerError && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-80 text-white z-10 rounded-lg">
+                  Failed to load Twitch player. Please check your connection or disable adblockers.
+                </div>
+              )}
+              <noscript>
+                <div className="absolute inset-0 flex items-center justify-center bg-black text-white rounded-lg">
+                  Twitch player requires JavaScript enabled.
+                </div>
+              </noscript>
             </div>
 
             {/* Song Request Queue */}
