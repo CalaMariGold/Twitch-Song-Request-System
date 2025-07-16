@@ -46,8 +46,13 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
+      <head>
+        {/* Preconnect to Twitch assets for faster font/video loading */}
+        <link rel="preconnect" href="https://assets.twitch.tv" crossOrigin="anonymous" />
+        <link rel="preconnect" href="https://gql.twitch.tv" crossOrigin="anonymous" />
+      </head>
       {/* Combine font variables */}
-      <body className={`${inter.variable} ${berkshireSwash.variable} font-sans`}> 
+      <body className={`${inter.variable} ${berkshireSwash.variable} font-sans`}>
         <ErrorBoundary>
           {children}
         </ErrorBoundary>
