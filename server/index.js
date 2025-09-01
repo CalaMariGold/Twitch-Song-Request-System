@@ -2338,11 +2338,11 @@ if (tmiClient) {
                 const { skippedSong, nextSong } = handleSkipSong();
 
                 if (skippedSong && nextSong) {
-                     sendChatMessage(`Finished "${skippedSong.title}". Now playing: "${nextSong.title}" by ${nextSong.artist}, requested by ${nextSong.requester}.`);
+                     sendChatMessage(`Finished "${skippedSong.title}". Now playing: "${nextSong.title}" by ${nextSong.artist}, requested by @${nextSong.requester}.`);
                 } else if (skippedSong) { // Skipped but queue was empty
                      sendChatMessage(`Finished "${skippedSong.title}". Queue is now empty.`);
                 } else if (nextSong) {
-                    sendChatMessage(`Now playing: "${nextSong.title}" by ${nextSong.artist}, requested by ${nextSong.requester}.`);
+                    sendChatMessage(`Now playing: "${nextSong.title}" by ${nextSong.artist}, requested by @${nextSong.requester}.`);
                 }
             }
         }
