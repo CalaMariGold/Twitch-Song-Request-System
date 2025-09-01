@@ -725,7 +725,7 @@ export default function AdminDashboard() {
         message: requestMessage,     // Now string | undefined
         requester: finalRequesterUsername,
         requestType: requestType,
-        donationInfo: requestType === 'donation' ? { amount: 5, currency: 'USD' } : undefined,
+        donationInfo: requestType === 'donation' ? { amount: 10, currency: 'USD' } : undefined,
         source: 'admin',
         bypassRestrictions: bypassRestrictions
     }

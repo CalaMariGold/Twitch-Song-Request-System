@@ -36,8 +36,7 @@ const HowToRequestCard: React.FC = () => (
         </a>
         <ul className="list-disc list-inside text-brand-purple-light/80 space-y-0.5 pl-1 text-xs">
           <li>Donations get queue priority!</li>
-          <li>Songs less than 5 min: $5</li>
-          <li>Songs greater than 5 min: $10</li>
+          <li>All songs: $10 flat rate</li>
           <li>Max 10 min duration</li>
         </ul>
       </div>

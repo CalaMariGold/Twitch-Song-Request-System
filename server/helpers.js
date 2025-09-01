@@ -249,7 +249,7 @@ function validateDuration(durationSeconds, requestType, maxDonationSeconds, maxC
     if (requestType === 'channelPoint' && durationSeconds > maxChannelPointSeconds) {
         return {
             limit: maxChannelPointSeconds,
-            message: `Sorry, channel point songs cannot be longer than 5 minutes. Donate for priority and up to 10 minute songs.`
+            message: `Sorry, channel point songs cannot be longer than 5 minutes. Donate $10 for priority and up to 10 minute songs.`
         };
     }
 
