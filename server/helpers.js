@@ -264,9 +264,10 @@ function validateDuration(durationSeconds, requestType, maxDonationSeconds, maxC
  * @param {Array<Object>} params.blacklist - The blacklist array from the application state.
  * @param {string} params.userName - The user making the request.
  * @param {Function} params.sendChatMessage - Function to send a chat message.
+ * @param {string} [params.donationMessage] - Optional donation message to include.
  * @returns {boolean} True if the request was rejected, false otherwise.
  */
-function handleBlacklistRejection({ title, artist, blacklist, userName, sendChatMessage }) {
+function handleBlacklistRejection({ title, artist, blacklist, userName, sendChatMessage, donationMessage }) {
     const blacklistMatch = checkBlacklist(title, artist, blacklist);
     if (blacklistMatch) {
         let blacklistMessage = `@${userName}, sorry, your request for "${title}"`;
@@ -274,7 +275,10 @@ function handleBlacklistRejection({ title, artist, blacklist, userName, sendChat
             blacklistMessage += ` by "${artist}"`;
         }
         blacklistMessage += ` is currently blacklisted.`;
-        sendChatMessage(blacklistMessage + ' https://calamarigoldrequests.com/');
+        if (donationMessage) {
+            blacklistMessage += ` - "${donationMessage}"`;
+        }
+        sendChatMessage(blacklistMessage + ' https://calamarigoldrequests.com');
         return true;
     }
     return false;

@@ -863,7 +863,7 @@ io.on('connection', (socket) => {
             console.log(chalk.cyan(`[User] Song details updated by ${userLogin} for request ${requestId}: ${spotifyDetails.name} by ${updatedArtist}`));
             
             // Send Twitch chat confirmation message
-            sendChatMessage(`@${userLogin} updated their request to: "${spotifyDetails.name}" by ${updatedArtist}. https://calamarigoldrequests.com/`);
+            sendChatMessage(`@${userLogin} updated their request to: "${spotifyDetails.name}" by ${updatedArtist}. https://calamarigoldrequests.com`);
             
         } catch (error) {
             console.error(chalk.red(`[Error] Error updating Spotify details for song ${requestId}:`), error);
@@ -999,9 +999,9 @@ io.on('connection', (socket) => {
             
             // Send Twitch chat confirmation message
             if (finalYoutubeUrl) {
-                sendChatMessage(`@${userLogin} updated their request to: "${newTitle}" by ${newArtist}. https://calamarigoldrequests.com/`);
+                sendChatMessage(`@${userLogin} updated their request to: "${newTitle}" by ${newArtist}. https://calamarigoldrequests.com`);
             } else {
-                sendChatMessage(`@${userLogin} removed the YouTube URL from their request. https://calamarigoldrequests.com/`);
+                sendChatMessage(`@${userLogin} removed the YouTube URL from their request. https://calamarigoldrequests.com`);
             }
             
         } catch (error) {
@@ -1512,7 +1512,8 @@ async function startServer() {
 
       if (analysisResult.type === 'spotifyAlbumUrl') {
           console.warn(chalk.yellow(`[StreamElements] User ${userName} provided a Spotify Album link in donation: "${message}"`));
-          sendChatMessage(`@${userName} It looks like you used a Spotify album link in your donation. Use a track link instead for song requests. Please @ a mod with the correct link and we'll add it to the queue.`);
+          const donationMessage = message ? ` - "${message}"` : '';
+          sendChatMessage(`@${userName} It looks like you used a Spotify album link in your donation. Use a track link instead for song requests. Please @ a mod with the correct link and we'll add it to the queue.${donationMessage}`);
           return;
       }
 
@@ -1520,14 +1521,16 @@ async function startServer() {
       const MIN_DONATION_AMOUNT = 10;
       if (amount < MIN_DONATION_AMOUNT) {
           console.log(chalk.yellow(`[StreamElements] Donation from ${userName} (${amount} ${currency}) below minimum (${MIN_DONATION_AMOUNT} ${currency}). Skipping request.`));
-          sendChatMessage(`Thanks @${userName} for the ${amount} ${currency} donation! Song requests require a minimum donation of ${MIN_DONATION_AMOUNT} ${currency}. https://calamarigoldrequests.com/`);
+          const donationMessage = message ? ` - "${message}"` : '';
+          sendChatMessage(`Thanks @${userName} for the ${amount} ${currency} donation! Song requests require a minimum donation of ${MIN_DONATION_AMOUNT} ${currency}.${donationMessage} https://calamarigoldrequests.com`);
           return;
       }
 
       // If no valid request type found, thank for donation but don't process
       if (analysisResult.type === 'none') {
           console.warn(chalk.yellow(`[StreamElements] No YouTube URL, Spotify URL, or song query found in donation from ${userName}: "${message}"`));
-          sendChatMessage(`Thanks @${userName} for the ${amount} ${currency}! If you want to request a song with your dono next time, put either a YouTube link, Spotify link, or song name in the dono message. https://calamarigoldrequests.com/`);
+          const donationMessage = message ? ` - "${message}"` : '';
+          sendChatMessage(`Thanks @${userName} for the ${amount} ${currency}! If you want to request a song with your dono next time, put either a YouTube link, Spotify link, or song name in the dono message.${donationMessage} https://calamarigoldrequests.com`);
           return;
       }
 
@@ -1558,7 +1561,8 @@ async function startServer() {
             const trackId = extractSpotifyTrackId(analysisResult.value);
             if (!trackId) {
                 console.warn(chalk.yellow(`[Spotify] Invalid Spotify URL in donation: ${analysisResult.value}`));
-                sendChatMessage(`@${userName} Thanks for the donation! The Spotify link you provided doesn't look right. Please use a valid track link. https://calamarigoldrequests.com/`);
+                const donationMessage = message ? ` - "${message}"` : '';
+                sendChatMessage(`@${userName} Thanks for the donation! The Spotify link you provided doesn't look right. Please use a valid track link.${donationMessage} https://calamarigoldrequests.com`);
                 return;
             }
             console.log(chalk.blue(`[Spotify] Successfully extracted track ID from donation: ${trackId}`));
@@ -1577,11 +1581,12 @@ async function startServer() {
                 );
                 if (durationError) {
                     console.log(chalk.yellow(`[Queue] Donation (Spotify URL) request duration (${spotifyRequest.durationSeconds}s) exceeds limit (${durationError.limit}s) - rejecting "${spotifyRequest.title}"`));
-                    sendChatMessage(`@${userName} ${durationError.message} https://calamarigoldrequests.com/`);
+                    const donationMessage = message ? ` - "${message}"` : '';
+                    sendChatMessage(`@${userName} ${durationError.message}${donationMessage} https://calamarigoldrequests.com`);
                     return;
                 }
 
-                if (handleBlacklistRejection({ title: spotifyRequest.title, artist: spotifyRequest.artist, blacklist: state.blacklist, userName, sendChatMessage })) {
+                if (handleBlacklistRejection({ title: spotifyRequest.title, artist: spotifyRequest.artist, blacklist: state.blacklist, userName, sendChatMessage, donationMessage: message })) {
                     return;
                 }
                 // --- End Validations ---
@@ -1597,14 +1602,17 @@ async function startServer() {
                 console.log(chalk.green(`[Queue] Added Spotify song (from URL) "${spotifyRequest.title}" by ${spotifyRequest.artist}. Type: donation. Requester: ${spotifyRequest.requester}. Position: #${queuePosition}`));
 
                 // Send success message
-                sendChatMessage(`@${userName} Thanks for the ${amount} ${currency} donation! Your priority request for "${spotifyRequest.title}" by ${spotifyRequest.artist} (from Spotify link) is #${queuePosition} in the queue. https://calamarigoldrequests.com/`);
+                const donationMessage = message ? ` - "${message}"` : '';
+                sendChatMessage(`@${userName} Thanks for the ${amount} ${currency} donation! Your priority request for "${spotifyRequest.title}" by ${spotifyRequest.artist} (from Spotify link) is #${queuePosition} in the queue.${donationMessage} https://calamarigoldrequests.com`);
             } else {
                 console.log(chalk.yellow(`[Spotify] Could not find track details for Spotify URL: ${analysisResult.value}`));
-                sendChatMessage(`@${userName} Thanks for the donation! I couldn't find the song details for the Spotify link you provided. https://calamarigoldrequests.com/`);
+                const donationMessage = message ? ` - "${message}"` : '';
+                sendChatMessage(`@${userName} Thanks for the donation! I couldn't find the song details for the Spotify link you provided.${donationMessage} https://calamarigoldrequests.com`);
             }
         } catch (error) {
             console.error(chalk.red('[Spotify] Error processing Spotify URL donation:'), error);
-            sendChatMessage(`@${userName} Thanks for the donation! There was an error processing the Spotify link. https://calamarigoldrequests.com/`);
+            const donationMessage = message ? ` - "${message}"` : '';
+            sendChatMessage(`@${userName} Thanks for the donation! There was an error processing the Spotify link.${donationMessage} https://calamarigoldrequests.com`);
         }
       } else if (analysisResult.type === 'text') {
         // Process as a text-based song request (Existing Logic)
@@ -1626,11 +1634,12 @@ async function startServer() {
             );
             if (durationError) {
               console.log(chalk.yellow(`[Queue] Donation (text) request duration (${spotifyRequest.durationSeconds}s) exceeds limit (${durationError.limit}s) - rejecting "${spotifyRequest.title}"`));
-              sendChatMessage(`@${userName} ${durationError.message} https://calamarigoldrequests.com/`);
+              const donationMessage = message ? ` - "${message}"` : '';
+              sendChatMessage(`@${userName} ${durationError.message}${donationMessage} https://calamarigoldrequests.com`);
               return;
             }
 
-            if (handleBlacklistRejection({ title: spotifyRequest.title, artist: spotifyRequest.artist, blacklist: state.blacklist, userName, sendChatMessage })) {
+            if (handleBlacklistRejection({ title: spotifyRequest.title, artist: spotifyRequest.artist, blacklist: state.blacklist, userName, sendChatMessage, donationMessage: message })) {
                 return;
             }
 
@@ -1645,14 +1654,17 @@ async function startServer() {
             console.log(chalk.green(`[Queue] Added Spotify song (from text) "${spotifyRequest.title}" by ${spotifyRequest.artist}. Type: donation. Requester: ${spotifyRequest.requester}. Position: #${queuePosition}`));
 
             // Send success message
-            sendChatMessage(`@${userName} Thanks for the ${amount} ${currency} donation! Your priority request for "${spotifyRequest.title}" by ${spotifyRequest.artist} is #${queuePosition} in the queue. https://calamarigoldrequests.com/`);
+            const donationMessage = message ? ` - "${message}"` : '';
+            sendChatMessage(`@${userName} Thanks for the ${amount} ${currency} donation! Your priority request for "${spotifyRequest.title}" by ${spotifyRequest.artist} is #${queuePosition} in the queue.${donationMessage} https://calamarigoldrequests.com`);
           } else {
             console.log(chalk.yellow(`[Spotify] No track found for query: "${searchQuery}"`));
-            sendChatMessage(`@${userName} Thanks for the ${amount} ${currency} donation! I couldn't find a song matching "${searchQuery}". Try a different search or a YouTube/Spotify link next time. https://calamarigoldrequests.com/`);
+            const donationMessage = message ? ` - "${message}"` : '';
+            sendChatMessage(`@${userName} Thanks for the ${amount} ${currency} donation! I couldn't find a song matching "${searchQuery}". Try a different search or a YouTube/Spotify link next time.${donationMessage} https://calamarigoldrequests.com`);
           }
         } catch (error) {
           console.error(chalk.red('[Spotify] Error processing text-based donation:'), error);
-          sendChatMessage(`@${userName} Thanks for the ${amount} ${currency} donation! There was an error finding your requested song. Please try again with a YouTube/Spotify link. https://calamarigoldrequests.com/`);
+          const donationMessage = message ? ` - "${message}"` : '';
+          sendChatMessage(`@${userName} Thanks for the ${amount} ${currency} donation! There was an error finding your requested song. Please try again with a YouTube/Spotify link.${donationMessage} https://calamarigoldrequests.com`);
         }
       }
     } catch (error) {
@@ -1679,7 +1691,7 @@ async function startServer() {
       // If no valid request type found, reject the request
       if (analysisResult.type === 'none') {
         console.warn(chalk.yellow(`[StreamElements] No YouTube URL, Spotify URL, or song query found in redemption from ${userName}`));
-        sendChatMessage(`@${userName}, you need to include either a YouTube link, Spotify link, or song name in your request. https://calamarigoldrequests.com/`);
+        sendChatMessage(`@${userName}, you need to include either a YouTube link, Spotify link, or song name in your request. https://calamarigoldrequests.com`);
         return;
       }
 
@@ -1708,7 +1720,7 @@ async function startServer() {
             const trackId = extractSpotifyTrackId(analysisResult.value);
             if (!trackId) {
                 console.warn(chalk.yellow(`[Spotify] Invalid Spotify URL in redemption: ${analysisResult.value}`));
-                sendChatMessage(`@${userName}, the Spotify link you provided doesn't look right. Please use a valid track link. https://calamarigoldrequests.com/`);
+                sendChatMessage(`@${userName}, the Spotify link you provided doesn't look right. Please use a valid track link. https://calamarigoldrequests.com`);
                 return;
             }
             console.log(chalk.blue(`[Spotify] Successfully extracted track ID from channel point: ${trackId}`));
@@ -1723,7 +1735,7 @@ async function startServer() {
                 const existingRequest = state.queue.find(song => song.requesterLogin?.toLowerCase() === userName.toLowerCase() || song.requester.toLowerCase() === userName.toLowerCase());
                 if (existingRequest) {
                     console.log(chalk.yellow(`[Queue] User ${userName} already has a song in the queue - rejecting channel point request`));
-                    sendChatMessage(`@${userName}, you already have a song in the queue. Please wait for it to play. https://calamarigoldrequests.com/`);
+                    sendChatMessage(`@${userName}, you already have a song in the queue. Please wait for it to play. https://calamarigoldrequests.com`);
                     return;
                 }
 
@@ -1735,7 +1747,7 @@ async function startServer() {
                 );
                 if (durationError) {
                     console.log(chalk.yellow(`[Queue] Channel Point (Spotify URL) request duration (${spotifyRequest.durationSeconds}s) exceeds limit (${durationError.limit}s) - rejecting "${spotifyRequest.title}"`));
-                    sendChatMessage(`@${userName} ${durationError.message} https://calamarigoldrequests.com/`);
+                    sendChatMessage(`@${userName} ${durationError.message} https://calamarigoldrequests.com`);
                     return;
                 }
 
@@ -1755,14 +1767,14 @@ async function startServer() {
                 console.log(chalk.green(`[Queue] Added Spotify song (from URL) "${spotifyRequest.title}" by ${spotifyRequest.artist}. Type: channelPoint. Requester: ${spotifyRequest.requester}. Position: #${queuePosition}`));
 
                 // Send success message
-                sendChatMessage(`@${userName} Your request for "${spotifyRequest.title}" by ${spotifyRequest.artist} (from Spotify link) is #${queuePosition} in the queue. https://calamarigoldrequests.com/`);
+                sendChatMessage(`@${userName} Your request for "${spotifyRequest.title}" by ${spotifyRequest.artist} (from Spotify link) is #${queuePosition} in the queue. https://calamarigoldrequests.com`);
             } else {
                  console.log(chalk.yellow(`[Spotify] Could not find track details for Spotify URL: ${analysisResult.value}`));
-                sendChatMessage(`@${userName}, I couldn't find the song details for the Spotify link you provided. https://calamarigoldrequests.com/`);
+                sendChatMessage(`@${userName}, I couldn't find the song details for the Spotify link you provided. https://calamarigoldrequests.com`);
             }
         } catch (error) {
             console.error(chalk.red('[Spotify] Error processing Spotify URL redemption:'), error);
-            sendChatMessage(`@${userName}, there was an error processing the Spotify link. https://calamarigoldrequests.com/`);
+            sendChatMessage(`@${userName}, there was an error processing the Spotify link. https://calamarigoldrequests.com`);
         }
       } else if (analysisResult.type === 'text') {
         // Process as a text-based song request (Existing Logic)
@@ -1779,7 +1791,7 @@ async function startServer() {
             const existingRequest = state.queue.find(song => song.requesterLogin?.toLowerCase() === userName.toLowerCase() || song.requester.toLowerCase() === userName.toLowerCase());
             if (existingRequest) {
               console.log(chalk.yellow(`[Queue] User ${userName} already has a song in the queue - rejecting channel point request`));
-              sendChatMessage(`@${userName}, you already have a song in the queue. Please wait for it to play. https://calamarigoldrequests.com/`);
+              sendChatMessage(`@${userName}, you already have a song in the queue. Please wait for it to play. https://calamarigoldrequests.com`);
               return;
             }
 
@@ -1792,7 +1804,7 @@ async function startServer() {
             );
             if (durationError) {
               console.log(chalk.yellow(`[Queue] Channel Point (text) request duration (${spotifyRequest.durationSeconds}s) exceeds limit (${durationError.limit}s) - rejecting "${spotifyRequest.title}"`));
-              sendChatMessage(`@${userName} ${durationError.message} https://calamarigoldrequests.com/`);
+              sendChatMessage(`@${userName} ${durationError.message} https://calamarigoldrequests.com`);
               return;
             }
 
@@ -1811,14 +1823,14 @@ async function startServer() {
             console.log(chalk.green(`[Queue] Added Spotify song (from text) "${spotifyRequest.title}" by ${spotifyRequest.artist}. Type: channelPoint. Requester: ${spotifyRequest.requester}. Position: #${queuePosition}`));
 
             // Send success message
-            sendChatMessage(`@${userName} Your request for "${spotifyRequest.title}" by ${spotifyRequest.artist} is #${queuePosition} in the queue. https://calamarigoldrequests.com/`);
+            sendChatMessage(`@${userName} Your request for "${spotifyRequest.title}" by ${spotifyRequest.artist} is #${queuePosition} in the queue. https://calamarigoldrequests.com`);
           } else {
             console.log(chalk.yellow(`[Spotify] No track found for query: "${searchQuery}"`));
-            sendChatMessage(`@${userName} I couldn't find a song matching "${searchQuery}". Try again or use a YouTube/Spotify link. https://calamarigoldrequests.com/`);
+            sendChatMessage(`@${userName} I couldn't find a song matching "${searchQuery}". Try again or use a YouTube/Spotify link. https://calamarigoldrequests.com`);
           }
         } catch (error) {
           console.error(chalk.red('[Spotify] Error processing text-based redemption:'), error);
-          sendChatMessage(`@${userName} There was an error finding your requested song. Please try again with a YouTube/Spotify link. https://calamarigoldrequests.com/`);
+          sendChatMessage(`@${userName} There was an error finding your requested song. Please try again with a YouTube/Spotify link. https://calamarigoldrequests.com`);
         }
       }
     } catch (error) {
@@ -1899,7 +1911,7 @@ async function validateAndAddSong(request, bypassRestrictions = false) {
   // 1. Check if requester is blocked
   if (!bypassRestrictions && isUserBlocked(userName, state.blockedUsers)) {
       console.log(chalk.yellow(`[Queue] User ${userName} is blocked - rejecting request.`));
-      sendChatMessage(`@${userName}, you are currently blocked from making song requests. https://calamarigoldrequests.com/`);
+      sendChatMessage(`@${userName}, you are currently blocked from making song requests. https://calamarigoldrequests.com`);
       return; // Stop processing
   }
 
@@ -1908,7 +1920,7 @@ async function validateAndAddSong(request, bypassRestrictions = false) {
       const existingRequest = state.queue.find(song => song.requesterLogin?.toLowerCase() === userName.toLowerCase() || song.requester.toLowerCase() === userName.toLowerCase());
       if (existingRequest) {
           console.log(chalk.yellow(`[Queue] User ${userName} already has a song in the queue - rejecting channel point request.`));
-          sendChatMessage(`@${userName}, you already have a song in the queue. Please wait for it to play. https://calamarigoldrequests.com/`);
+          sendChatMessage(`@${userName}, you already have a song in the queue. Please wait for it to play. https://calamarigoldrequests.com`);
           return; // Stop processing
       }
   }
@@ -1926,12 +1938,12 @@ async function validateAndAddSong(request, bypassRestrictions = false) {
           youtubeId = extractVideoId(request.youtubeUrl);
           if (!youtubeId) {
               console.error(chalk.red(`[YouTube] Failed to extract video ID from URL: ${request.youtubeUrl}`));
-              sendChatMessage(`@${userName}, couldn't process the YouTube link. Please make sure it's a valid video URL. https://calamarigoldrequests.com/`);
+              sendChatMessage(`@${userName}, couldn't process the YouTube link. Please make sure it's a valid video URL. https://calamarigoldrequests.com`);
               return;
           }
           videoDetails = await fetchYouTubeDetails(youtubeId);
           if (!videoDetails) {
-              sendChatMessage(`@${userName}, couldn't fetch details for that YouTube video. https://calamarigoldrequests.com/`);
+              sendChatMessage(`@${userName}, couldn't fetch details for that YouTube video. https://calamarigoldrequests.com`);
               return;
           }
 
@@ -1996,7 +2008,7 @@ async function validateAndAddSong(request, bypassRestrictions = false) {
                     console.error(chalk.red(`[Queue] validateAndAddSong received request via message field without pre-filled details and it wasn't a Spotify URL. Cannot proceed. Request:`, request));
                     // Send chat message only if not from admin source (avoid double messages)
                     if (request.source !== 'socket' && request.source !== 'admin') { 
-                         sendChatMessage(`@${userName}, there was an internal error processing your text-based request. https://calamarigoldrequests.com/`);
+                         sendChatMessage(`@${userName}, there was an internal error processing your text-based request. https://calamarigoldrequests.com`);
                     }
                     return;
                }
@@ -2016,7 +2028,7 @@ async function validateAndAddSong(request, bypassRestrictions = false) {
 
   } catch (error) {
       console.error(chalk.red(`[Queue] Error fetching details for request from ${userName}:`), error);
-      sendChatMessage(`@${userName}, there was an error processing your request. Please try again. https://calamarigoldrequests.com/`);
+      sendChatMessage(`@${userName}, there was an error processing your request. Please try again. https://calamarigoldrequests.com`);
       return;
   }
 
@@ -2030,12 +2042,16 @@ async function validateAndAddSong(request, bypassRestrictions = false) {
   );
   if (!bypassRestrictions && durationError) {
       console.log(chalk.yellow(`[Queue] Request duration (${durationSeconds}s) for "${songTitle}" exceeds limit (${durationError.limit}s) for type ${request.requestType} - rejecting`));
-      sendChatMessage(`@${userName} ${durationError.message} https://calamarigoldrequests.com/`);
+      let errorMessage = `@${userName} ${durationError.message}`;
+      if (request.requestType === 'donation' && request.message) {
+          errorMessage += ` - "${request.message}"`;
+      }
+      sendChatMessage(errorMessage + ' https://calamarigoldrequests.com');
       return; // Stop processing this request
   }
 
   // 5. Check Blacklist (using the determined title and artist)
-  if (!bypassRestrictions && handleBlacklistRejection({ title: songTitle, artist: songArtist, blacklist: state.blacklist, userName, sendChatMessage })) {
+  if (!bypassRestrictions && handleBlacklistRejection({ title: songTitle, artist: songArtist, blacklist: state.blacklist, userName, sendChatMessage, donationMessage: request.message })) {
       return; // Stop processing this request
   }
 
@@ -2094,11 +2110,12 @@ async function validateAndAddSong(request, bypassRestrictions = false) {
 
   let successMessage = `@${userName} `;
   if (request.requestType === 'donation') {
-      successMessage += `Thanks for the ${request.donationInfo?.amount} ${request.donationInfo?.currency} donation! Your priority request for "${finalSongRequest.title}" by ${finalSongRequest.artist} is #${queuePosition} in the queue.`;
+      const donationMessage = request.message ? ` - "${request.message}"` : '';
+      successMessage += `Thanks for the ${request.donationInfo?.amount} ${request.donationInfo?.currency} donation! Your priority request for "${finalSongRequest.title}" by ${finalSongRequest.artist} is #${queuePosition} in the queue.${donationMessage}`;
   } else {
       successMessage += `Your request for "${finalSongRequest.title}" by ${finalSongRequest.artist} is #${queuePosition} in the queue.`;
   }
-  sendChatMessage(successMessage + ' https://calamarigoldrequests.com/');
+  sendChatMessage(successMessage + ' https://calamarigoldrequests.com');
 
 }
 
