@@ -89,7 +89,7 @@ export function SongList({
               </div>
               {/* Middle section (Title, Artist, Duration, Requester) */}
               <div className="flex-grow min-w-0 w-full sm:w-auto order-first sm:order-none mb-2 sm:mb-0">
-                <p className={`font-medium truncate flex items-center gap-1 ${isHistory ? 'text-gray-400' : 'text-white'}`}>
+                <p className={`font-medium break-words flex items-center gap-1 ${isHistory ? 'text-gray-400' : 'text-white'}`}>
                   {song.title || (song.youtubeUrl ? 'Untitled YouTube Video' : 'Untitled Song')}
                 </p>
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1">

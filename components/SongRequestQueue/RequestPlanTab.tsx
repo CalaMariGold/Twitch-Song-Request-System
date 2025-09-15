@@ -150,7 +150,7 @@ export function RequestPlanTab({
                           </div>
                         </div>
                         <div className="flex-grow min-w-0 w-full sm:w-auto order-first sm:order-none mb-2 sm:mb-0">
-                          <p className="font-medium text-white truncate flex items-center gap-1">
+                          <p className="font-medium text-white break-words flex items-center gap-1">
                             {song.title || song.youtubeUrl}
                           </p>
                           <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1">
