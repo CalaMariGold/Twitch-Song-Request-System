@@ -1471,7 +1471,7 @@ export default function AdminDashboard() {
                                      </div>
                                      <div className="flex-1 min-w-0 overflow-hidden">
                                         <p 
-                                            className="font-medium text-white truncate max-w-md"
+                                            className="font-medium text-white break-words max-w-md"
                                             title={song.title}
                                         >
                                             {song.title || 'Loading title...'}
@@ -1532,7 +1532,7 @@ export default function AdminDashboard() {
                                                     <X size={8} />
                                                   </button>
                                                 </div>
-                                                <span className="truncate">
+                                                <span className="break-words">
                                                     {song.spotifyData.name} - {song.spotifyData.artists?.map((a: { name: string }) => a.name).join(', ')}
                                                 </span>
                                                 {/* Display URL link if it exists */}
@@ -1664,7 +1664,7 @@ export default function AdminDashboard() {
                                     
                                     {/* Song Info */} 
                                     <div className="flex-1 min-w-0 pr-2 overflow-visible">
-                                       <p className="font-medium text-white truncate" title={song.title}>{song.title || 'Unknown Title'}</p>
+                                       <p className="font-medium text-white break-words" title={song.title}>{song.title || 'Unknown Title'}</p>
                                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1">
                                           {/* ... Artist Badge, Duration, Requester Info ... */} 
                                           {song.channelId ? (
@@ -1708,7 +1708,7 @@ export default function AdminDashboard() {
                                         {song.spotifyData && (
                                             <div className="mt-1 text-xs flex items-center text-gray-400 gap-1.5" title={`Spotify: ${song.spotifyData.name} by ${song.spotifyData.artists?.map((a: {name: string}) => a.name).join(', ')}`}>
                                                 <SpotifyIcon className="h-3 w-3 text-green-500 flex-shrink-0" />
-                                                <span className="truncate">
+                                                <span className="break-words">
                                                     {song.spotifyData.name} - {song.spotifyData.artists?.map((a: { name: string }) => a.name).join(', ')}
                                                 </span>
                                                 {/* Display URL link if it exists */} 
