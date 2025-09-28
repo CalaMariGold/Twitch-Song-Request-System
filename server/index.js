@@ -2108,14 +2108,21 @@ async function validateAndAddSong(request, bypassRestrictions = false) {
   const requestSource = request.requestType === 'donation' ? `donation (${request.donationInfo?.amount} ${request.donationInfo?.currency})` : 'channel points';
   console.log(chalk.green(`[Queue] Added song "${finalSongRequest.title}" by ${finalSongRequest.artist}. Type: ${request.requestType}. Requester: ${userName}. Position: #${queuePosition}. Source: ${requestSource}`));
 
-  let successMessage = `@${userName} `;
-  if (request.requestType === 'donation') {
-      const donationMessage = request.message ? ` - "${request.message}"` : '';
-      successMessage += `Thanks for the ${request.donationInfo?.amount} ${request.donationInfo?.currency} donation! Your priority request for "${finalSongRequest.title}" by ${finalSongRequest.artist} is #${queuePosition} in the queue.${donationMessage}`;
+  // Send different messages based on the source
+  if (request.source === 'admin') {
+      // Custom message for admin-added songs
+      sendChatMessage(`🎵 Admin added "${finalSongRequest.title}" by ${finalSongRequest.artist} to the queue (requested by ${userName}). https://calamarigoldrequests.com`);
   } else {
-      successMessage += `Your request for "${finalSongRequest.title}" by ${finalSongRequest.artist} is #${queuePosition} in the queue.`;
+      // Standard message for regular requests
+      let successMessage = `@${userName} `;
+      if (request.requestType === 'donation') {
+          const donationMessage = request.message ? ` - "${request.message}"` : '';
+          successMessage += `Thanks for the ${request.donationInfo?.amount} ${request.donationInfo?.currency} donation! Your priority request for "${finalSongRequest.title}" by ${finalSongRequest.artist} is #${queuePosition} in the queue.${donationMessage}`;
+      } else {
+          successMessage += `Your request for "${finalSongRequest.title}" by ${finalSongRequest.artist} is #${queuePosition} in the queue.`;
+      }
+      sendChatMessage(successMessage + ' https://calamarigoldrequests.com');
   }
-  sendChatMessage(successMessage + ' https://calamarigoldrequests.com');
 
 }
 
