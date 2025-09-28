@@ -2341,7 +2341,18 @@ if (tmiClient) {
         // Check if the user is an admin
         const isAdmin = ADMIN_USERNAMES_LOWER.includes(username);
 
-        if (isAdmin) {
+        // Commands available to all users
+        if (msg === '!song' || msg === '!current' || msg === '!now') {
+            console.log(chalk.cyan(`[Twitch Command] Received ${msg} from user: ${username}`));
+            if (state.activeSong) {
+                const duration = state.activeSong.duration ? ` (${state.activeSong.duration})` : '';
+                sendChatMessage(`🎵 Now playing: "${state.activeSong.title}" by ${state.activeSong.artist}${duration}, requested by @${state.activeSong.requester}.`);
+            } else {
+                sendChatMessage(`@${username}, there is no song currently playing.`);
+            }
+        }
+        // Admin-only commands
+        else if (isAdmin) {
             if (msg === '!finish') {
                 console.log(chalk.cyan(`[Twitch Command] Received !finish from admin: ${username}`));
                 const finishedSong = handleMarkSongAsFinished();
