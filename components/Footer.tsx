@@ -20,7 +20,7 @@ const Footer = () => {
         <p className="flex items-center text-sm">
           Made with <Heart size={16} className="mx-1.5 text-brand-pink-neon fill-current" /> by 
           <Link 
-            href="https://calamari.gold" 
+            href="https://linktr.ee/calamarigold" 
             target="_blank" 
             rel="noopener noreferrer" 
             className="ml-1 font-bold bg-gradient-to-r from-sky-400 via-white to-pink-300 bg-clip-text text-transparent drop-shadow-[0_1px_4px_theme('colors.brand.pink.glow/30%')] transition-all duration-300 hover:scale-110 animate-gradient-move"
