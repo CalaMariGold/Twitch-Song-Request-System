@@ -51,6 +51,8 @@ export default function SongRequestQueue() {
     settings: {},
     blacklist: [],
     blockedUsers: [],
+    rafflePool: [],
+    queueMode: 'raffle',
     isLoading: true,
     error: null
   })
@@ -448,6 +450,8 @@ export default function SongRequestQueue() {
               setEditSpotifySuccess={setEditSpotifySuccess}
               setEditYouTubeError={setEditYouTubeError}
               setEditYouTubeSuccess={setEditYouTubeSuccess}
+              rafflePool={state.rafflePool}
+              queueMode={state.queueMode}
             />
           </TabsContent>
           <TabsContent value="history" className="mt-4">

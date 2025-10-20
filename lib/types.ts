@@ -33,9 +33,9 @@ export interface SongRequest {
   /** Thumbnail URL of the song */
   thumbnailUrl?: string | null
   /** Source of the song (youtube, spotify, etc.) */
-  source: 'youtube' | 'spotify_search' | 'database' | 'database_history' | 'database_active' | string
+  source: 'youtube' | 'spotify_search' | 'database' | 'database_history' | 'database_active' | 'system' | 'raffle_pool' | string
   /** Type of request (determines priority and limits) */
-  requestType: 'channelPoint' | 'donation' | 'manual' | 'history_requeue' | 'socket' | string
+  requestType: 'channelPoint' | 'donation' | 'manual' | 'history_requeue' | 'socket' | 'empty' | 'raffle_placeholder' | string
   /** Donation details (if requestType is 'donation') */
   donationInfo?: {
     amount: number;
@@ -51,6 +51,10 @@ export interface SongRequest {
   origin?: string;
   /** Spotify track information if available */
   spotifyData?: SpotifyTrackData | null
+  /** Slot position in queue (for slot-based system) */
+  slotPosition?: number | null
+  /** Slot type (for slot-based system) */
+  slotType?: 'empty' | 'donation' | 'raffle_placeholder' | 'raffle_filled' | null
 }
 
 /**
@@ -115,12 +119,15 @@ export interface AllTimeStats {
  * Overall application state managed via Socket.IO
  */
 export interface AppState {
-  queue: SongRequest[]
+  queue: SongRequest[] // Now contains slots (empty, filled, placeholders)
   history: SongRequest[] // Typically recent history for display
   activeSong: SongRequest | null
   settings: Settings
   blacklist: BlacklistItem[]
   blockedUsers: BlockedUser[]
+  rafflePool: SongRequest[] // Channel point raffle pool
+  queueMode: 'raffle' | 'donation-only' // Current queue mode
+  raffleInterval?: number // Raffle placeholder interval (e.g., every 3 slots)
   isLoading: boolean
   error: Error | null
 }
@@ -150,6 +157,10 @@ export interface SocketEvents {
     // --- Total Count Update Event ---
     totalCountsUpdate: (counts: { history: number; queue: number }) => void;
     todaysCountUpdate: (counts: { count: number }) => void;
+    // --- Raffle Pool Events ---
+    raffleUpdate: (rafflePool: SongRequest[]) => void;
+    modeChange: (mode: 'raffle' | 'donation-only') => void;
+    raffleIntervalUpdate: (data: { interval: number }) => void;
     // --- Spotify Update Events --- 
     updateSpotifySuccess: (payload: { requestId: string }) => void;
     updateSpotifyError: (payload: { requestId: string; message: string }) => void;
@@ -177,6 +188,7 @@ export interface SocketEvents {
     addSong: (songRequestData: Partial<SongRequest> & { youtubeUrl?: string; message?: string; requester: string; bypassRestrictions?: boolean }) => void;
     removeSong: (songId: string) => void;
     clearQueue: () => void;
+    addEmptySlot: (callback?: (response: { success: boolean; position?: number }) => void) => void;
     resetSystem?: () => void; // Make optional if not always implemented/used
     resetTodaysCount: () => void;
     updateActiveSong: (song: SongRequest | null) => void;
@@ -187,6 +199,13 @@ export interface SocketEvents {
     markSongAsFinished: (song: SongRequest) => void; // Frontend seems to send the song object
     returnToQueue: (song: SongRequest) => void; // Frontend seems to send the song object
     skipSong: () => void;
+    // --- Raffle Pool Admin Actions ---
+    pullRaffleSong: (callback?: (response: { success: boolean; song?: SongRequest; message?: string }) => void) => void;
+    clearRafflePool: (callback?: (response: { success: boolean; count?: number }) => void) => void;
+    removeRaffleSong: (data: { requestId: string }, callback?: (response: { success: boolean; message?: string }) => void) => void;
+    switchQueueMode: (data: { mode: 'raffle' | 'donation-only' }, callback?: (response: { success: boolean; mode?: string; message?: string }) => void) => void;
+    updateRaffleInterval: (data: { interval: number }, callback?: (response: { success: boolean; interval?: number; message?: string }) => void) => void;
+    swapWithRaffle: (data: { songId: string }, callback?: (response: { success: boolean; swappedOut?: string; swappedIn?: string; message?: string }) => void) => void;
     // --- Admin Spotify Update Action --- 
     adminUpdateSpotifyLink: (payload: { requestId: string; spotifyUrl: string }) => void;
     // --- Admin YouTube Update Action ---

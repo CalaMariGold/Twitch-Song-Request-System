@@ -64,6 +64,9 @@ export const socketEvents = {
   EDIT_SPOTIFY_ERROR: 'editSpotifyError',
   EDIT_YOUTUBE_SUCCESS: 'editYouTubeSuccess',
   EDIT_YOUTUBE_ERROR: 'editYouTubeError',
+  RAFFLE_UPDATE: 'raffleUpdate',
+  MODE_CHANGE: 'modeChange',
+  RAFFLE_INTERVAL_UPDATE: 'raffleIntervalUpdate',
   
   // Client -> Server events
   GET_STATE: 'getState',
@@ -72,6 +75,7 @@ export const socketEvents = {
   ADD_SONG: 'addSong',
   REMOVE_SONG: 'removeSong',
   CLEAR_QUEUE: 'clearQueue',
+  ADD_EMPTY_SLOT: 'addEmptySlot',
   RESET_SYSTEM: 'resetSystem',
   UPDATE_ACTIVE_SONG: 'updateActiveSong',
   MARK_SONG_AS_FINISHED: 'markSongAsFinished',
@@ -85,5 +89,11 @@ export const socketEvents = {
   GET_SONG_DETAILS_FOR_PLAN: 'getSongDetailsForPlan',
   EDIT_MY_SONG_SPOTIFY: 'editMySongSpotify',
   EDIT_MY_SONG_YOUTUBE: 'editMySongYouTube',
-  RESET_TODAYS_COUNT: 'resetTodaysCount'
+  RESET_TODAYS_COUNT: 'resetTodaysCount',
+  PULL_RAFFLE_SONG: 'pullRaffleSong',
+  CLEAR_RAFFLE_POOL: 'clearRafflePool',
+  REMOVE_RAFFLE_SONG: 'removeRaffleSong',
+  SWITCH_QUEUE_MODE: 'switchQueueMode',
+  UPDATE_RAFFLE_INTERVAL: 'updateRaffleInterval',
+  SWAP_WITH_RAFFLE: 'swapWithRaffle'
 } as const 

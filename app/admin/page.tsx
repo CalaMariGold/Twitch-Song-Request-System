@@ -74,7 +74,8 @@ import {
   Loader2,
   X,
   GripVertical,
-  Edit
+  Edit,
+  Shuffle
 } from "lucide-react"
 import { 
   SongRequest, 
@@ -111,6 +112,9 @@ export default function AdminDashboard() {
     settings: { maxDuration: 10 },
     blacklist: [],
     blockedUsers: [],
+    rafflePool: [],
+    queueMode: 'raffle',
+    raffleInterval: 3,
     isLoading: true,
     error: null
   })
@@ -120,7 +124,7 @@ export default function AdminDashboard() {
   const [newBlockUsername, setNewBlockUsername] = useState("")
   const [newBlacklistTerm, setNewBlacklistTerm] = useState("")
   const [newBlacklistType, setNewBlacklistType] = useState<BlacklistItem['type']>('keyword')
-  const [requestType, setRequestType] = useState<'channelPoint' | 'donation'>('channelPoint')
+  const [requestType, setRequestType] = useState<'channelPoint' | 'donation' | 'raffle'>('channelPoint')
   const [bypassRestrictions, setBypassRestrictions] = useState(false)
   const [isSpotifyLinkDialogOpen, setIsSpotifyLinkDialogOpen] = useState(false)
   const [editingRequestId, setEditingRequestId] = useState<string | null>(null)
@@ -158,6 +162,9 @@ export default function AdminDashboard() {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewEntries, setPreviewEntries] = useState<{ id: string; title: string; artist: string; completedAt: string }[]>([]);
   const [previewError, setPreviewError] = useState<string | null>(null);
+  // Raffle management state
+  const [isClearRaffleDialogOpen, setIsClearRaffleDialogOpen] = useState(false);
+  const [isPullingRaffle, setIsPullingRaffle] = useState(false);
 
   // Define closeSpotifyLinkDialog early so it can be used in useEffect
   const closeSpotifyLinkDialog = useCallback(() => {
@@ -319,6 +326,31 @@ export default function AdminDashboard() {
       console.log('Admin: Blocked users updated', blockedUsers)
       setAppState(prev => ({ ...prev, blockedUsers }))
     })
+
+    socketInstance.on('raffleUpdate', (rafflePool: SongRequest[]) => {
+      console.log('Admin: Raffle pool updated', rafflePool)
+      setAppState(prev => ({ ...prev, rafflePool }))
+    })
+
+    socketInstance.on('modeChange', (mode: 'raffle' | 'donation-only') => {
+      console.log('Admin: Queue mode changed to', mode)
+      setAppState(prev => ({ ...prev, queueMode: mode }))
+      toast({
+        title: "Queue Mode Changed",
+        description: `Queue is now in ${mode === 'raffle' ? 'Raffle' : 'Donation-Only'} mode`,
+        duration: 3000
+      })
+    })
+    
+    socketInstance.on('raffleIntervalUpdate', (data: { interval: number }) => {
+      console.log('Admin: Raffle interval updated to', data.interval)
+      setAppState(prev => ({ ...prev, raffleInterval: data.interval }))
+      toast({
+        title: "Raffle Interval Updated",
+        description: `Raffle placeholders now appear every ${data.interval} slots`,
+        duration: 3000
+      })
+    })
     
     socketInstance.on('allTimeStatsUpdate', (stats: AllTimeStats) => {
         console.log('Admin: Received all-time stats', stats)
@@ -474,6 +506,9 @@ export default function AdminDashboard() {
       socketInstance.off('allTimeStatsError');
       socketInstance.off('connect_error');
       socketInstance.off('adminAuthenticated');
+      socketInstance.off('raffleUpdate');
+      socketInstance.off('modeChange');
+      socketInstance.off('raffleIntervalUpdate');
       // Clean up new listeners
       socketInstance.off('updateSpotifySuccess', handleSpotifySuccess);
       socketInstance.off('updateSpotifyError', handleSpotifyError);
@@ -635,6 +670,75 @@ export default function AdminDashboard() {
     console.log("Admin: Clearing queue")
     socket.emit('clearQueue')
     toast({ title: "Queue Cleared" })
+  }
+
+  const handleAddEmptySlot = () => {
+    if (!socket) return
+    console.log("Admin: Adding empty donation slot")
+    socket.emit('addEmptySlot', (response: { success: boolean; position?: number }) => {
+      if (response.success) {
+        toast({ 
+          title: "Empty Slot Added", 
+          description: `Added empty donation slot at position ${response.position}` 
+        })
+      } else {
+        toast({ 
+          title: "Failed to Add Slot", 
+          description: "Could not add empty slot to queue" 
+        })
+      }
+    })
+  }
+
+  const handlePullRaffleSong = () => {
+    if (!socket || isPullingRaffle) return
+    if (appState.rafflePool.length === 0) {
+      toast({ title: "Raffle Pool Empty", description: "There are no songs in the raffle pool to pull from." })
+      return
+    }
+    
+    setIsPullingRaffle(true)
+    console.log("Admin: Pulling random song from raffle")
+    socket.emit('pullRaffleSong')
+    toast({ title: "Pulling Raffle Song...", description: "Selecting a random song from the raffle pool." })
+    
+    // Reset pulling state after a delay
+    setTimeout(() => setIsPullingRaffle(false), 2000)
+  }
+
+  const handleClearRafflePool = () => {
+    if (!socket) return
+    console.log("Admin: Clearing raffle pool")
+    socket.emit('clearRafflePool')
+    toast({ title: "Raffle Pool Cleared", description: "All songs removed from the raffle pool." })
+    setIsClearRaffleDialogOpen(false)
+  }
+
+  const handleRemoveFromRaffle = (requestId: string) => {
+    if (!socket) return
+    const song = appState.rafflePool.find(s => s.id === requestId)
+    console.log("Admin: Removing song from raffle:", requestId)
+    socket.emit('removeRaffleSong', { requestId })
+    toast({ title: "Song Removed", description: `"${song?.title || 'Song'}" removed from raffle pool.` })
+  }
+
+  const handleSwitchQueueMode = (newMode: 'raffle' | 'donation-only') => {
+    if (!socket) return
+    console.log("Admin: Switching queue mode to:", newMode)
+    socket.emit('switchQueueMode', { mode: newMode })
+  }
+
+  const handleUpdateRaffleInterval = (newInterval: number) => {
+    if (!socket) return
+    if (newInterval < 2 || newInterval > 20) {
+      toast({ 
+        title: "Invalid Interval", 
+        description: "Raffle interval must be between 2 and 20."
+      })
+      return
+    }
+    console.log("Admin: Updating raffle interval to:", newInterval)
+    socket.emit('updateRaffleInterval', { interval: newInterval })
   }
 
   const handleResetTodaysCount = () => {
@@ -973,6 +1077,37 @@ export default function AdminDashboard() {
     newQueue[songIndex] = newSong;
     socket.emit('updateQueue', newQueue);
     toast({ title: "Converted to Mari's Choice", description: `Song #${songIndex + 1} is now a Mari's Choice template.` });
+  };
+
+  // Handler for swapping queue song with random raffle song
+  const handleSwapWithRaffle = (songId: string) => {
+    if (!socket) return;
+    
+    // Check if raffle pool has songs
+    if (appState.rafflePool.length === 0) {
+      toast({ 
+        title: "Raffle Pool Empty", 
+        description: "There are no songs in the raffle pool to swap with." 
+      });
+      return;
+    }
+    
+    const song = appState.queue.find(s => s.id === songId);
+    console.log("Admin: Swapping song with random raffle:", songId);
+    socket.emit('swapWithRaffle', { songId }, (response: { success: boolean; swappedOut?: string; swappedIn?: string; message?: string }) => {
+      if (response.success) {
+        toast({ 
+          title: "Songs Swapped", 
+          description: `Swapped "${response.swappedOut}" with "${response.swappedIn}" from raffle pool.`,
+          duration: 4000
+        });
+      } else {
+        toast({ 
+          title: "Swap Failed", 
+          description: response.message || "Failed to swap songs." 
+        });
+      }
+    });
   };
 
   // Handler for replacing requester name in history
@@ -1390,9 +1525,12 @@ export default function AdminDashboard() {
 
           {/* Queue and History Tabs */}
           <Tabs defaultValue="queue" className="w-full max-w-full min-w-0">
-            <TabsList className="grid w-full grid-cols-2 bg-gray-800">
+            <TabsList className="grid w-full grid-cols-3 bg-gray-800">
               <TabsTrigger value="queue" className="data-[state=active]:bg-gray-700 data-[state=active]:text-white">
-                  <List className="mr-2 h-4 w-4" /> Current Queue ({totalQueueCount}) - <Clock className="inline-block mx-1" size={14} /> {totalQueueDurationFormatted}
+                  <List className="mr-2 h-4 w-4" /> Queue ({totalQueueCount}) - <Clock className="inline-block mx-1" size={14} /> {totalQueueDurationFormatted}
+              </TabsTrigger>
+              <TabsTrigger value="raffle" className="data-[state=active]:bg-gray-700 data-[state=active]:text-white">
+                  🎲 Raffle Pool ({appState.rafflePool.length})
               </TabsTrigger>
               <TabsTrigger value="history" className="data-[state=active]:bg-gray-700 data-[state=active]:text-white">
                   <History className="mr-2 h-4 w-4" /> History ({totalHistoryCount})
@@ -1401,14 +1539,25 @@ export default function AdminDashboard() {
             <TabsContent value="queue">
                <div className="flex justify-between items-center mb-3 px-1">
                   <h3 className="text-lg font-semibold text-white">Queue</h3>
-                  {/* Confirmation Dialog for Clear Queue */}
-                  <Dialog open={isClearQueueDialogOpen} onOpenChange={setIsClearQueueDialogOpen}>
-                    <DialogTrigger asChild>
-                      <Button variant="destructive" size="sm" disabled={appState.queue.length === 0} className="h-8 text-xs"
-                        onClick={() => setIsClearQueueDialogOpen(true)}>
-                        <Trash2 className="mr-1 h-3 w-3" /> Clear Queue
-                      </Button>
-                    </DialogTrigger>
+                  <div className="flex gap-2">
+                    {/* Add Empty Slot Button */}
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="h-8 text-xs bg-gray-700 border-gray-600 text-white hover:bg-gray-600"
+                      onClick={handleAddEmptySlot}
+                      disabled={!isConnected}
+                    >
+                      <Music className="mr-1 h-3 w-3" /> Add Empty Slot
+                    </Button>
+                    {/* Confirmation Dialog for Clear Queue */}
+                    <Dialog open={isClearQueueDialogOpen} onOpenChange={setIsClearQueueDialogOpen}>
+                      <DialogTrigger asChild>
+                        <Button variant="destructive" size="sm" disabled={appState.queue.length === 0} className="h-8 text-xs"
+                          onClick={() => setIsClearQueueDialogOpen(true)}>
+                          <Trash2 className="mr-1 h-3 w-3" /> Clear Queue
+                        </Button>
+                      </DialogTrigger>
                     <DialogContent>
                       <DialogHeader>
                         <DialogTitle>Are you sure?</DialogTitle>
@@ -1427,6 +1576,7 @@ export default function AdminDashboard() {
                     </DialogContent>
                   </Dialog>
                 </div>
+               </div>
                 <ScrollArea className="h-[80vh] w-full rounded-md border border-gray-700 p-4 bg-gray-800 overflow-hidden">
                     {appState.isLoading ? (
                        <div className="flex items-center justify-center h-full"><Loader2 className="w-8 h-8 animate-spin text-gray-400" /></div>
@@ -1439,8 +1589,11 @@ export default function AdminDashboard() {
                               {...provided.droppableProps}
                               ref={provided.innerRef}
                             >
-                              {appState.queue.map((song, index) => (
-                                <Draggable key={song.id} draggableId={song.id} index={index}>
+                              {appState.queue.map((song, index) => {
+                                // Don't allow dragging empty slots or raffle placeholders
+                                const isDraggable = song.slotType !== 'empty' && song.slotType !== 'raffle_placeholder';
+                                return (
+                                <Draggable key={song.id} draggableId={song.id} index={index} isDragDisabled={!isDraggable}>
                                   {(provided, snapshot) => (
                                    <li 
                                      ref={provided.innerRef}
@@ -1448,10 +1601,14 @@ export default function AdminDashboard() {
                                      className={`flex items-center space-x-3 p-3 rounded-md bg-gray-800 hover:bg-gray-700/80 transition mb-2 group w-full ${snapshot.isDragging ? 'opacity-70 border border-purple-500' : ''}`}
                                    >
                                      <div 
-                                       {...provided.dragHandleProps}
-                                       className="flex-shrink-0 font-semibold text-gray-400 w-6 text-center flex items-center justify-center cursor-move"
+                                       {...(isDraggable ? provided.dragHandleProps : {})}
+                                       className={`flex-shrink-0 font-semibold text-gray-400 w-6 text-center flex items-center justify-center ${isDraggable ? 'cursor-move' : 'cursor-default'}`}
                                      >
-                                       <GripVertical size={16} className="text-gray-500" />
+                                       {isDraggable ? (
+                                         <GripVertical size={16} className="text-gray-500" />
+                                       ) : (
+                                         <div className="w-4 h-4" />
+                                       )}
                                      </div>
                                      <div className="flex-shrink-0 font-semibold text-gray-400 w-4 text-center">
                                        {index + 1}
@@ -1555,35 +1712,53 @@ export default function AdminDashboard() {
                                      {/* Buttons and Timestamp container */}
                                      <div className="flex-shrink-0 flex flex-col items-end flex-grow-0">
                                         <div className="flex space-x-1 items-center"> {/* Wrap buttons for alignment */}
-                                           {/* Edit Spotify Button */}
-                                           <Button 
-                                             variant="ghost" 
-                                             size="sm" 
-                                             className="h-8 w-8 p-0 text-gray-400 hover:text-white"
-                                             onClick={() => openSpotifyLinkDialog(song)}
-                                             title="Edit Spotify Link"
-                                             disabled={!isConnected} // Disable if not connected
-                                           >
-                                             <Edit size={14} />
-                                           </Button>
-                                           {/* Mari's Choice Button */}
-                                           <Button
-                                             variant="ghost"
-                                             size="sm"
-                                             className="h-8 w-8 p-0 text-yellow-400 hover:text-yellow-300"
-                                             onClick={() => handleMakeMarisChoice(song.id)}
-                                             title="Convert to Mari's Choice template"
-                                             disabled={!isConnected}
-                                           >
-                                             <Star size={16} />
-                                           </Button>
-                                           {/* Existing Play/Remove buttons */}
-                                           <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handlePlaySong(song)} title="Set Active" disabled={!isConnected}>
-                                               <Play className="h-4 w-4 text-green-500 hover:text-green-400" />
-                                           </Button>
-                                           <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handleRemoveSong(song.id)} title="Remove from Queue" disabled={!isConnected}>
-                                             <Trash2 className="h-4 w-4 text-red-500 hover:text-red-400" />
-                                           </Button>
+                                           {/* Only show action buttons for actual songs, not empty slots or placeholders */}
+                                           {song.slotType !== 'empty' && song.slotType !== 'raffle_placeholder' && (
+                                             <>
+                                               {/* Edit Spotify Button */}
+                                               <Button 
+                                                 variant="ghost" 
+                                                 size="sm" 
+                                                 className="h-8 w-8 p-0 text-gray-400 hover:text-white"
+                                                 onClick={() => openSpotifyLinkDialog(song)}
+                                                 title="Edit Spotify Link"
+                                                 disabled={!isConnected} // Disable if not connected
+                                               >
+                                                 <Edit size={14} />
+                                               </Button>
+                                              {/* Mari's Choice Button */}
+                                              <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="h-8 w-8 p-0 text-yellow-400 hover:text-yellow-300"
+                                                onClick={() => handleMakeMarisChoice(song.id)}
+                                                title="Convert to Mari's Choice template"
+                                                disabled={!isConnected}
+                                              >
+                                                <Star size={16} />
+                                              </Button>
+                                              {/* Swap with Raffle Button - Only for channel point songs */}
+                                              {song.requestType === 'channelPoint' && (
+                                                <Button
+                                                  variant="ghost"
+                                                  size="sm"
+                                                  className="h-8 w-8 p-0 text-purple-400 hover:text-purple-300"
+                                                  onClick={() => handleSwapWithRaffle(song.id)}
+                                                  title="Swap with random raffle song"
+                                                  disabled={!isConnected || appState.rafflePool.length === 0}
+                                                >
+                                                  <Shuffle size={16} />
+                                                </Button>
+                                              )}
+                                              {/* Existing Play/Remove buttons */}
+                                               <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handlePlaySong(song)} title="Set Active" disabled={!isConnected}>
+                                                   <Play className="h-4 w-4 text-green-500 hover:text-green-400" />
+                                               </Button>
+                                               <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handleRemoveSong(song.id)} title="Remove from Queue" disabled={!isConnected}>
+                                                 <Trash2 className="h-4 w-4 text-red-500 hover:text-red-400" />
+                                               </Button>
+                                             </>
+                                           )}
                                            {/* Existing YouTube/Spotify links */}
                                            {song.youtubeUrl && (
                                             <a href={song.youtubeUrl} target="_blank" rel="noopener noreferrer" aria-label="Watch on YouTube">
@@ -1609,7 +1784,8 @@ export default function AdminDashboard() {
                                    </li>
                                   )}
                                 </Draggable>
-                              ))}
+                                );
+                              })}
                               {provided.placeholder}
                             </ul>
                           )}
@@ -1619,6 +1795,151 @@ export default function AdminDashboard() {
                       <p className="text-gray-400 italic text-center py-10">The queue is empty.</p>
                     )}
                 </ScrollArea>
+            </TabsContent>
+            <TabsContent value="raffle">
+              <div className="flex justify-between items-center mb-3 px-1">
+                <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                  🎲 Raffle Pool
+                  <Badge variant="outline" className="bg-purple-500/20 text-purple-300 border-purple-500/30">
+                    {appState.rafflePool.length} {appState.rafflePool.length === 1 ? 'song' : 'songs'}
+                  </Badge>
+                </h3>
+                <div className="flex gap-2">
+                  <Button 
+                    variant="default" 
+                    size="sm" 
+                    onClick={handlePullRaffleSong}
+                    disabled={appState.rafflePool.length === 0 || isPullingRaffle || !isConnected}
+                    className="h-8 text-xs bg-purple-600 hover:bg-purple-700"
+                  >
+                    {isPullingRaffle ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Star className="mr-1 h-3 w-3" />}
+                    Pull Random Song
+                  </Button>
+                  <Dialog open={isClearRaffleDialogOpen} onOpenChange={setIsClearRaffleDialogOpen}>
+                    <DialogTrigger asChild>
+                      <Button 
+                        variant="destructive" 
+                        size="sm" 
+                        disabled={appState.rafflePool.length === 0} 
+                        className="h-8 text-xs"
+                      >
+                        <Trash2 className="mr-1 h-3 w-3" /> Clear Raffle Pool
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="bg-gray-850 border-gray-700 text-white">
+                      <DialogHeader>
+                        <DialogTitle>Clear Raffle Pool?</DialogTitle>
+                        <DialogDescription className="text-gray-400">
+                          This will remove all {appState.rafflePool.length} songs from the raffle pool. This action cannot be undone.
+                        </DialogDescription>
+                      </DialogHeader>
+                      <DialogFooter>
+                        <Button variant="outline" onClick={() => setIsClearRaffleDialogOpen(false)}>
+                          Cancel
+                        </Button>
+                        <Button variant="destructive" onClick={handleClearRafflePool}>
+                          Yes, clear raffle pool
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+                </div>
+              </div>
+              <ScrollArea className="h-[80vh] w-full rounded-md border border-gray-700 p-4 bg-gray-800">
+                {appState.isLoading ? (
+                  <div className="flex items-center justify-center h-full">
+                    <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+                  </div>
+                ) : appState.rafflePool.length > 0 ? (
+                  <ul className="space-y-2">
+                    {appState.rafflePool.map((song, index) => (
+                      <li 
+                        key={song.id}
+                        className="flex items-center space-x-3 p-3 rounded-md bg-purple-900/20 border border-purple-500/20 hover:border-purple-500/40 transition-colors mb-2"
+                      >
+                        <div className="flex-shrink-0 font-semibold text-purple-300 w-6 text-center">
+                          {index + 1}
+                        </div>
+                        <div className="relative w-16 h-9 rounded-md overflow-hidden flex-shrink-0">
+                          {song.thumbnailUrl ? (
+                            <img 
+                              src={song.thumbnailUrl} 
+                              alt={song.title || 'Video thumbnail'}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <div className="w-full h-full rounded-md bg-gray-700 flex items-center justify-center">
+                              <Music size={20} className="text-gray-400"/>
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-white break-words">{song.title || 'Loading title...'}</p>
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1">
+                            <Badge variant="outline" className="text-xs font-normal border-purple-500/20 text-purple-300">
+                              {song.artist || 'Unknown Artist'}
+                            </Badge>
+                            <span className="text-xs text-purple-300/70 flex items-center">
+                              <Clock className="inline-block mr-1" size={12} />
+                              {formatDuration(song.durationSeconds)}
+                            </span>
+                            <span className="text-xs text-purple-300/70">
+                              by: 
+                              <Link href={`https://www.twitch.tv/${song.requesterLogin || song.requester.toLowerCase()}`} target="_blank" rel="noopener noreferrer" className="hover:text-purple-200 ml-1">
+                                {song.requester}
+                              </Link>
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-1">
+                          {song.youtubeUrl && (
+                            <a href={song.youtubeUrl} target="_blank" rel="noopener noreferrer">
+                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                                <Youtube className="h-5 w-5 text-red-600 hover:text-red-500" />
+                              </Button>
+                            </a>
+                          )}
+                          {song.spotifyData && song.spotifyData.url && (
+                            <a href={song.spotifyData.url} target="_blank" rel="noopener noreferrer">
+                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                                <SpotifyIcon className="h-5 w-5 text-green-500 hover:text-green-400" />
+                              </Button>
+                            </a>
+                          )}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 p-1 text-gray-400 hover:text-white"
+                            onClick={() => {
+                              setEditingRequestId(song.id);
+                              setCurrentSpotifyLink(song.spotifyData?.url || '');
+                              setSpotifyLinkInput(song.spotifyData?.url || '');
+                              setCurrentYouTubeLink(song.youtubeUrl || '');
+                              setYouTubeLinkInput(song.youtubeUrl || '');
+                              setIsSpotifyLinkDialogOpen(true);
+                            }}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 p-1 text-gray-400 hover:text-red-400"
+                            onClick={() => handleRemoveFromRaffle(song.id)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-full text-gray-400">
+                    <p className="italic text-center py-10">The raffle pool is empty.</p>
+                    <p className="text-sm text-center text-gray-500">Channel point redemptions will appear here.</p>
+                  </div>
+                )}
+              </ScrollArea>
             </TabsContent>
             <TabsContent value="history">
               <div className="flex justify-between items-center mb-3 px-1">
@@ -1845,7 +2166,7 @@ export default function AdminDashboard() {
           <Card className="bg-gray-800 border-gray-700">
             <CardHeader>
               <CardTitle className="text-white">Add Song Manually</CardTitle>
-               <CardDescription>Add a song directly to the queue.</CardDescription>
+               <CardDescription>Add a song to the queue or raffle pool.</CardDescription>
             </CardHeader>
             <CardContent>
               <form onSubmit={handleSubmit} className="space-y-4">
@@ -1867,13 +2188,14 @@ export default function AdminDashboard() {
                   className="bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:border-purple-500 focus:ring-purple-500"
                  />
                 {/* Consistent Select style */}
-                <Select onValueChange={(value: 'channelPoint' | 'donation') => setRequestType(value)} defaultValue={requestType}>
+                <Select onValueChange={(value: 'channelPoint' | 'donation' | 'raffle') => setRequestType(value)} defaultValue={requestType}>
                     <SelectTrigger className="w-full bg-gray-700 border-gray-600 text-white focus:border-purple-500 focus:ring-purple-500">
                         <SelectValue placeholder="Select request type" />
                     </SelectTrigger>
                     <SelectContent className="bg-gray-800 border-gray-700 text-white">
-                        <SelectItem value="channelPoint" className="focus:bg-gray-700">Channel Point</SelectItem>
-                        <SelectItem value="donation" className="focus:bg-gray-700">Donation (Priority)</SelectItem>
+                        <SelectItem value="channelPoint" className="focus:bg-gray-700">Channel Point (Queue)</SelectItem>
+                        <SelectItem value="donation" className="focus:bg-gray-700">Donation (Priority Queue)</SelectItem>
+                        <SelectItem value="raffle" className="focus:bg-gray-700">🎲 Raffle Pool</SelectItem>
                     </SelectContent>
                 </Select>
                 
@@ -2103,8 +2425,73 @@ export default function AdminDashboard() {
                  </div>
                </div>
 
-               {/* Add more settings controls here as needed */}
-                <p className="text-xs text-gray-400 text-center pt-2">More settings coming soon...</p>
+               {/* Divider */}
+               <div className="border-t border-gray-700"></div>
+
+               {/* Queue Mode Toggle */}
+               <div>
+                 <div className="flex items-center justify-between mb-2">
+                   <Label className="text-sm font-medium">Queue Mode</Label>
+                   <Badge 
+                     variant="outline" 
+                     className={appState.queueMode === 'raffle' 
+                       ? 'bg-purple-500/20 text-purple-300 border-purple-500/40' 
+                       : 'bg-green-500/20 text-green-300 border-green-500/40'}
+                   >
+                     {appState.queueMode === 'raffle' ? '🎲 Raffle' : '💰 Donation-Only'}
+                   </Badge>
+                 </div>
+                 <div className="flex gap-2">
+                   <Button 
+                     onClick={() => handleSwitchQueueMode('raffle')}
+                     disabled={appState.queueMode === 'raffle' || !isConnected}
+                     size="sm"
+                     className="flex-1 bg-purple-600 hover:bg-purple-700 text-white disabled:opacity-50"
+                     variant={appState.queueMode === 'raffle' ? 'outline' : 'default'}
+                   >
+                     🎲 Raffle
+                   </Button>
+                   <Button 
+                     onClick={() => handleSwitchQueueMode('donation-only')}
+                     disabled={appState.queueMode === 'donation-only' || !isConnected}
+                     size="sm"
+                     className="flex-1 bg-green-600 hover:bg-green-700 text-white disabled:opacity-50"
+                     variant={appState.queueMode === 'donation-only' ? 'outline' : 'default'}
+                   >
+                     💰 Donation-Only
+                   </Button>
+                 </div>
+               </div>
+
+               {/* Divider */}
+               <div className="border-t border-gray-700"></div>
+
+               {/* Raffle Interval Control */}
+               <div>
+                 <div className="flex items-center justify-between mb-2">
+                   <Label className="text-sm font-medium">Raffle Interval</Label>
+                   <span className="text-xs text-gray-400">Every {appState.raffleInterval || 3} slots</span>
+                 </div>
+                 <div className="flex items-center gap-2">
+                   <Input
+                     type="number"
+                     min="2"
+                     max="20"
+                     value={appState.raffleInterval || 3}
+                     onChange={(e) => {
+                       const value = parseInt(e.target.value);
+                       if (!isNaN(value)) {
+                         handleUpdateRaffleInterval(value);
+                       }
+                     }}
+                     className="w-20 bg-gray-700 border-gray-600 text-white"
+                     disabled={!isConnected}
+                   />
+                   <span className="text-xs text-gray-400 flex-1">
+                     Controls raffle placeholder positions in queue
+                   </span>
+                 </div>
+               </div>
             </CardContent>
           </Card>
         </div>

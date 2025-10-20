@@ -62,6 +62,8 @@ export function useSocketConnection(
         settings: serverState.settings || {},
         blacklist: serverState.blacklist || [],
         blockedUsers: serverState.blockedUsers || [],
+        rafflePool: serverState.rafflePool || [],
+        queueMode: serverState.queueMode || 'raffle',
         isLoading: false,
         error: null
       }));
@@ -123,9 +125,22 @@ export function useSocketConnection(
     newSocket.on('historyOrderChanged', () => {
       newSocket.emit('getState');
     });
+    
+    // Raffle pool events
+    newSocket.on(socketEvents.RAFFLE_UPDATE, (rafflePool: SongRequest[]) => {
+      setState((prev: AppState) => ({ ...prev, rafflePool }));
+    });
+    
+    // Queue mode events
+    newSocket.on(socketEvents.MODE_CHANGE, (mode: 'raffle' | 'donation-only') => {
+      setState((prev: AppState) => ({ ...prev, queueMode: mode }));
+    });
+    
     setSocket(newSocket);
     return () => {
       newSocket.off('historyOrderChanged');
+      newSocket.off(socketEvents.RAFFLE_UPDATE);
+      newSocket.off(socketEvents.MODE_CHANGE);
       newSocket.disconnect();
     };
   }, [setState, setMyRequestsHistory, setMyRequestsTotal, setMyRequestsOffset, setHasMoreMyRequests, setIsLoadingMyRequests, currentUserRef, setTotalQueueCount, setTotalHistoryCount]);

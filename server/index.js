@@ -68,6 +68,12 @@ const MAX_CHANNEL_POINT_DURATION_SECONDS = parseInt(process.env.MAX_CHANNEL_POIN
 console.log(chalk.blue(`[Config] Max Donation Duration: ${MAX_DONATION_DURATION_SECONDS}s`));
 console.log(chalk.blue(`[Config] Max Channel Point Duration: ${MAX_CHANNEL_POINT_DURATION_SECONDS}s`));
 
+// Configuration for Queue System (Read from .env with defaults)
+let AUTO_FILL_RAFFLE_INTERVAL = parseInt(process.env.AUTO_FILL_RAFFLE_INTERVAL || '3', 10); // Default every 3rd slot
+const DEFAULT_QUEUE_MODE = process.env.QUEUE_MODE || 'raffle'; // Default to raffle mode
+console.log(chalk.blue(`[Config] Auto-fill Raffle Interval: Every ${AUTO_FILL_RAFFLE_INTERVAL} slots`));
+console.log(chalk.blue(`[Config] Default Queue Mode: ${DEFAULT_QUEUE_MODE}`));
+
 // Twitch Chat Bot Configuration
 const TWITCH_BOT_USERNAME = process.env.TWITCH_BOT_USERNAME;
 const TWITCH_BOT_OAUTH_TOKEN = process.env.TWITCH_BOT_OAUTH_TOKEN;
@@ -97,16 +103,29 @@ const tmiClient = initTwitchChat({
 
 // Initialize database first, before we setup any routes or connections
 db.initDatabase(dbPath);
-const { updateSongSpotifyDataAndDetailsInDbQueue, updateSongYouTubeUrlAndDetailsInDbQueue, removeSpotifyDataFromSong } = require('./database');
+const { 
+  updateSongSpotifyDataAndDetailsInDbQueue, 
+  updateSongYouTubeUrlAndDetailsInDbQueue, 
+  removeSpotifyDataFromSong,
+  addSongToRafflePool,
+  removeSongFromRafflePool,
+  clearRafflePool,
+  loadRafflePoolFromDB,
+  getRandomSongFromRaffle,
+  getRafflePoolCount,
+  updateQueueSlotType
+} = require('./database');
 
 // Server state - Initial state will be loaded from DB
 const state = {
-  queue: [], // Will be loaded from active_queue table
+  queue: [], // Will be loaded from active_queue table (now contains slots)
   history: [], // Will be loaded from song_history table
   activeSong: null,
   settings: {}, // Will be loaded from settings table
   blacklist: [], // Will be loaded from blacklist table
-  blockedUsers: [] // Will be loaded from blocked_users table
+  blockedUsers: [], // Will be loaded from blocked_users table
+  rafflePool: [], // Will be loaded from channel_point_raffle table
+  queueMode: DEFAULT_QUEUE_MODE // 'raffle' or 'donation-only'
 }
 
 const io = new Server(httpServer, {
@@ -180,6 +199,7 @@ io.on('connection', (socket) => {
     // Send initial state including fetched history
     socket.emit('initialState', {
         ...state,
+        raffleInterval: AUTO_FILL_RAFFLE_INTERVAL,
         history: recentHistory, // Include history from DB
         historyStats: (() => {
           const stats = db.getHistoryStats();
@@ -197,6 +217,7 @@ io.on('connection', (socket) => {
        // Send current state including recent history
        socket.emit('initialState', {
             ...state,
+            raffleInterval: AUTO_FILL_RAFFLE_INTERVAL,
             history: recentHistory, // Overwrite in-memory history with recent DB history
             historyStats: (() => {
               const stats = db.getHistoryStats();
@@ -406,36 +427,31 @@ io.on('connection', (socket) => {
         const finalRequestId = songRequestData.id || Date.now().toString();
         const requestToAdd = { ...songRequestData, id: finalRequestId };
 
+        // Check if this should go to raffle pool instead of queue
+        if (requestToAdd.requestType === 'raffle') {
+            console.log(chalk.blue(`[Admin:${socket.id}] Adding song directly to raffle pool...`));
+            try {
+                // Process the song similar to channel point redemptions
+                // We'll use a simplified version that adds to raffle directly
+                await addSongToRafflePoolFromAdmin(requestToAdd, bypass);
+                return; // Exit early, no need to continue to queue processing
+            } catch (error) {
+                console.error(chalk.red('[Admin] Error adding song to raffle pool:'), error);
+                socket.emit('addSongError', { message: 'Failed to add song to raffle pool' });
+                return;
+            }
+        }
+
         try {
             await validateAndAddSong(requestToAdd, bypass);
             // Broadcast counts after potentially adding a song
             broadcastTotalCounts(); 
 
-            // --- Force admin-added songs to the top ---
+            // Admin adds now use the slot system like regular requests
+            // No need to force to top - they fill the first available slot
             if (isAdminAdd) {
-                console.log(chalk.cyan(`[Admin Add] Forcing song ${finalRequestId} to top of queue.`));
-                const addedSongIndex = state.queue.findIndex(song => song.id === finalRequestId);
-
-                if (addedSongIndex !== -1) {
-                    // Song was successfully added by validateAndAddSong, now move it
-                    const [movedSong] = state.queue.splice(addedSongIndex, 1); // Remove from current position
-                    state.queue.unshift(movedSong); // Add to the beginning
-
-                    // Re-sync the database queue with the new order
-                    db.clearDbQueue();
-                    state.queue.forEach(song => db.addSongToDbQueue(song));
-                    console.log(chalk.cyan(`[Admin Add] DB re-synced after moving ${finalRequestId} to top.`));
-
-                    // Emit the final, corrected queue update
-                    io.emit('queueUpdate', state.queue);
-                    console.log(chalk.cyan(`[Admin Add] Final queue update emitted after forcing to top.`));
-                } else {
-                    // This case should ideally not happen if validateAndAddSong succeeded
-                    // but didn't actually add the song (maybe validation failed silently?)
-                    console.warn(chalk.yellow(`[Admin Add] Could not find song ${finalRequestId} in queue after validateAndAddSong, cannot force to top.`));
-                }
+                console.log(chalk.cyan(`[Admin Add] Song ${finalRequestId} added to queue via slot system.`));
             }
-             // --- END ---
 
         } catch (error) {
              // If validateAndAddSong throws an error, log it
@@ -446,16 +462,46 @@ io.on('connection', (socket) => {
 
     // Handle remove song
     socket.on('removeSong', requireAdmin((songId) => {
-        const songToRemove = state.queue.find(song => song.id === songId);
-        if (songToRemove) {
-            state.queue = state.queue.filter(song => song.id !== songId);
-            db.removeSongFromDbQueue(songId); // Ensure db module exports this function
-            io.emit('queueUpdate', state.queue);
-            broadcastTotalCounts(); // Broadcast counts after removing song
-            console.log(chalk.magenta(`[Admin:${socket.id}] Song removed via socket: ${songId}`));
-        } else {
+        const songIndex = state.queue.findIndex(song => song.id === songId);
+        if (songIndex === -1) {
             console.warn(chalk.yellow(`[Admin:${socket.id}] Attempted to remove non-existent song via socket: ${songId}`));
+            return;
         }
+        
+        const songToRemove = state.queue[songIndex];
+        
+        // Don't allow deleting empty slots or raffle placeholders
+        if (songToRemove.slotType === 'empty' || songToRemove.slotType === 'raffle_placeholder') {
+            console.warn(chalk.yellow(`[Admin:${socket.id}] Cannot delete empty slot or raffle placeholder: ${songId}`));
+            socket.emit('songRemoveError', { message: 'Cannot delete empty slots or raffle placeholders' });
+            return;
+        }
+        
+        // Get the slot position before removing
+        const slotPosition = songToRemove.slotPosition || (songIndex + 1);
+        
+        // Remove from database
+        db.removeSongFromDbQueue(songId);
+        
+        // Determine what type of slot should replace it based on position and mode
+        let replacementSlot;
+        if (state.queueMode === 'raffle' && slotPosition % AUTO_FILL_RAFFLE_INTERVAL === 0) {
+            // This position should be a raffle placeholder
+            replacementSlot = createRafflePlaceholder(slotPosition);
+        } else {
+            // This position should be an empty slot
+            replacementSlot = createEmptySlot(slotPosition);
+        }
+        
+        // Replace the song with the appropriate slot type
+        state.queue[songIndex] = replacementSlot;
+        
+        // Add the replacement slot to database
+        db.addSongToDbQueue(replacementSlot);
+        
+        io.emit('queueUpdate', state.queue);
+        broadcastTotalCounts();
+        console.log(chalk.magenta(`[Admin:${socket.id}] Song removed and replaced with ${replacementSlot.slotType} at position ${slotPosition}`));
     }))
 
     // Handle updating Spotify link for a request
@@ -712,31 +758,62 @@ io.on('connection', (socket) => {
 
     // Handle clear queue
     socket.on('clearQueue', requireAdmin(() => {
-        state.queue = [];
-        db.clearDbQueue(); // Clear the queue in the database as well
+        // Clear the database queue
+        db.clearDbQueue();
+        
+        // Reinitialize queue with fresh 9 slots based on current mode
+        console.log(chalk.blue(`[Admin:${socket.id}] Clearing queue and reinitializing with ${state.queueMode} mode...`));
+        initializeQueueSlots(state.queueMode);
+        
+        // Emit updates
         io.emit('queueUpdate', state.queue);
-        broadcastTotalCounts(); // Broadcast counts after clearing queue
-        console.log(chalk.magenta(`[Admin:${socket.id}] Queue cleared via socket.`));
+        broadcastTotalCounts();
+        
+        console.log(chalk.magenta(`[Admin:${socket.id}] Queue cleared and reinitialized with ${state.queue.length} slots.`));
+    }))
+    
+    // Handle add empty donation slot
+    socket.on('addEmptySlot', requireAdmin((ack) => {
+        console.log(chalk.magenta(`[Admin:${socket.id}] Adding empty donation slot to queue...`));
+        
+        // Get the next slot position
+        const nextPosition = state.queue.length + 1;
+        
+        // Create an empty donation slot (always empty, never raffle placeholder)
+        const emptySlot = createEmptySlot(nextPosition);
+        
+        // Add to queue and database
+        state.queue.push(emptySlot);
+        db.addSongToDbQueue(emptySlot);
+        
+        // Emit updates
+        io.emit('queueUpdate', state.queue);
+        broadcastTotalCounts();
+        
+        console.log(chalk.green(`[Admin:${socket.id}] Added empty donation slot at position ${nextPosition}`));
+        if (ack) ack({ success: true, position: nextPosition });
     }))
 
     socket.on('resetSystem', requireAdmin(async () => {
         // Clear in-memory state
-        state.queue = []
         state.activeSong = null
         state.history = []
 
-        // Clear persistent state (Queue)
+        // Clear persistent state (Queue and Active Song)
         db.clearDbQueue();
-        // Clear active song from DB
         db.clearActiveSongFromDB();
         // Note: History table is NOT cleared by reset. Settings/Blacklist/Blocked are also NOT cleared.
+
+        // Reinitialize queue with fresh 9 slots based on current mode
+        console.log(chalk.blue(`[Admin:${socket.id}] Resetting system and reinitializing queue with ${state.queueMode} mode...`));
+        initializeQueueSlots(state.queueMode);
 
         // Emit updates to all clients
         io.emit('queueUpdate', state.queue)
         io.emit('activeSong', state.activeSong)
         io.emit('historyUpdate', state.history) // Note: history is [] here
         broadcastTotalCounts(); // Broadcast counts after system reset
-        console.log(chalk.magenta(`[Admin:${socket.id}] System reset via socket.`));
+        console.log(chalk.magenta(`[Admin:${socket.id}] System reset complete. Queue reinitialized with ${state.queue.length} slots.`));
     }))
 
     // Handle user deleting their own request
@@ -744,34 +821,59 @@ io.on('connection', (socket) => {
         const { requestId, userLogin } = data;
         if (!requestId || !userLogin) {
             console.warn(chalk.yellow('[Socket.IO] Received invalid deleteMyRequest data:'), data);
-            // Optionally emit an error back to the client
-            // socket.emit('deleteRequestError', { message: 'Invalid request data' });
+            socket.emit('deleteRequestError', { message: 'Invalid request data' });
             return;
         }
 
         const songIndex = state.queue.findIndex(song => song.id === requestId);
-        if (songIndex !== -1) {
-            const songToDelete = state.queue[songIndex];
-            // Verify ownership
-            if (songToDelete.requesterLogin && songToDelete.requesterLogin.toLowerCase() === userLogin.toLowerCase()) {
-                // Remove from in-memory queue
-                state.queue.splice(songIndex, 1);
-                // Remove from DB queue
-                db.removeSongFromDbQueue(requestId);
-                // Broadcast updated queue
-                io.emit('queueUpdate', state.queue);
-                broadcastTotalCounts(); // Broadcast counts after user deletes own request
-                console.log(chalk.cyan(`[User] Song removed by requester ${userLogin}: ${requestId}`));
-            } else {
-                console.warn(chalk.yellow(`[Security] User ${userLogin} attempted to delete song ${requestId} owned by ${songToDelete.requesterLogin}`));
-                // Optionally emit an error back to the client
-                // socket.emit('deleteRequestError', { message: 'Permission denied' });
-            }
-        } else {
+        if (songIndex === -1) {
             console.warn(chalk.yellow(`[User] Attempted to delete non-existent song ID: ${requestId}`));
-            // Optionally emit an error back to the client
-            // socket.emit('deleteRequestError', { message: 'Song not found in queue' });
+            socket.emit('deleteRequestError', { message: 'Song not found in queue' });
+            return;
         }
+        
+            const songToDelete = state.queue[songIndex];
+        
+        // Don't allow deleting empty slots or raffle placeholders
+        if (songToDelete.slotType === 'empty' || songToDelete.slotType === 'raffle_placeholder') {
+            console.warn(chalk.yellow(`[User:${userLogin}] Cannot delete empty slot or raffle placeholder: ${requestId}`));
+            socket.emit('deleteRequestError', { message: 'Cannot delete empty slots or raffle placeholders' });
+            return;
+        }
+        
+            // Verify ownership
+        if (!songToDelete.requesterLogin || songToDelete.requesterLogin.toLowerCase() !== userLogin.toLowerCase()) {
+                console.warn(chalk.yellow(`[Security] User ${userLogin} attempted to delete song ${requestId} owned by ${songToDelete.requesterLogin}`));
+            socket.emit('deleteRequestError', { message: 'Permission denied' });
+            return;
+        }
+        
+        // Get the slot position before removing
+        const slotPosition = songToDelete.slotPosition || (songIndex + 1);
+        
+        // Remove from database
+        db.removeSongFromDbQueue(requestId);
+        
+        // Determine what type of slot should replace it based on position and mode
+        let replacementSlot;
+        if (state.queueMode === 'raffle' && slotPosition % AUTO_FILL_RAFFLE_INTERVAL === 0) {
+            // This position should be a raffle placeholder
+            replacementSlot = createRafflePlaceholder(slotPosition);
+        } else {
+            // This position should be an empty slot
+            replacementSlot = createEmptySlot(slotPosition);
+        }
+        
+        // Replace the song with the appropriate slot type
+        state.queue[songIndex] = replacementSlot;
+        
+        // Add the replacement slot to database
+        db.addSongToDbQueue(replacementSlot);
+        
+        // Broadcast updated queue
+        io.emit('queueUpdate', state.queue);
+        broadcastTotalCounts();
+        console.log(chalk.cyan(`[User] Song removed by requester ${userLogin} and replaced with ${replacementSlot.slotType} at position ${slotPosition}: ${requestId}`));
     });
 
     // Handle user editing Spotify link for their own request
@@ -1071,6 +1173,12 @@ io.on('connection', (socket) => {
             if (state.queue.length < originalQueueLength) {
                  db.removeSongFromDbQueue(song.id); // Remove from DB only if found in memory queue
                  console.log(chalk.grey(`[DB Write] Removed newly active song ${song.id} from active_queue.`));
+                 
+                 // Recalculate slot positions after removal
+                 recalculateSlotPositions();
+                 
+                 // Add a new empty slot at the end to maintain queue size
+                 addNewEmptySlot();
             } else {
                  console.log(chalk.grey(`[Control] Newly active song ${song.id} was not found in the memory queue (maybe added manually or from history).`));
             }
@@ -1473,10 +1581,186 @@ io.on('connection', (socket) => {
         });
       }
     });
+    
+    // ===== NEW RAFFLE & QUEUE MODE SOCKET EVENTS =====
+    
+    // Pull random song from raffle pool to queue (Admin only)
+    socket.on('pullRaffleSong', requireAdmin((ack) => {
+        console.log(chalk.magenta(`[Admin:${socket.id}] Pulling random song from raffle pool...`));
+        const pulledSong = pullRandomRaffleToQueue();
+        if (pulledSong) {
+            console.log(chalk.green(`[Raffle] Successfully pulled "${pulledSong.title}" to queue`));
+            if (ack) ack({ success: true, song: pulledSong });
+        } else {
+            console.log(chalk.yellow('[Raffle] Failed to pull song from raffle'));
+            if (ack) ack({ success: false, message: 'Failed to pull song. Pool may be empty or no placeholder slots available.' });
+        }
+    }));
+    
+    // Clear entire raffle pool (Admin only)
+    socket.on('clearRafflePool', requireAdmin((ack) => {
+        console.log(chalk.magenta(`[Admin:${socket.id}] Clearing raffle pool...`));
+        const count = clearRafflePool();
+        state.rafflePool = [];
+        io.emit('raffleUpdate', state.rafflePool);
+        console.log(chalk.yellow(`[Raffle] Cleared ${count} songs from raffle pool`));
+        if (ack) ack({ success: true, count });
+    }));
+    
+    // Remove specific song from raffle pool (Admin only)
+    socket.on('removeRaffleSong', requireAdmin((songId, ack) => {
+        console.log(chalk.magenta(`[Admin:${socket.id}] Removing song ${songId} from raffle pool...`));
+        const success = removeSongFromRafflePool(songId);
+        if (success) {
+            state.rafflePool = state.rafflePool.filter(song => song.id !== songId);
+            io.emit('raffleUpdate', state.rafflePool);
+            console.log(chalk.grey(`[Raffle] Removed song ${songId} from raffle pool`));
+            if (ack) ack({ success: true });
+        } else {
+            if (ack) ack({ success: false, message: 'Song not found in raffle pool' });
+        }
+    }));
+    
+    // Switch queue mode (Admin only)
+    socket.on('switchQueueMode', requireAdmin((data, ack) => {
+        const newMode = typeof data === 'string' ? data : data.mode;
+        console.log(chalk.magenta(`[Admin:${socket.id}] Switching queue mode to ${newMode}...`));
+        const success = switchQueueMode(newMode);
+        if (success) {
+            if (ack) ack({ success: true, mode: state.queueMode });
+        } else {
+            if (ack) ack({ success: false, message: 'Invalid mode specified' });
+        }
+    }));
+    
+    // Update raffle interval (Admin only)
+    socket.on('updateRaffleInterval', requireAdmin((data, ack) => {
+        const newInterval = parseInt(data.interval || data);
+        if (isNaN(newInterval) || newInterval < 2 || newInterval > 20) {
+            console.warn(chalk.yellow(`[Admin:${socket.id}] Invalid raffle interval: ${data}`));
+            if (ack) ack({ success: false, message: 'Invalid interval. Must be between 2 and 20.' });
+            return;
+        }
+        
+        console.log(chalk.magenta(`[Admin:${socket.id}] Updating raffle interval from ${AUTO_FILL_RAFFLE_INTERVAL} to ${newInterval}...`));
+        
+        // Update the global interval
+        AUTO_FILL_RAFFLE_INTERVAL = newInterval;
+        
+        // Save to settings
+        db.saveSetting('autoFillRaffleInterval', newInterval);
+        
+        // Recalculate raffle placeholders in the queue if in raffle mode
+        if (state.queueMode === 'raffle') {
+            console.log(chalk.blue('[Queue] Recalculating raffle placeholder positions...'));
+            
+            // Go through the queue and update slot types based on new interval
+            state.queue.forEach((slot, index) => {
+                const slotPosition = slot.slotPosition || (index + 1);
+                const shouldBeRaffle = slotPosition % newInterval === 0;
+                
+                // Only update empty slots and raffle placeholders
+                if (slot.slotType === 'empty' || slot.slotType === 'raffle_placeholder') {
+                    const newSlotType = shouldBeRaffle ? 'raffle_placeholder' : 'empty';
+                    
+                    if (slot.slotType !== newSlotType) {
+                        slot.slotType = newSlotType;
+                        slot.title = shouldBeRaffle ? 'Random Channel Point Raffle Song' : 'Empty Slot - Donate to fill this slot';
+                        
+                        // Update in database
+                        db.updateQueueSlotType(slot.id, newSlotType);
+                        console.log(chalk.grey(`[Queue] Updated slot ${slotPosition} from ${slot.slotType === newSlotType ? 'same' : 'different'} to ${newSlotType}`));
+                    }
+                }
+            });
+            
+            // Emit updated queue
+            io.emit('queueUpdate', state.queue);
+        }
+        
+        // Emit the new interval to all clients
+        io.emit('raffleIntervalUpdate', { interval: newInterval });
+        
+        console.log(chalk.green(`[Settings] Raffle interval updated to ${newInterval}`));
+        if (ack) ack({ success: true, interval: newInterval });
+    }));
+    
+    // Swap queue song with random raffle song (Admin only)
+    socket.on('swapWithRaffle', requireAdmin((data, ack) => {
+        const { songId } = data;
+        console.log(chalk.magenta(`[Admin:${socket.id}] Swapping queue song ${songId} with random raffle song...`));
+        
+        // Find the song in the queue
+        const songIndex = state.queue.findIndex(song => song.id === songId);
+        if (songIndex === -1) {
+            console.warn(chalk.yellow(`[Raffle Swap] Song ${songId} not found in queue`));
+            if (ack) ack({ success: false, message: 'Song not found in queue' });
+            return;
+        }
+        
+        const songToSwap = state.queue[songIndex];
+        
+        // Check if raffle pool has songs
+        if (state.rafflePool.length === 0) {
+            console.warn(chalk.yellow(`[Raffle Swap] Raffle pool is empty, cannot swap`));
+            if (ack) ack({ success: false, message: 'Raffle pool is empty' });
+            return;
+        }
+        
+        // Get a random song from the raffle pool
+        const randomIndex = Math.floor(Math.random() * state.rafflePool.length);
+        const randomRaffleSong = state.rafflePool[randomIndex];
+        
+        console.log(chalk.blue(`[Raffle Swap] Selected "${randomRaffleSong.title}" from raffle pool`));
+        
+        // Add the queue song to the raffle pool
+        const songForRaffle = {
+            ...songToSwap,
+            requestType: 'channelPoint',
+            addedAt: new Date().toISOString()
+        };
+        addSongToRafflePool(songForRaffle);
+        state.rafflePool.push(songForRaffle);
+        
+        // Remove the random song from raffle pool
+        removeSongFromRafflePool(randomRaffleSong.id);
+        state.rafflePool = state.rafflePool.filter(song => song.id !== randomRaffleSong.id);
+        
+        // Replace the queue song with the random raffle song
+        const slotPosition = songToSwap.slotPosition || (songIndex + 1);
+        const replacementSong = {
+            ...randomRaffleSong,
+            slotPosition: slotPosition,
+            slotType: 'raffle_filled'
+        };
+        
+        // Update queue in memory
+        state.queue[songIndex] = replacementSong;
+        
+        // Update database
+        db.removeSongFromDbQueue(songId);
+        db.addSongToDbQueue(replacementSong);
+        
+        // Emit updates
+        io.emit('queueUpdate', state.queue);
+        io.emit('raffleUpdate', state.rafflePool);
+        broadcastTotalCounts();
+        
+        console.log(chalk.green(`[Raffle Swap] Successfully swapped "${songToSwap.title}" with "${randomRaffleSong.title}"`));
+        if (ack) ack({ 
+            success: true, 
+            swappedOut: songToSwap.title,
+            swappedIn: randomRaffleSong.title
+        });
+    }));
 })
 
 // Start the server and load initial data
 async function startServer() {
+  // Run migration if needed
+  console.log(chalk.blue('[Server] Checking for queue system migration...'));
+  db.migrateToSlotSystem();
+  
   const loadedState = db.loadInitialState();
   state.queue = loadedState.queue;
   state.settings = { ...state.settings, ...loadedState.settings }; // Merge defaults with loaded
@@ -1484,9 +1768,40 @@ async function startServer() {
   state.blockedUsers = loadedState.blockedUsers;
   state.activeSong = loadedState.activeSong; // Set the activeSong state from loaded data
   state.history = []; // Initialize history as empty, it's loaded on demand
+  
+  // Load raffle pool
+  state.rafflePool = loadRafflePoolFromDB();
+  
+  // Load queue mode from settings or use default
+  state.queueMode = state.settings.queueMode || DEFAULT_QUEUE_MODE;
+  
+  // Load raffle interval from settings or use default
+  if (state.settings.autoFillRaffleInterval) {
+    AUTO_FILL_RAFFLE_INTERVAL = parseInt(state.settings.autoFillRaffleInterval);
+    console.log(chalk.blue(`[Server] Loaded raffle interval from settings: ${AUTO_FILL_RAFFLE_INTERVAL}`));
+  } else {
+    // Save default to settings if not present
+    db.saveSetting('autoFillRaffleInterval', AUTO_FILL_RAFFLE_INTERVAL);
+  }
+  
+  // Initialize queue slots if starting fresh
+  if (state.queue.length === 0) {
+    console.log(chalk.blue('[Server] Initializing queue with 9 slots...'));
+    initializeQueueSlots(state.queueMode);
+  } else {
+    // Ensure queue has at least 9 slots
+    ensureMinimumQueueSlots();
+    
+    // If in raffle mode, ensure raffle placeholders exist at correct positions
+    if (state.queueMode === 'raffle') {
+      ensureRafflePlaceholders();
+    }
+  }
 
   // Log the activeSong state for debugging
   console.log(chalk.blue(`[Server] Loaded activeSong: ${state.activeSong ? state.activeSong.title : 'null'}`));
+  console.log(chalk.blue(`[Server] Loaded ${state.rafflePool.length} songs in raffle pool`));
+  console.log(chalk.blue(`[Server] Queue mode: ${state.queueMode}`));
 
   // Connect to StreamElements Socket API for donation/redemption events
   // Create a config object with the StreamElements settings
@@ -1679,6 +1994,13 @@ async function startServer() {
 
       console.log(chalk.magenta(`[StreamElements] Channel point redemption: ${userName} - Content: "${userInput}"`));
 
+      // Check if queue is in donation-only mode
+      if (state.queueMode === 'donation-only') {
+        console.log(chalk.yellow(`[StreamElements] Channel point redemption rejected - queue is in donation-only mode`));
+        sendChatMessage(`@${userName}, channel point requests are currently disabled. The queue is in donation-only mode. https://calamarigoldrequests.com`);
+        return;
+      }
+
       // Check for request type
       const analysisResult = analyzeRequestText(userInput);
 
@@ -1705,16 +2027,114 @@ async function startServer() {
         message: userInput // Keep original message for reference
       };
 
+      // ===== NEW RAFFLE POOL LOGIC =====
+      // Channel point requests now go to raffle pool instead of queue
+      
+      // Check if user is blocked
+      if (isUserBlocked(userName, state.blockedUsers)) {
+        console.log(chalk.yellow(`[Raffle] User ${userName} is blocked - rejecting request.`));
+        sendChatMessage(`@${userName}, you are currently blocked from making song requests. https://calamarigoldrequests.com`);
+        return;
+      }
+      
+      // Check if user already has a song in the raffle pool
+      const userLoginLower = userName.toLowerCase();
+      const userAlreadyInRaffle = state.rafflePool.some(song => 
+        song.requesterLogin?.toLowerCase() === userLoginLower || 
+        song.requester.toLowerCase() === userLoginLower
+      );
+      
+      if (userAlreadyInRaffle) {
+        console.log(chalk.yellow(`[Raffle] User ${userName} already has a song in the raffle pool - rejecting request.`));
+        sendChatMessage(`@${userName}, you already have a song in the raffle pool. Wait for it to be pulled before adding another! https://calamarigoldrequests.com`);
+        return;
+      }
+
       if (analysisResult.type === 'youtube') {
-        // Process as a YouTube URL request using the existing centralized function
-        // Duration and blacklist validation happens inside validateAndAddSong
-        await validateAndAddSong({
-            ...initialRequestData,
+        // Process YouTube URL
+        try {
+          const youtubeId = extractVideoId(analysisResult.value);
+          if (!youtubeId) {
+            console.error(chalk.red(`[YouTube] Failed to extract video ID from URL: ${analysisResult.value}`));
+            sendChatMessage(`@${userName}, couldn't process the YouTube link. Please make sure it's a valid video URL. https://calamarigoldrequests.com`);
+            return;
+          }
+          
+          const videoDetails = await fetchYouTubeDetails(youtubeId);
+          if (!videoDetails) {
+            sendChatMessage(`@${userName}, couldn't fetch details for that YouTube video. https://calamarigoldrequests.com`);
+            return;
+          }
+          
+          // Try to find Spotify match
+          let spotifyMatch = await spotify.getSpotifyEquivalent({
+            title: videoDetails.title,
+            artist: videoDetails.channelTitle,
+            durationSeconds: videoDetails.durationSeconds
+          });
+          
+          let songTitle, songArtist, durationSeconds;
+          if (spotifyMatch) {
+            songTitle = spotifyMatch.name;
+            songArtist = spotifyMatch.artists && spotifyMatch.artists.length > 0 ? spotifyMatch.artists[0].name : 'Unknown Artist';
+            durationSeconds = Math.round(spotifyMatch.durationMs / 1000);
+          } else {
+            songTitle = videoDetails.title;
+            songArtist = videoDetails.channelTitle;
+            durationSeconds = videoDetails.durationSeconds;
+          }
+          
+          // Check duration
+          const durationError = validateDuration(durationSeconds, 'channelPoint', MAX_DONATION_DURATION_SECONDS, MAX_CHANNEL_POINT_DURATION_SECONDS);
+          if (durationError) {
+            console.log(chalk.yellow(`[Raffle] Request duration (${durationSeconds}s) exceeds limit - rejecting "${songTitle}"`));
+            sendChatMessage(`@${userName} ${durationError.message} https://calamarigoldrequests.com`);
+            return;
+          }
+          
+          // Check blacklist
+          if (handleBlacklistRejection({ title: songTitle, artist: songArtist, blacklist: state.blacklist, userName, sendChatMessage })) {
+            return;
+          }
+          
+          // Get Twitch user info
+          const twitchUser = await getTwitchUser(userName);
+          
+          // Create song request for raffle
+          const raffleSong = {
+            id: initialRequestData.id,
             youtubeUrl: analysisResult.value,
-            message: null // Clear message field when URL is provided
-        });
+            title: songTitle,
+            artist: songArtist,
+            channelId: videoDetails.channelId,
+            duration: formatDurationFromSeconds(durationSeconds),
+            durationSeconds: durationSeconds,
+            requester: twitchUser?.display_name || userName,
+            requesterLogin: twitchUser?.login || userName.toLowerCase(),
+            requesterAvatar: twitchUser?.profile_image_url || null,
+            thumbnailUrl: videoDetails.thumbnailUrl,
+            timestamp: initialRequestData.timestamp,
+            requestType: 'channelPoint',
+            source: 'streamelements_redemption',
+            spotifyData: spotifyMatch
+          };
+          
+          // Add to raffle pool
+          addSongToRafflePool(raffleSong);
+          state.rafflePool.push(raffleSong);
+          
+          // Emit raffle update
+          io.emit('raffleUpdate', state.rafflePool);
+          
+          console.log(chalk.green(`[Raffle] Added "${raffleSong.title}" by ${raffleSong.artist} to raffle pool. Requester: ${raffleSong.requester}`));
+          sendChatMessage(`@${userName} Your request for "${raffleSong.title}" by ${raffleSong.artist} has been added to the raffle pool! https://calamarigoldrequests.com`);
+          
+        } catch (error) {
+          console.error(chalk.red('[Raffle] Error processing YouTube URL:'), error);
+          sendChatMessage(`@${userName}, there was an error processing your YouTube link. https://calamarigoldrequests.com`);
+        }
       } else if (analysisResult.type === 'spotifyUrl') {
-         // Process as a Spotify URL request
+        // Process Spotify URL
         try {
             console.log(chalk.blue(`[Spotify] Processing channel point with Spotify URL: ${analysisResult.value}`));
             const trackId = extractSpotifyTrackId(analysisResult.value);
@@ -1723,113 +2143,85 @@ async function startServer() {
                 sendChatMessage(`@${userName}, the Spotify link you provided doesn't look right. Please use a valid track link. https://calamarigoldrequests.com`);
                 return;
             }
-            console.log(chalk.blue(`[Spotify] Successfully extracted track ID from channel point: ${trackId}`));
 
             const spotifyDetails = await getSpotifyTrackDetailsById(trackId);
-            if (spotifyDetails) {
-                // Create a song request based on Spotify data
-                const spotifyRequest = await createSpotifyBasedRequest(spotifyDetails, initialRequestData);
-
-                // --- Perform Validations (Copied from text search path) ---
-                // Check for user queue limit first
-                const existingRequest = state.queue.find(song => song.requesterLogin?.toLowerCase() === userName.toLowerCase() || song.requester.toLowerCase() === userName.toLowerCase());
-                if (existingRequest) {
-                    console.log(chalk.yellow(`[Queue] User ${userName} already has a song in the queue - rejecting channel point request`));
-                    sendChatMessage(`@${userName}, you already have a song in the queue. Please wait for it to play. https://calamarigoldrequests.com`);
+          if (!spotifyDetails) {
+            console.log(chalk.yellow(`[Spotify] Could not find track details for Spotify URL: ${analysisResult.value}`));
+            sendChatMessage(`@${userName}, I couldn't find the song details for the Spotify link you provided. https://calamarigoldrequests.com`);
                     return;
                 }
 
-                const durationError = validateDuration(
-                    spotifyRequest.durationSeconds,
-                    spotifyRequest.requestType,
-                    MAX_DONATION_DURATION_SECONDS,
-                    MAX_CHANNEL_POINT_DURATION_SECONDS
-                );
+          // Create song request
+          const spotifyRequest = await createSpotifyBasedRequest(spotifyDetails, initialRequestData);
+
+          // Check duration
+          const durationError = validateDuration(spotifyRequest.durationSeconds, 'channelPoint', MAX_DONATION_DURATION_SECONDS, MAX_CHANNEL_POINT_DURATION_SECONDS);
                 if (durationError) {
-                    console.log(chalk.yellow(`[Queue] Channel Point (Spotify URL) request duration (${spotifyRequest.durationSeconds}s) exceeds limit (${durationError.limit}s) - rejecting "${spotifyRequest.title}"`));
+            console.log(chalk.yellow(`[Raffle] Request duration (${spotifyRequest.durationSeconds}s) exceeds limit - rejecting "${spotifyRequest.title}"`));
                     sendChatMessage(`@${userName} ${durationError.message} https://calamarigoldrequests.com`);
                     return;
                 }
 
+          // Check blacklist
                 if (handleBlacklistRejection({ title: spotifyRequest.title, artist: spotifyRequest.artist, blacklist: state.blacklist, userName, sendChatMessage })) {
                     return;
                 }
-                 // --- End Validations ---
 
-                // Add to queue
-                const position = addSongToQueue(spotifyRequest);
-                const queuePosition = position + 1;
+          // Add to raffle pool
+          addSongToRafflePool(spotifyRequest);
+          state.rafflePool.push(spotifyRequest);
 
-                // Emit updates
-                io.emit('newSongRequest', spotifyRequest);
-                io.emit('queueUpdate', state.queue);
+          // Emit raffle update
+          io.emit('raffleUpdate', state.rafflePool);
 
-                console.log(chalk.green(`[Queue] Added Spotify song (from URL) "${spotifyRequest.title}" by ${spotifyRequest.artist}. Type: channelPoint. Requester: ${spotifyRequest.requester}. Position: #${queuePosition}`));
+          console.log(chalk.green(`[Raffle] Added "${spotifyRequest.title}" by ${spotifyRequest.artist} (from Spotify URL) to raffle pool. Requester: ${spotifyRequest.requester}`));
+          sendChatMessage(`@${userName} Your request for "${spotifyRequest.title}" by ${spotifyRequest.artist} (from Spotify link) has been added to the raffle pool! https://calamarigoldrequests.com`);
 
-                // Send success message
-                sendChatMessage(`@${userName} Your request for "${spotifyRequest.title}" by ${spotifyRequest.artist} (from Spotify link) is #${queuePosition} in the queue. https://calamarigoldrequests.com`);
-            } else {
-                 console.log(chalk.yellow(`[Spotify] Could not find track details for Spotify URL: ${analysisResult.value}`));
-                sendChatMessage(`@${userName}, I couldn't find the song details for the Spotify link you provided. https://calamarigoldrequests.com`);
-            }
         } catch (error) {
-            console.error(chalk.red('[Spotify] Error processing Spotify URL redemption:'), error);
+          console.error(chalk.red('[Raffle] Error processing Spotify URL:'), error);
             sendChatMessage(`@${userName}, there was an error processing the Spotify link. https://calamarigoldrequests.com`);
         }
       } else if (analysisResult.type === 'text') {
-        // Process as a text-based song request (Existing Logic)
+        // Process text search
         const searchQuery = analysisResult.value;
         try {
           console.log(chalk.blue(`[Spotify] Searching for song based on text: "${searchQuery}"`));
           const spotifyTrack = await spotify.findSpotifyTrackBySearchQuery(searchQuery);
 
-          if (spotifyTrack) {
-            // Create a song request based on Spotify data
-            const spotifyRequest = await createSpotifyBasedRequest(spotifyTrack, initialRequestData);
-
-            // Check for user queue limit
-            const existingRequest = state.queue.find(song => song.requesterLogin?.toLowerCase() === userName.toLowerCase() || song.requester.toLowerCase() === userName.toLowerCase());
-            if (existingRequest) {
-              console.log(chalk.yellow(`[Queue] User ${userName} already has a song in the queue - rejecting channel point request`));
-              sendChatMessage(`@${userName}, you already have a song in the queue. Please wait for it to play. https://calamarigoldrequests.com`);
+          if (!spotifyTrack) {
+            console.log(chalk.yellow(`[Spotify] No track found for query: "${searchQuery}"`));
+            sendChatMessage(`@${userName} I couldn't find a song matching "${searchQuery}". Try again or use a YouTube/Spotify link. https://calamarigoldrequests.com`);
               return;
             }
 
-            // Check duration using the helper and values from .env
-            const durationError = validateDuration(
-                spotifyRequest.durationSeconds,
-                spotifyRequest.requestType,
-                MAX_DONATION_DURATION_SECONDS,
-                MAX_CHANNEL_POINT_DURATION_SECONDS
-            );
+          // Create song request
+          const spotifyRequest = await createSpotifyBasedRequest(spotifyTrack, initialRequestData);
+
+          // Check duration
+          const durationError = validateDuration(spotifyRequest.durationSeconds, 'channelPoint', MAX_DONATION_DURATION_SECONDS, MAX_CHANNEL_POINT_DURATION_SECONDS);
             if (durationError) {
-              console.log(chalk.yellow(`[Queue] Channel Point (text) request duration (${spotifyRequest.durationSeconds}s) exceeds limit (${durationError.limit}s) - rejecting "${spotifyRequest.title}"`));
+            console.log(chalk.yellow(`[Raffle] Request duration (${spotifyRequest.durationSeconds}s) exceeds limit - rejecting "${spotifyRequest.title}"`));
               sendChatMessage(`@${userName} ${durationError.message} https://calamarigoldrequests.com`);
               return;
             }
 
+          // Check blacklist
             if (handleBlacklistRejection({ title: spotifyRequest.title, artist: spotifyRequest.artist, blacklist: state.blacklist, userName, sendChatMessage })) {
                 return;
             }
 
-            // Add to queue
-            const position = addSongToQueue(spotifyRequest);
-            const queuePosition = position + 1; // Convert to 1-indexed for user-facing messages
+          // Add to raffle pool
+          addSongToRafflePool(spotifyRequest);
+          state.rafflePool.push(spotifyRequest);
 
-            // Emit updates
-            io.emit('newSongRequest', spotifyRequest);
-            io.emit('queueUpdate', state.queue);
+          // Emit raffle update
+          io.emit('raffleUpdate', state.rafflePool);
 
-            console.log(chalk.green(`[Queue] Added Spotify song (from text) "${spotifyRequest.title}" by ${spotifyRequest.artist}. Type: channelPoint. Requester: ${spotifyRequest.requester}. Position: #${queuePosition}`));
+          console.log(chalk.green(`[Raffle] Added "${spotifyRequest.title}" by ${spotifyRequest.artist} (from text search) to raffle pool. Requester: ${spotifyRequest.requester}`));
+          sendChatMessage(`@${userName} Your request for "${spotifyRequest.title}" by ${spotifyRequest.artist} has been added to the raffle pool! https://calamarigoldrequests.com`);
 
-            // Send success message
-            sendChatMessage(`@${userName} Your request for "${spotifyRequest.title}" by ${spotifyRequest.artist} is #${queuePosition} in the queue. https://calamarigoldrequests.com`);
-          } else {
-            console.log(chalk.yellow(`[Spotify] No track found for query: "${searchQuery}"`));
-            sendChatMessage(`@${userName} I couldn't find a song matching "${searchQuery}". Try again or use a YouTube/Spotify link. https://calamarigoldrequests.com`);
-          }
         } catch (error) {
-          console.error(chalk.red('[Spotify] Error processing text-based redemption:'), error);
+          console.error(chalk.red('[Raffle] Error processing text search:'), error);
           sendChatMessage(`@${userName} There was an error finding your requested song. Please try again with a YouTube/Spotify link. https://calamarigoldrequests.com`);
         }
       }
@@ -2214,7 +2606,540 @@ async function createSpotifyBasedRequest(spotifyTrack, request) {
   }
 }
 
-// Function to add a song to the queue
+// ===== Queue Slot Management Functions =====
+
+/**
+ * Creates an empty slot object
+ * @param {number} position - Slot position (1-based)
+ * @returns {Object} Empty slot object
+ */
+function createEmptySlot(position) {
+  return {
+    id: `empty-${position}-${Date.now()}`,
+    slotPosition: position,
+    slotType: 'empty',
+    title: 'Donation Slot',
+    artist: 'Empty dono slot',
+    requester: 'System',
+    timestamp: new Date().toISOString(),
+    requestType: 'empty',
+    source: 'system',
+    durationSeconds: 0,
+    duration: '0:00'
+  };
+}
+
+/**
+ * Creates a raffle placeholder slot object
+ * @param {number} position - Slot position (1-based)
+ * @returns {Object} Raffle placeholder slot object
+ */
+function createRafflePlaceholder(position) {
+  return {
+    id: `raffle-placeholder-${position}-${Date.now()}`,
+    slotPosition: position,
+    slotType: 'raffle_placeholder',
+    title: 'Random Channel Point Raffle Song',
+    artist: 'Waiting for admin to pull',
+    requester: 'System',
+    timestamp: new Date().toISOString(),
+    requestType: 'raffle_placeholder',
+    source: 'system',
+    durationSeconds: 0,
+    duration: '0:00'
+  };
+}
+
+/**
+ * Initializes the queue with 9 slots based on mode
+ * @param {string} mode - 'raffle' or 'donation-only'
+ */
+function initializeQueueSlots(mode) {
+  state.queue = [];
+  
+  for (let i = 1; i <= 9; i++) {
+    let slot;
+    if (mode === 'raffle' && i % AUTO_FILL_RAFFLE_INTERVAL === 0) {
+      // Create raffle placeholder at positions 3, 6, 9, etc.
+      slot = createRafflePlaceholder(i);
+    } else {
+      // Create empty slot
+      slot = createEmptySlot(i);
+    }
+    
+    // Add to memory
+    state.queue.push(slot);
+    
+    // Add to database
+    db.addSongToDbQueue(slot);
+  }
+  
+  console.log(chalk.green(`[Queue] Initialized ${state.queue.length} slots (mode: ${mode})`));
+}
+
+/**
+ * Ensures queue has at least 9 slots, adding empty ones if needed
+ */
+function ensureMinimumQueueSlots() {
+  const currentSlots = state.queue.length;
+  if (currentSlots < 9) {
+    console.log(chalk.yellow(`[Queue] Queue has ${currentSlots} slots, adding ${9 - currentSlots} more...`));
+    
+    for (let i = currentSlots + 1; i <= 9; i++) {
+      let slot;
+      // Create raffle placeholder if in raffle mode and at the right position
+      if (state.queueMode === 'raffle' && i % AUTO_FILL_RAFFLE_INTERVAL === 0) {
+        slot = createRafflePlaceholder(i);
+      } else {
+        slot = createEmptySlot(i);
+      }
+      state.queue.push(slot);
+      db.addSongToDbQueue(slot);
+    }
+  }
+}
+
+/**
+ * Ensures raffle placeholders exist at correct positions (3, 6, 9, etc.)
+ * Converts empty slots to raffle placeholders where needed
+ */
+function ensureRafflePlaceholders() {
+  let converted = 0;
+  
+  for (let i = 0; i < state.queue.length; i++) {
+    const slot = state.queue[i];
+    const position = slot.slotPosition || (i + 1);
+    
+    // Check if this position should have a raffle placeholder
+    if (position % AUTO_FILL_RAFFLE_INTERVAL === 0) {
+      // If it's an empty slot, convert it to a raffle placeholder
+      if (slot.slotType === 'empty') {
+        // Remove old empty slot from DB
+        db.removeSongFromDbQueue(slot.id);
+        
+        // Create raffle placeholder
+        const placeholder = createRafflePlaceholder(position);
+        state.queue[i] = placeholder;
+        
+        // Add to DB
+        db.addSongToDbQueue(placeholder);
+        
+        converted++;
+      }
+      // If it's already a raffle placeholder or has a song, leave it
+    }
+  }
+  
+  if (converted > 0) {
+    console.log(chalk.green(`[Queue] Converted ${converted} empty slots to raffle placeholders`));
+  }
+}
+
+/**
+ * Recalculates slot positions for all items in the queue
+ * Updates position numbers only - does NOT change slot types
+ * Slot types should remain consistent to maintain raffle placeholder pattern
+ */
+function recalculateSlotPositions() {
+  state.queue.forEach((slot, index) => {
+    const newPosition = index + 1;
+    const oldPosition = slot.slotPosition;
+    
+    if (oldPosition !== newPosition) {
+      slot.slotPosition = newPosition;
+      
+      // Update the slot position in DB (but NOT the slot type)
+      if (slot.id) {
+        try {
+          const stmt = db.getDb().prepare('UPDATE active_queue SET slot_position = ? WHERE request_id = ?');
+          stmt.run(newPosition, slot.id);
+        } catch (err) {
+          console.error(chalk.red(`[Queue] Error updating slot position in DB:`), err);
+        }
+      }
+    }
+  });
+  
+  console.log(chalk.grey(`[Queue] Recalculated slot positions for ${state.queue.length} slots`));
+}
+
+/**
+ * Adds a new empty slot at the end of the queue
+ * Determines whether it should be empty or raffle placeholder based on current pattern
+ */
+function addNewEmptySlot() {
+  const nextPosition = state.queue.length + 1;
+  let slot;
+  
+  if (state.queueMode === 'raffle') {
+    // Count slots since the last raffle placeholder to maintain pattern
+    let slotsSinceLastRaffle = 0;
+    
+    // Look backwards through queue to find the last raffle placeholder
+    for (let i = state.queue.length - 1; i >= 0; i--) {
+      const currentSlot = state.queue[i];
+      if (currentSlot.slotType === 'raffle_placeholder' || currentSlot.slotType === 'raffle_filled') {
+        break; // Found the last raffle slot
+      }
+      slotsSinceLastRaffle++;
+    }
+    
+    // If we've had AUTO_FILL_RAFFLE_INTERVAL-1 slots since last raffle, next should be raffle
+    // (e.g., if interval is 3: after 2 non-raffle slots, the 3rd should be raffle)
+    if (slotsSinceLastRaffle >= AUTO_FILL_RAFFLE_INTERVAL - 1) {
+      slot = createRafflePlaceholder(nextPosition);
+    } else {
+      slot = createEmptySlot(nextPosition);
+    }
+  } else {
+    // Donation-only mode: always create empty donation slot
+    slot = createEmptySlot(nextPosition);
+  }
+  
+  state.queue.push(slot);
+  db.addSongToDbQueue(slot);
+  console.log(chalk.grey(`[Queue] Added new ${slot.slotType} slot at position ${nextPosition} (slots since last raffle: ${state.queueMode === 'raffle' ? 'checked pattern' : 'N/A'})`));
+  return slot;
+}
+
+/**
+ * Gets the next available slot position for filling
+ * @param {boolean} skipRafflePlaceholders - Whether to skip raffle placeholder slots
+ * @returns {number|null} Slot position or null if none available
+ */
+function getNextAvailableSlotPosition(skipRafflePlaceholders = false) {
+  for (let i = 0; i < state.queue.length; i++) {
+    const slot = state.queue[i];
+    if (slot.slotType === 'empty') {
+      return i;
+    }
+    if (!skipRafflePlaceholders && slot.slotType === 'raffle_placeholder') {
+      return i;
+    }
+  }
+  return null;
+}
+
+/**
+ * Checks if we need to add a new empty slot to maintain at least one available slot
+ * Should be called after filling a slot
+ */
+function ensureEmptySlotAvailable() {
+  // Check if the LAST slot in the queue is empty or a placeholder
+  // This ensures there's always an available slot at the end of the queue
+  if (state.queue.length === 0) {
+    console.log(chalk.blue('[Queue] Queue is empty, adding initial slot...'));
+    addNewEmptySlot();
+    return true;
+  }
+  
+  const lastSlot = state.queue[state.queue.length - 1];
+  const isLastSlotAvailable = lastSlot.slotType === 'empty' || lastSlot.slotType === 'raffle_placeholder';
+  
+  if (!isLastSlotAvailable) {
+    // Last slot is filled, add a new empty slot at the end
+    console.log(chalk.blue('[Queue] Last slot is filled, adding new empty slot at the end...'));
+    addNewEmptySlot();
+    return true;
+  }
+  
+  return false;
+}
+
+/**
+ * Fills a queue slot with an actual song
+ * @param {number} slotIndex - Index in the queue array
+ * @param {Object} song - Song object to fill the slot with
+ * @param {string} slotType - 'donation', 'raffle_filled', etc.
+ */
+function fillQueueSlot(slotIndex, song, slotType) {
+  if (slotIndex < 0 || slotIndex >= state.queue.length) {
+    console.error(chalk.red(`[Queue] Invalid slot index: ${slotIndex}`));
+    return false;
+  }
+  
+  const oldSlot = state.queue[slotIndex];
+  const slotPosition = oldSlot.slotPosition;
+  
+  // Remove old slot from DB
+  db.removeSongFromDbQueue(oldSlot.id);
+  
+  // Update song with slot information
+  song.slotPosition = slotPosition;
+  song.slotType = slotType;
+  
+  // Replace in queue array
+  state.queue[slotIndex] = song;
+  
+  // Add new song to DB
+  db.addSongToDbQueue(song);
+  
+  console.log(chalk.green(`[Queue] Filled slot ${slotPosition} with: ${song.title}`));
+  
+  // After filling a slot, check if we need to add a new empty slot
+  ensureEmptySlotAvailable();
+  
+  return true;
+}
+
+/**
+ * Pulls a random song from the raffle pool and fills a raffle placeholder slot
+ * @returns {Object|null} The pulled song or null if failed
+ */
+function pullRandomRaffleToQueue() {
+  // Check if raffle pool is empty
+  if (state.rafflePool.length === 0) {
+    console.log(chalk.yellow('[Raffle] Cannot pull from empty raffle pool'));
+    return null;
+  }
+  
+  // Get random song from raffle pool (DB)
+  const randomSong = getRandomSongFromRaffle();
+  if (!randomSong) {
+    console.log(chalk.yellow('[Raffle] Failed to get random song from raffle pool'));
+    return null;
+  }
+  
+  // Find first raffle_placeholder slot
+  let placeholderIndex = -1;
+  for (let i = 0; i < state.queue.length; i++) {
+    if (state.queue[i].slotType === 'raffle_placeholder') {
+      placeholderIndex = i;
+      break;
+    }
+  }
+  
+  if (placeholderIndex === -1) {
+    console.log(chalk.yellow('[Raffle] No raffle placeholder slots available'));
+    return null;
+  }
+  
+  // Fill the placeholder slot
+  fillQueueSlot(placeholderIndex, randomSong, 'raffle_filled');
+  
+  // Remove from raffle pool (DB and memory)
+  removeSongFromRafflePool(randomSong.id);
+  state.rafflePool = state.rafflePool.filter(song => song.id !== randomSong.id);
+  
+  const queuePosition = placeholderIndex + 1;
+  console.log(chalk.green(`[Raffle] Pulled "${randomSong.title}" from raffle pool to slot ${state.queue[placeholderIndex].slotPosition}`));
+  
+  // Send chat notification
+  sendChatMessage(`🎲 @${randomSong.requester}, your song "${randomSong.title}" by ${randomSong.artist} was pulled from the raffle pool! It's now #${queuePosition} in the queue. https://calamarigoldrequests.com`);
+  
+  // Emit updates
+  io.emit('queueUpdate', state.queue);
+  io.emit('raffleUpdate', state.rafflePool);
+  
+  return randomSong;
+}
+
+/**
+ * Switches the queue mode between 'raffle' and 'donation-only'
+ * @param {string} newMode - The new mode ('raffle' or 'donation-only')
+ */
+function switchQueueMode(newMode) {
+  if (newMode !== 'raffle' && newMode !== 'donation-only') {
+    console.error(chalk.red(`[Queue] Invalid queue mode: ${newMode}`));
+    return false;
+  }
+  
+  const oldMode = state.queueMode;
+  state.queueMode = newMode;
+  
+  // Save to settings
+  db.saveSetting('queueMode', newMode);
+  
+  if (newMode === 'donation-only') {
+    // Convert all raffle_placeholder slots to empty slots
+    for (let i = 0; i < state.queue.length; i++) {
+      const slot = state.queue[i];
+      if (slot.slotType === 'raffle_placeholder') {
+        // Remove old placeholder from DB
+        db.removeSongFromDbQueue(slot.id);
+        
+        // Create new empty slot
+        const emptySlot = createEmptySlot(slot.slotPosition);
+        state.queue[i] = emptySlot;
+        
+        // Add to DB
+        db.addSongToDbQueue(emptySlot);
+      }
+    }
+    console.log(chalk.blue(`[Queue] Switched to donation-only mode. Converted raffle placeholders to empty slots.`));
+  } else if (newMode === 'raffle') {
+    // Add raffle placeholders at appropriate positions
+    for (let i = 0; i < state.queue.length; i++) {
+      const slot = state.queue[i];
+      const position = slot.slotPosition;
+      
+      // Check if this position should be a raffle placeholder
+      if (position % AUTO_FILL_RAFFLE_INTERVAL === 0 && slot.slotType === 'empty') {
+        // Remove old empty slot from DB
+        db.removeSongFromDbQueue(slot.id);
+        
+        // Create raffle placeholder
+        const rafflePlaceholder = createRafflePlaceholder(position);
+        state.queue[i] = rafflePlaceholder;
+        
+        // Add to DB
+        db.addSongToDbQueue(rafflePlaceholder);
+      }
+    }
+    console.log(chalk.blue(`[Queue] Switched to raffle mode. Added raffle placeholders at appropriate positions.`));
+  }
+  
+  // Emit updates
+  io.emit('modeChange', state.queueMode);
+  io.emit('queueUpdate', state.queue);
+  
+  console.log(chalk.green(`[Queue] Mode switched from ${oldMode} to ${newMode}`));
+  return true;
+}
+
+/**
+ * Admin function to add a song directly to the raffle pool
+ * @param {Object} songRequestData - The song request data from admin
+ * @param {boolean} bypass - Whether to bypass restrictions
+ */
+async function addSongToRafflePoolFromAdmin(songRequestData, bypass) {
+  try {
+    const { youtubeUrl, message, requester } = songRequestData;
+    
+    // Determine if it's YouTube or Spotify
+    if (youtubeUrl) {
+      // Process YouTube URL
+      const videoId = extractVideoId(youtubeUrl);
+      if (!videoId) {
+        console.error(chalk.red('[Admin Raffle] Invalid YouTube URL'));
+        throw new Error('Invalid YouTube URL');
+      }
+      
+      const videoDetails = await fetchYouTubeDetails(videoId);
+      if (!videoDetails) {
+        console.error(chalk.red('[Admin Raffle] Could not fetch YouTube details'));
+        throw new Error('Could not fetch YouTube details');
+      }
+      
+      // Try to find Spotify match
+      let spotifyMatch = null;
+      try {
+        spotifyMatch = await spotify.getSpotifyEquivalent({
+          title: videoDetails.title,
+          artist: videoDetails.channelTitle,
+          durationSeconds: videoDetails.durationSeconds
+        });
+      } catch (err) {
+        console.log(chalk.yellow('[Admin Raffle] No Spotify match found'));
+      }
+      
+      // Get Twitch user info
+      let twitchUser = null;
+      try {
+        twitchUser = await getTwitchUser(requester);
+      } catch (err) {
+        console.log(chalk.yellow(`[Admin Raffle] Could not fetch Twitch user: ${requester}`));
+      }
+      
+      // Create raffle song
+      const raffleSong = {
+        id: songRequestData.id || Date.now().toString(),
+        youtubeUrl: youtubeUrl,
+        title: spotifyMatch ? spotifyMatch.name : videoDetails.title,
+        artist: spotifyMatch ? spotifyMatch.artists[0].name : videoDetails.channelTitle,
+        channelId: videoDetails.channelId,
+        duration: formatDurationFromSeconds(videoDetails.durationSeconds),
+        durationSeconds: videoDetails.durationSeconds,
+        requester: twitchUser?.display_name || requester,
+        requesterLogin: twitchUser?.login || requester.toLowerCase(),
+        requesterAvatar: twitchUser?.profile_image_url || null,
+        thumbnailUrl: videoDetails.thumbnailUrl,
+        timestamp: new Date().toISOString(),
+        requestType: 'channelPoint',
+        source: 'admin',
+        spotifyData: spotifyMatch
+      };
+      
+      // Add to raffle pool
+      addSongToRafflePool(raffleSong);
+      state.rafflePool.push(raffleSong);
+      
+      // Emit updates
+      io.emit('raffleUpdate', state.rafflePool);
+      
+      // Send chat message
+      sendChatMessage(`🎲 Admin added "${raffleSong.title}" by ${raffleSong.artist} to the raffle pool (requested by ${raffleSong.requester}). https://calamarigoldrequests.com`);
+      
+      console.log(chalk.green(`[Admin Raffle] Added "${raffleSong.title}" to raffle pool`));
+      
+    } else if (message) {
+      // Process Spotify URL
+      const trackId = extractSpotifyTrackId(message);
+      if (!trackId) {
+        console.error(chalk.red('[Admin Raffle] Invalid Spotify URL'));
+        throw new Error('Invalid Spotify URL');
+      }
+      
+      const spotifyDetails = await getSpotifyTrackDetailsById(trackId);
+      if (!spotifyDetails) {
+        console.error(chalk.red('[Admin Raffle] Could not fetch Spotify details'));
+        throw new Error('Could not fetch Spotify details');
+      }
+      
+      // Try to find YouTube match
+      let youtubeMatch = null;
+      try {
+        youtubeMatch = await findYouTubeUrl(spotifyDetails);
+      } catch (err) {
+        console.log(chalk.yellow('[Admin Raffle] No YouTube match found'));
+      }
+      
+      // Get Twitch user info
+      let twitchUser = null;
+      try {
+        twitchUser = await getTwitchUser(requester);
+      } catch (err) {
+        console.log(chalk.yellow(`[Admin Raffle] Could not fetch Twitch user: ${requester}`));
+      }
+      
+      // Create raffle song
+      const raffleSong = {
+        id: songRequestData.id || Date.now().toString(),
+        youtubeUrl: youtubeMatch?.youtubeUrl || null,
+        title: spotifyDetails.name,
+        artist: spotifyDetails.artists.map(a => a.name).join(', '),
+        channelId: youtubeMatch?.channelId || null,
+        duration: formatDurationFromSeconds(Math.round(spotifyDetails.durationMs / 1000)),
+        durationSeconds: Math.round(spotifyDetails.durationMs / 1000),
+        requester: twitchUser?.display_name || requester,
+        requesterLogin: twitchUser?.login || requester.toLowerCase(),
+        requesterAvatar: twitchUser?.profile_image_url || null,
+        thumbnailUrl: youtubeMatch?.thumbnailUrl || (spotifyDetails.album?.images?.[0]?.url || null),
+        timestamp: new Date().toISOString(),
+        requestType: 'channelPoint',
+        source: 'admin',
+        spotifyData: spotifyDetails
+      };
+      
+      // Add to raffle pool
+      addSongToRafflePool(raffleSong);
+      state.rafflePool.push(raffleSong);
+      
+      // Emit updates
+      io.emit('raffleUpdate', state.rafflePool);
+      
+      // Send chat message
+      sendChatMessage(`🎲 Admin added "${raffleSong.title}" by ${raffleSong.artist} to the raffle pool (requested by ${raffleSong.requester}). https://calamarigoldrequests.com`);
+      
+      console.log(chalk.green(`[Admin Raffle] Added "${raffleSong.title}" to raffle pool`));
+    }
+  } catch (error) {
+    console.error(chalk.red('[Admin Raffle] Error processing song:'), error);
+    throw error;
+  }
+}
+
+// Function to add a song to the queue (UPDATED for slot-based system)
 function addSongToQueue(song) {
   if (!song) {
     console.warn(chalk.yellow('[Queue] Attempted to add null/undefined song to queue'));
@@ -2222,30 +3147,27 @@ function addSongToQueue(song) {
   }
   
   try {
-    // Determine position based on priority (donations before channel points)
-    // For the same priority type, newer songs go after existing ones of same type
-    let insertIndex = 0;
+    // ALL songs now use the slot-based system
+    // Determine the slot type based on request type
+    const slotType = song.requestType === 'donation' ? 'donation' : 'raffle_filled';
+    const skipRafflePlaceholders = song.requestType === 'donation';
     
-    if (song.requestType === 'donation') {
-      // Find the last donation entry in the queue (donations at the top)
-      const lastDonationIndex = state.queue.findIndex(s => s.requestType !== 'donation');
-      insertIndex = lastDonationIndex === -1 ? state.queue.length : lastDonationIndex;
-    } else {
-      // For channel points, add to the end
-      insertIndex = state.queue.length;
+    // Find next available slot
+    let slotIndex = getNextAvailableSlotPosition(skipRafflePlaceholders);
+    
+    if (slotIndex === null) {
+      // No empty slots available, add a new empty slot first
+      addNewEmptySlot();
+      // Now get the slot we just added
+      slotIndex = state.queue.length - 1;
     }
     
-    // Insert the song at the calculated position
-    state.queue.splice(insertIndex, 0, song);
+    // Fill the slot (this will also check if we need another empty slot)
+    fillQueueSlot(slotIndex, song, slotType);
     
-    // Add to database
-    db.addSongToDbQueue(song);
-    
-    // Emit queue update and broadcast counts
     io.emit('queueUpdate', state.queue);
     broadcastTotalCounts();
-    
-    return insertIndex; // Return the position where it was added (0-indexed)
+    return slotIndex;
   } catch (error) {
     console.error(chalk.red('[Queue] Error adding song to queue:'), error);
     return -1;
@@ -2391,7 +3313,10 @@ if (tmiClient) {
 function broadcastTotalCounts() {
     try {
         const totalHistory = db.getTotalHistoryCount();
-        const totalQueue = state.queue.length; // Queue count is from in-memory state
+        // Only count filled slots (not empty slots or raffle placeholders)
+        const totalQueue = state.queue.filter(slot => 
+            slot.slotType !== 'empty' && slot.slotType !== 'raffle_placeholder'
+        ).length;
         io.emit('totalCountsUpdate', { history: totalHistory, queue: totalQueue });
     } catch (error) {
         console.error(chalk.red('[Counts] Error broadcasting total counts:'), error);

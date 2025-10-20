@@ -47,6 +47,12 @@ export function SongList({
         const isOwnRequest = !!userLogin && 
                              (song.requesterLogin?.toLowerCase() === userLogin || 
                               song.requester?.toLowerCase() === userLogin);
+        
+        // Check if this is an empty slot or raffle placeholder
+        const isEmptySlot = song.slotType === 'empty';
+        const isRafflePlaceholder = song.slotType === 'raffle_placeholder';
+        const isSpecialSlot = isEmptySlot || isRafflePlaceholder;
+        
         return (
           <motion.div
             key={song.id}
@@ -61,8 +67,11 @@ export function SongList({
           >
             <div 
               className={cn(
-                "flex flex-wrap sm:flex-nowrap items-center sm:space-x-3 p-3 rounded-md bg-brand-purple-dark/30 hover:bg-brand-purple-dark/50 transition-colors duration-200 border border-brand-purple-neon/10 hover:border-brand-purple-neon/30", 
-                isOwnRequest && "shadow-glow-pink-sm"
+                "flex flex-wrap sm:flex-nowrap items-center sm:space-x-3 p-3 rounded-md transition-colors duration-200 border",
+                isSpecialSlot 
+                  ? "bg-brand-purple-dark/20 border-dashed border-brand-purple-neon/30"
+                  : "bg-brand-purple-dark/30 hover:bg-brand-purple-dark/50 border-brand-purple-neon/10 hover:border-brand-purple-neon/30",
+                isOwnRequest && !isSpecialSlot && "shadow-glow-pink-sm"
               )}
             >
               {/* Left section (Index + Thumbnail) */}
@@ -89,9 +98,41 @@ export function SongList({
               </div>
               {/* Middle section (Title, Artist, Duration, Requester) */}
               <div className="flex-grow min-w-0 w-full sm:w-auto order-first sm:order-none mb-2 sm:mb-0">
-                <p className={`font-medium break-words flex items-center gap-1 ${isHistory ? 'text-gray-400' : 'text-white'}`}>
-                  {song.title || (song.youtubeUrl ? 'Untitled YouTube Video' : 'Untitled Song')}
-                </p>
+                {isSpecialSlot ? (
+                  // Special rendering for empty slots and raffle placeholders
+                  <>
+                    <p className="font-medium break-words flex items-center gap-2 text-brand-purple-light/70 italic">
+                      {isEmptySlot && (
+                        <>
+                          <Music size={18} className="flex-shrink-0" />
+                          <span>Donate $10 to fill this slot</span>
+                        </>
+                      )}
+                      {isRafflePlaceholder && (
+                        <>
+                          <Music size={18} className="flex-shrink-0" />
+                          <span>Random Channel Point Raffle Song</span>
+                        </>
+                      )}
+                    </p>
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1">
+                      <Badge 
+                        variant="outline" 
+                        className={cn(
+                          "text-xs font-normal border-brand-purple-neon/30",
+                          isEmptySlot ? "text-yellow-400/80" : "text-purple-400/80"
+                        )}
+                      >
+                        {isEmptySlot ? "💰 Donation Slot" : "🎲 Raffle Placeholder"}
+                      </Badge>
+                    </div>
+                  </>
+                ) : (
+                  // Regular song rendering
+                  <>
+                    <p className={`font-medium break-words flex items-center gap-1 ${isHistory ? 'text-gray-400' : 'text-white'}`}>
+                      {song.title || (song.youtubeUrl ? 'Untitled YouTube Video' : 'Untitled Song')}
+                    </p>
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1">
                   {song.youtubeUrl && song.channelId ? (
                     <Link href={`https://www.youtube.com/channel/${song.channelId}`} target="_blank" rel="noopener noreferrer" className={`hover:text-brand-pink-light transition-colors group ${isHistory ? 'text-brand-purple-light/60' : 'text-brand-purple-light/80'}`}> 
@@ -131,8 +172,11 @@ export function SongList({
                     )}
                   </div>
                 </div>
+                  </>
+                )}
               </div>
-              {/* Right section (Buttons + Timestamp) */}
+              {/* Right section (Buttons + Timestamp) - Only show for regular songs */}
+              {!isSpecialSlot && (
               <div className="flex flex-col space-y-1 w-full sm:w-auto items-start sm:items-end flex-shrink-0">
                 <div className="flex space-x-1 items-center">
                   {song.youtubeUrl && (
@@ -201,6 +245,7 @@ export function SongList({
                    {isHistory ? 'Completed:' : 'Added:'} {formatTimestamp(song.timestamp)}
                 </span>
               </div>
+              )}
             </div>
           </motion.div>
         )

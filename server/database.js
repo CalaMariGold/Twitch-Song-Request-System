@@ -8,6 +8,7 @@ let db = null;
 let insertHistoryStmt, insertQueueStmt, deleteQueueStmt, clearQueueStmt;
 let saveSettingStmt, addBlacklistStmt, removeBlacklistStmt, addBlockedUserStmt, removeBlockedUserStmt;
 let saveActiveSongStmt, clearActiveSongStmt;
+let insertRaffleStmt, deleteRaffleStmt, clearRaffleStmt;
 
 /**
  * Initializes the SQLite database with required tables
@@ -130,6 +131,25 @@ function initDatabase(dbPath) {
         `;
         db.exec(createBlockedUsersTableStmt);
 
+        const createRafflePoolTableStmt = `
+            CREATE TABLE IF NOT EXISTS channel_point_raffle (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                request_id TEXT UNIQUE,
+                youtubeUrl TEXT,
+                title TEXT NOT NULL,
+                artist TEXT,
+                channelId TEXT,
+                durationSeconds INTEGER,
+                requester TEXT NOT NULL,
+                requesterLogin TEXT NOT NULL,
+                requesterAvatar TEXT,
+                thumbnailUrl TEXT,
+                addedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+                spotifyData TEXT
+            );
+        `;
+        db.exec(createRafflePoolTableStmt);
+
         // Run migration logic *after* base tables are guaranteed to exist
         // --- Migration logic placeholder --- 
         try {
@@ -148,6 +168,25 @@ function initDatabase(dbPath) {
             console.error(chalk.red('[Database] Error during request_id column migration:'), migrationError);
             // If the migration fails, the subsequent index creation might also fail.
         }
+        
+        // --- Migration logic for slot system ---
+        try {
+            const queueColumns = db.prepare("PRAGMA table_info(active_queue)").all();
+            const slotTypeColExists = queueColumns.some(col => col.name === 'slot_type');
+            const slotPositionColExists = queueColumns.some(col => col.name === 'slot_position');
+            
+            if (!slotTypeColExists) {
+                console.log(chalk.blue('[Database] Adding slot_type column to active_queue table'));
+                db.exec('ALTER TABLE active_queue ADD COLUMN slot_type TEXT DEFAULT NULL');
+            }
+            
+            if (!slotPositionColExists) {
+                console.log(chalk.blue('[Database] Adding slot_position column to active_queue table'));
+                db.exec('ALTER TABLE active_queue ADD COLUMN slot_position INTEGER DEFAULT NULL');
+            }
+        } catch (migrationError) {
+            console.error(chalk.red('[Database] Error during slot system column migration:'), migrationError);
+        }
         // --- End migration logic --- 
         ensureSpotifyColumnsExist();
 
@@ -162,8 +201,14 @@ function initDatabase(dbPath) {
 
         const createQueueIndexes = `
             CREATE INDEX IF NOT EXISTS idx_queue_order ON active_queue (priority DESC, addedAt ASC);
+            CREATE INDEX IF NOT EXISTS idx_queue_slot_position ON active_queue (slot_position ASC);
         `;
         db.exec(createQueueIndexes);
+
+        const createRaffleIndexes = `
+            CREATE INDEX IF NOT EXISTS idx_raffle_addedAt ON channel_point_raffle (addedAt ASC);
+        `;
+        db.exec(createRaffleIndexes);
 
         console.log(chalk.blue('[Database] Schema and indexes verified/created.'));
 
@@ -365,6 +410,19 @@ function prepareStatements() {
         addBlockedUserStmt = db.prepare('INSERT OR IGNORE INTO blocked_users (username, addedAt) VALUES (?, ?)');
         removeBlockedUserStmt = db.prepare('DELETE FROM blocked_users WHERE username = ?');
 
+        // Raffle Pool
+        insertRaffleStmt = db.prepare(`
+            INSERT INTO channel_point_raffle (
+                request_id, youtubeUrl, title, artist, channelId, durationSeconds,
+                requester, requesterLogin, requesterAvatar, thumbnailUrl, addedAt, spotifyData
+            ) VALUES (
+                @request_id, @youtubeUrl, @title, @artist, @channelId, @durationSeconds,
+                @requester, @requesterLogin, @requesterAvatar, @thumbnailUrl, @addedAt, @spotifyData
+            )
+        `);
+        deleteRaffleStmt = db.prepare('DELETE FROM channel_point_raffle WHERE request_id = ?');
+        clearRaffleStmt = db.prepare('DELETE FROM channel_point_raffle');
+
         console.log(chalk.blue('[Database] Prepared statements created.'));
     } catch (err) {
         console.error(chalk.red('[Database] Failed to prepare SQL statements:'), err);
@@ -435,7 +493,20 @@ function addSongToDbQueue(song) {
         const priority = song.requestType === 'donation' ? 1 : 0;
         const spotifyDataJson = song.spotifyData ? JSON.stringify(song.spotifyData) : null;
 
-        insertQueueStmt.run({
+        // Prepare statement dynamically to include slot fields if present
+        const stmt = db.prepare(`
+            INSERT INTO active_queue (
+                request_id, youtubeUrl, title, artist, channelId, durationSeconds,
+                requester, requesterLogin, requesterAvatar, thumbnailUrl, requestType, priority, addedAt, spotifyData,
+                slot_type, slot_position
+            ) VALUES (
+                @request_id, @youtubeUrl, @title, @artist, @channelId, @durationSeconds,
+                @requester, @requesterLogin, @requesterAvatar, @thumbnailUrl, @requestType, @priority, @addedAt, @spotifyData,
+                @slot_type, @slot_position
+            )
+        `);
+
+        stmt.run({
             request_id: song.id,
             youtubeUrl: song.youtubeUrl,
             title: song.title,
@@ -449,7 +520,9 @@ function addSongToDbQueue(song) {
             requestType: song.requestType,
             priority: song.priority || priority,
             addedAt: song.timestamp || new Date().toISOString(),
-            spotifyData: spotifyDataJson
+            spotifyData: spotifyDataJson,
+            slot_type: song.slotType || null,
+            slot_position: song.slotPosition || null
         });
         console.log(chalk.grey(`[DB Write] Added song to active_queue: ${song.title}`));
     } catch (err) {
@@ -866,8 +939,9 @@ function loadInitialState() {
     try {
         const loadQueueStmt = db.prepare(`
             SELECT id, youtubeUrl, title, artist, channelId, durationSeconds,
-                   requester, requesterLogin, requesterAvatar, thumbnailUrl, requestType, addedAt, spotifyData
-            FROM active_queue ORDER BY priority DESC, id ASC
+                   requester, requesterLogin, requesterAvatar, thumbnailUrl, requestType, addedAt, spotifyData,
+                   slot_type, slot_position
+            FROM active_queue ORDER BY slot_position ASC, priority DESC, id ASC
         `);
         const queueRows = loadQueueStmt.all();
         loadedState.queue = queueRows.map(row => {
@@ -895,10 +969,12 @@ function loadInitialState() {
                 timestamp: row.addedAt,
                 requestType: row.requestType,
                 source: 'database',
-                spotifyData: spotifyData
+                spotifyData: spotifyData,
+                slotType: row.slot_type,
+                slotPosition: row.slot_position
             };
         });
-        console.log(chalk.blue(`[Database] Loaded ${loadedState.queue.length} songs into the active queue.`));
+        console.log(chalk.blue(`[Database] Loaded ${loadedState.queue.length} songs/slots into the active queue.`));
 
         loadedState.activeSong = loadActiveSongFromDB();
 
@@ -1349,6 +1425,368 @@ function getHistoryStats() {
     }
 }
 
+// --- Raffle Pool Functions ---
+
+/**
+ * Adds a song to the channel point raffle pool
+ * @param {Object} song - Song object with all required fields
+ */
+function addSongToRafflePool(song) {
+    if (!db || !insertRaffleStmt) {
+        console.error(chalk.red('[Database] Database not initialized. Cannot add to raffle pool.'));
+        return false;
+    }
+    try {
+        const spotifyDataJson = song.spotifyData ? JSON.stringify(song.spotifyData) : null;
+        
+        insertRaffleStmt.run({
+            request_id: song.id,
+            youtubeUrl: song.youtubeUrl || null,
+            title: song.title || 'Unknown Title',
+            artist: song.artist || 'Unknown Artist',
+            channelId: song.channelId || null,
+            durationSeconds: song.durationSeconds || 0,
+            requester: song.requester,
+            requesterLogin: song.requesterLogin || song.requester,
+            requesterAvatar: song.requesterAvatar || null,
+            thumbnailUrl: song.thumbnailUrl || null,
+            addedAt: song.timestamp || new Date().toISOString(),
+            spotifyData: spotifyDataJson
+        });
+        console.log(chalk.grey(`[DB Write] Added song to raffle pool: ${song.title}`));
+        return true;
+    } catch (err) {
+        if (err.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+            console.warn(chalk.yellow(`[DB Write] Attempted to add duplicate to raffle pool: ${song.id}. Skipping.`));
+        } else {
+            console.error(chalk.red('[Database] Failed to add song to raffle pool:'), err);
+        }
+        return false;
+    }
+}
+
+/**
+ * Removes a song from the raffle pool by request ID
+ * @param {string} requestId - The unique request ID
+ * @returns {boolean} True if removed, false otherwise
+ */
+function removeSongFromRafflePool(requestId) {
+    if (!db || !deleteRaffleStmt) {
+        console.error(chalk.red('[Database] Database not initialized. Cannot remove from raffle pool.'));
+        return false;
+    }
+    if (!requestId) {
+        console.warn(chalk.yellow('[Database] removeSongFromRafflePool called with invalid requestId.'));
+        return false;
+    }
+    try {
+        const result = deleteRaffleStmt.run(requestId);
+        if (result.changes > 0) {
+            console.log(chalk.grey(`[DB Write] Removed song from raffle pool: ${requestId}`));
+            return true;
+        } else {
+            console.warn(chalk.yellow(`[DB Write] No song found in raffle pool with ID: ${requestId}`));
+            return false;
+        }
+    } catch (err) {
+        console.error(chalk.red(`[Database] Failed to remove song from raffle pool:`, err));
+        return false;
+    }
+}
+
+/**
+ * Clears the entire raffle pool
+ * @returns {number} Number of songs removed
+ */
+function clearRafflePool() {
+    if (!db || !clearRaffleStmt) {
+        console.error(chalk.red('[Database] Database not initialized. Cannot clear raffle pool.'));
+        return 0;
+    }
+    try {
+        const result = clearRaffleStmt.run();
+        console.log(chalk.yellow(`[DB Write] Cleared raffle pool. Deleted ${result.changes} songs.`));
+        return result.changes;
+    } catch (err) {
+        console.error(chalk.red('[Database] Failed to clear raffle pool:'), err);
+        return 0;
+    }
+}
+
+/**
+ * Loads all songs from the raffle pool
+ * @returns {Array} Array of song objects
+ */
+function loadRafflePoolFromDB() {
+    if (!db) {
+        console.error(chalk.red('[Database] Database not initialized. Cannot load raffle pool.'));
+        return [];
+    }
+    try {
+        const stmt = db.prepare('SELECT * FROM channel_point_raffle ORDER BY addedAt ASC');
+        const raffleRows = stmt.all();
+        
+        const raffleSongs = raffleRows.map(row => {
+            let spotifyData = null;
+            if (row.spotifyData) {
+                try {
+                    spotifyData = JSON.parse(row.spotifyData);
+                } catch (e) {
+                    console.error(chalk.red('[Database] Failed to parse Spotify data for raffle item:'), e);
+                }
+            }
+            
+            return {
+                id: row.request_id || row.id.toString(),
+                youtubeUrl: row.youtubeUrl,
+                title: row.title,
+                artist: row.artist,
+                channelId: row.channelId,
+                duration: row.durationSeconds ? formatDurationFromSeconds(row.durationSeconds) : '0:00',
+                durationSeconds: row.durationSeconds,
+                requester: row.requester,
+                requesterLogin: row.requesterLogin,
+                requesterAvatar: row.requesterAvatar,
+                thumbnailUrl: row.thumbnailUrl,
+                timestamp: row.addedAt,
+                requestType: 'channelPoint',
+                source: 'raffle_pool',
+                spotifyData: spotifyData
+            };
+        });
+        
+        console.log(chalk.blue(`[Database] Loaded ${raffleSongs.length} songs from raffle pool.`));
+        return raffleSongs;
+    } catch (err) {
+        console.error(chalk.red('[Database] Failed to load raffle pool:'), err);
+        return [];
+    }
+}
+
+/**
+ * Gets a random song from the raffle pool
+ * @returns {Object|null} Random song object or null if pool is empty
+ */
+function getRandomSongFromRaffle() {
+    if (!db) {
+        console.error(chalk.red('[Database] Database not initialized.'));
+        return null;
+    }
+    try {
+        // Get random song using SQLite's RANDOM()
+        const stmt = db.prepare('SELECT * FROM channel_point_raffle ORDER BY RANDOM() LIMIT 1');
+        const row = stmt.get();
+        
+        if (!row) {
+            return null;
+        }
+        
+        let spotifyData = null;
+        if (row.spotifyData) {
+            try {
+                spotifyData = JSON.parse(row.spotifyData);
+            } catch (e) {
+                console.error(chalk.red('[Database] Failed to parse Spotify data for raffle item:'), e);
+            }
+        }
+        
+        return {
+            id: row.request_id || row.id.toString(),
+            youtubeUrl: row.youtubeUrl,
+            title: row.title,
+            artist: row.artist,
+            channelId: row.channelId,
+            duration: row.durationSeconds ? formatDurationFromSeconds(row.durationSeconds) : '0:00',
+            durationSeconds: row.durationSeconds,
+            requester: row.requester,
+            requesterLogin: row.requesterLogin,
+            requesterAvatar: row.requesterAvatar,
+            thumbnailUrl: row.thumbnailUrl,
+            timestamp: row.addedAt,
+            requestType: 'channelPoint',
+            source: 'raffle_pool',
+            spotifyData: spotifyData
+        };
+    } catch (err) {
+        console.error(chalk.red('[Database] Failed to get random song from raffle:'), err);
+        return null;
+    }
+}
+
+/**
+ * Gets the count of songs in the raffle pool
+ * @returns {number} Count of songs
+ */
+function getRafflePoolCount() {
+    if (!db) {
+        console.error(chalk.red('[Database] Database not initialized.'));
+        return 0;
+    }
+    try {
+        const stmt = db.prepare('SELECT COUNT(*) AS count FROM channel_point_raffle');
+        const result = stmt.get();
+        return result.count || 0;
+    } catch (err) {
+        console.error(chalk.red('[Database] Failed to get raffle pool count:'), err);
+        return 0;
+    }
+}
+
+/**
+ * Updates the slot type for a queue item
+ * @param {string} requestId - Request ID of the song
+ * @param {string} slotType - New slot type
+ * @returns {boolean} Success status
+ */
+function updateQueueSlotType(requestId, slotType) {
+    if (!db) {
+        console.error(chalk.red('[Database] Database not initialized.'));
+        return false;
+    }
+    try {
+        const stmt = db.prepare('UPDATE active_queue SET slot_type = ? WHERE request_id = ?');
+        const result = stmt.run(slotType, requestId);
+        if (result.changes > 0) {
+            console.log(chalk.grey(`[DB Write] Updated slot type for ${requestId} to ${slotType}`));
+            return true;
+        }
+        return false;
+    } catch (err) {
+        console.error(chalk.red('[Database] Failed to update slot type:'), err);
+        return false;
+    }
+}
+
+/**
+ * Migrates existing queue to the new slot-based system
+ * This function:
+ * - Checks if migration is already done
+ * - Moves channel point requests to raffle pool
+ * - Assigns slot positions to donation requests
+ * - Marks migration as complete
+ * @returns {boolean} - True if migration was performed or already done
+ */
+function migrateToSlotSystem() {
+    try {
+        // Check if migration is already done
+        const checkStmt = db.prepare('SELECT value FROM settings WHERE key = ?');
+        const migrationStatus = checkStmt.get('queue_slot_migration_done');
+        
+        if (migrationStatus && migrationStatus.value === 'true') {
+            console.log(chalk.blue('[Database] Queue slot migration already completed.'));
+            return true;
+        }
+
+        console.log(chalk.yellow('[Database] Starting queue slot migration...'));
+
+        // Get all current queue items
+        const loadQueueStmt = db.prepare('SELECT * FROM active_queue ORDER BY priority DESC, id ASC');
+        const existingQueue = loadQueueStmt.all();
+
+        if (existingQueue.length === 0) {
+            console.log(chalk.blue('[Database] No existing queue items to migrate.'));
+            // Mark migration as done even though there was nothing to migrate
+            saveSetting('queue_slot_migration_done', 'true');
+            return true;
+        }
+
+        // Separate songs by request type
+        const channelPointSongs = [];
+        const donationSongs = [];
+        const otherSongs = [];
+
+        existingQueue.forEach(song => {
+            if (song.requestType === 'channelPoint') {
+                channelPointSongs.push(song);
+            } else if (song.requestType === 'donation') {
+                donationSongs.push(song);
+            } else {
+                otherSongs.push(song);
+            }
+        });
+
+        console.log(chalk.blue(`[Database] Found ${channelPointSongs.length} channel point songs, ${donationSongs.length} donation songs, ${otherSongs.length} other songs`));
+
+        // Clear the current queue (we'll re-add with proper slot data)
+        db.prepare('DELETE FROM active_queue').run();
+
+        // Move channel point songs to raffle pool
+        if (channelPointSongs.length > 0) {
+            console.log(chalk.yellow(`[Database] Moving ${channelPointSongs.length} channel point songs to raffle pool...`));
+            channelPointSongs.forEach(song => {
+                try {
+                    db.prepare(`
+                        INSERT INTO channel_point_raffle (
+                            request_id, youtubeUrl, title, artist, channelId, durationSeconds,
+                            requester, requesterLogin, requesterAvatar, thumbnailUrl, spotifyData
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    `).run(
+                        song.request_id,
+                        song.youtubeUrl,
+                        song.title,
+                        song.artist,
+                        song.channelId,
+                        song.durationSeconds,
+                        song.requester,
+                        song.requesterLogin,
+                        song.requesterAvatar,
+                        song.thumbnailUrl,
+                        song.spotifyData
+                    );
+                } catch (err) {
+                    console.error(chalk.red(`[Database] Error moving song ${song.request_id} to raffle:` ), err);
+                }
+            });
+        }
+
+        // Re-add donation and other songs to queue with proper slot positions
+        const songsToKeep = [...donationSongs, ...otherSongs];
+        let slotPosition = 1;
+
+        songsToKeep.forEach(song => {
+            try {
+                db.prepare(`
+                    INSERT INTO active_queue (
+                        request_id, youtubeUrl, title, artist, channelId, durationSeconds,
+                        requester, requesterLogin, requesterAvatar, thumbnailUrl, spotifyData,
+                        priority, requestType, addedAt, slot_type, slot_position
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                `).run(
+                    song.request_id,
+                    song.youtubeUrl,
+                    song.title,
+                    song.artist,
+                    song.channelId,
+                    song.durationSeconds,
+                    song.requester,
+                    song.requesterLogin,
+                    song.requesterAvatar,
+                    song.thumbnailUrl,
+                    song.spotifyData,
+                    song.priority,
+                    song.requestType,
+                    song.addedAt,
+                    'donation', // Mark as donation slot
+                    slotPosition
+                );
+                slotPosition++;
+            } catch (err) {
+                console.error(chalk.red(`[Database] Error migrating song ${song.request_id}:`), err);
+            }
+        });
+
+        console.log(chalk.green(`[Database] Migration complete. ${channelPointSongs.length} songs moved to raffle, ${songsToKeep.length} songs kept in queue.`));
+
+        // Mark migration as complete
+        saveSetting('queue_slot_migration_done', 'true');
+
+        return true;
+    } catch (error) {
+        console.error(chalk.red('[Database] Error during migration:'), error);
+        return false;
+    }
+}
+
 module.exports = {
     initDatabase,
     closeDatabase,
@@ -1381,5 +1819,15 @@ module.exports = {
     getHistoryForUser,
     replaceRequesterNameInHistory,
     getHistoryEntriesByRequesterName,
-    getHistoryStats
+    getHistoryStats,
+    // Raffle pool functions
+    addSongToRafflePool,
+    removeSongFromRafflePool,
+    clearRafflePool,
+    loadRafflePoolFromDB,
+    getRandomSongFromRaffle,
+    getRafflePoolCount,
+    updateQueueSlotType,
+    // Migration
+    migrateToSlotSystem
 }; 

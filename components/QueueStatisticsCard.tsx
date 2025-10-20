@@ -33,6 +33,7 @@ const QueueStatisticsCard: React.FC<QueueStatisticsCardProps> = ({
           </div>
           <div className="bg-brand-purple-dark/50 p-4 rounded-lg text-center border border-brand-purple-neon/20">
             <p className="text-xs text-brand-purple-light/80">Total Duration</p>
+            <p className="text-[11px] text-brand-purple-light/60 italic mt-0 mb-2">(doesn't include raffle songs)</p>
             <p className="text-2xl font-bold text-white flex items-center justify-center">
               <Clock className="inline-block mr-2" size={20} />
               {totalQueueDurationFormatted}
