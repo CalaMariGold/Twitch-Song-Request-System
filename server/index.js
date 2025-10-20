@@ -442,6 +442,19 @@ io.on('connection', (socket) => {
             }
         }
 
+        // Check if this is a raid song (should go to top of queue)
+        if (requestToAdd.requestType === 'raid') {
+            console.log(chalk.blue(`[Admin:${socket.id}] Adding raid song to top of queue...`));
+            try {
+                await validateAndAddSong(requestToAdd, bypass, true); // Pass true for isRaid
+                return; // Exit early
+            } catch (error) {
+                console.error(chalk.red('[Admin] Error adding raid song:'), error);
+                socket.emit('addSongError', { message: 'Failed to add raid song' });
+                return;
+            }
+        }
+
         try {
             await validateAndAddSong(requestToAdd, bypass);
             // Broadcast counts after potentially adding a song
@@ -2291,7 +2304,7 @@ process.on('exit', () => {
 startServer();
 
 // Centralized function to validate and add song requests (from both YouTube URLs and Spotify searches)
-async function validateAndAddSong(request, bypassRestrictions = false) {
+async function validateAndAddSong(request, bypassRestrictions = false, isRaid = false) {
 
   // Validate essential request data
   if (!request || !request.requester || !request.requestType) {
@@ -2495,14 +2508,42 @@ async function validateAndAddSong(request, bypassRestrictions = false) {
 
 
   // 8. Add to Queue
-  const position = addSongToQueue(finalSongRequest); // This handles DB insertion and state update
-  const queuePosition = position + 1; // 1-based for user messages
+  let position;
+  let queuePosition;
+  
+  if (isRaid) {
+      // Raid songs go to the TOP of the queue
+      finalSongRequest.slotType = 'donation';
+      finalSongRequest.slotPosition = 1;
+      
+      // Add to beginning of queue
+      state.queue.unshift(finalSongRequest);
+      
+      // Recalculate positions for all slots
+      recalculateSlotPositions();
+      
+      // Update database: clear and re-insert with new positions
+      db.clearDbQueue();
+      state.queue.forEach(song => {
+          db.addSongToDbQueue(song);
+      });
+      
+      position = 0; // First position (0-indexed)
+      queuePosition = 1; // 1-based for user messages
+      console.log(chalk.magenta(`[Queue] RAID song added to TOP of queue at position 1`));
+  } else {
+      // Normal queue addition using slot system
+      position = addSongToQueue(finalSongRequest); // This handles DB insertion and state update
+      queuePosition = position + 1; // 1-based for user messages
+  }
 
   // 9. Emit Updates & Send Chat Message
   io.emit('newSongRequest', finalSongRequest);
   io.emit('queueUpdate', state.queue);
 
-  const requestSource = request.requestType === 'donation' ? `donation (${request.donationInfo?.amount} ${request.donationInfo?.currency})` : 'channel points';
+  const requestSource = request.requestType === 'donation' ? `donation (${request.donationInfo?.amount} ${request.donationInfo?.currency})` : 
+                        request.requestType === 'raid' ? 'RAID (top priority)' :
+                        'channel points';
   console.log(chalk.green(`[Queue] Added song "${finalSongRequest.title}" by ${finalSongRequest.artist}. Type: ${request.requestType}. Requester: ${userName}. Position: #${queuePosition}. Source: ${requestSource}`));
 
   // Send different messages based on the source
@@ -2809,19 +2850,28 @@ function addNewEmptySlot() {
 
 /**
  * Gets the next available slot position for filling
- * @param {boolean} skipRafflePlaceholders - Whether to skip raffle placeholder slots
+ * @param {boolean} skipRafflePlaceholders - Whether to skip raffle placeholder slots (true for donations, false for channel points)
  * @returns {number|null} Slot position or null if none available
  */
 function getNextAvailableSlotPosition(skipRafflePlaceholders = false) {
+  // For channel points, prioritize raffle placeholders FIRST
+  if (!skipRafflePlaceholders) {
+    for (let i = 0; i < state.queue.length; i++) {
+      const slot = state.queue[i];
+      if (slot.slotType === 'raffle_placeholder') {
+        return i;
+      }
+    }
+  }
+  
+  // For donations, or if no raffle placeholders found, look for empty slots
   for (let i = 0; i < state.queue.length; i++) {
     const slot = state.queue[i];
     if (slot.slotType === 'empty') {
       return i;
     }
-    if (!skipRafflePlaceholders && slot.slotType === 'raffle_placeholder') {
-      return i;
-    }
   }
+  
   return null;
 }
 

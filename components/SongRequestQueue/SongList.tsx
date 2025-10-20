@@ -170,6 +170,11 @@ export function SongList({
                         Points
                       </Badge>
                     )}
+                    {song.requestType === 'raid' && (
+                      <Badge variant="secondary" className="px-1.5 py-0.5 text-xs bg-gradient-to-r from-orange-500 to-red-500 text-white font-semibold border-orange-500 shadow-md">
+                        🚀 Raid
+                      </Badge>
+                    )}
                   </div>
                 </div>
                   </>
