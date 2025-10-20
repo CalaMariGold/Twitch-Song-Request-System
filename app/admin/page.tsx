@@ -1548,7 +1548,7 @@ export default function AdminDashboard() {
                       onClick={handleAddEmptySlot}
                       disabled={!isConnected}
                     >
-                      <Music className="mr-1 h-3 w-3" /> Add Empty Slot
+                      <Music className="mr-1 h-3 w-3" /> Add Empty Dono Slot
                     </Button>
                     {/* Confirmation Dialog for Clear Queue */}
                     <Dialog open={isClearQueueDialogOpen} onOpenChange={setIsClearQueueDialogOpen}>

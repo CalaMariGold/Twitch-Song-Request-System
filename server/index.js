@@ -774,24 +774,29 @@ io.on('connection', (socket) => {
     
     // Handle add empty donation slot
     socket.on('addEmptySlot', requireAdmin((ack) => {
-        console.log(chalk.magenta(`[Admin:${socket.id}] Adding empty donation slot to queue...`));
-        
-        // Get the next slot position
-        const nextPosition = state.queue.length + 1;
+        console.log(chalk.magenta(`[Admin:${socket.id}] Adding empty donation slot to top of queue...`));
         
         // Create an empty donation slot (always empty, never raffle placeholder)
-        const emptySlot = createEmptySlot(nextPosition);
+        const emptySlot = createEmptySlot(1);
         
-        // Add to queue and database
-        state.queue.push(emptySlot);
-        db.addSongToDbQueue(emptySlot);
+        // Add to beginning of queue
+        state.queue.unshift(emptySlot);
+        
+        // Recalculate positions for all slots
+        recalculateSlotPositions();
+        
+        // Update database: clear and re-insert with new positions
+        db.clearDbQueue();
+        state.queue.forEach(song => {
+            db.addSongToDbQueue(song);
+        });
         
         // Emit updates
         io.emit('queueUpdate', state.queue);
         broadcastTotalCounts();
         
-        console.log(chalk.green(`[Admin:${socket.id}] Added empty donation slot at position ${nextPosition}`));
-        if (ack) ack({ success: true, position: nextPosition });
+        console.log(chalk.green(`[Admin:${socket.id}] Added empty donation slot at position 1 (top of queue)`));
+        if (ack) ack({ success: true, position: 1 });
     }))
 
     socket.on('resetSystem', requireAdmin(async () => {
@@ -2127,7 +2132,7 @@ async function startServer() {
           io.emit('raffleUpdate', state.rafflePool);
           
           console.log(chalk.green(`[Raffle] Added "${raffleSong.title}" by ${raffleSong.artist} to raffle pool. Requester: ${raffleSong.requester}`));
-          sendChatMessage(`@${userName} Your request for "${raffleSong.title}" by ${raffleSong.artist} has been added to the raffle pool! https://calamarigoldrequests.com`);
+          sendChatMessage(`@${userName} Your free request for "${raffleSong.title}" by ${raffleSong.artist} has been added to the raffle pool! Your song will have a chance to be pulled every ${AUTO_FILL_RAFFLE_INTERVAL} songs. https://calamarigoldrequests.com`);
           
         } catch (error) {
           console.error(chalk.red('[Raffle] Error processing YouTube URL:'), error);
@@ -2175,7 +2180,7 @@ async function startServer() {
           io.emit('raffleUpdate', state.rafflePool);
 
           console.log(chalk.green(`[Raffle] Added "${spotifyRequest.title}" by ${spotifyRequest.artist} (from Spotify URL) to raffle pool. Requester: ${spotifyRequest.requester}`));
-          sendChatMessage(`@${userName} Your request for "${spotifyRequest.title}" by ${spotifyRequest.artist} (from Spotify link) has been added to the raffle pool! https://calamarigoldrequests.com`);
+          sendChatMessage(`@${userName} Your free request for "${spotifyRequest.title}" by ${spotifyRequest.artist} (from Spotify link) has been added to the raffle pool! Your song will have a chance to be pulled every ${AUTO_FILL_RAFFLE_INTERVAL} songs. https://calamarigoldrequests.com`);
 
         } catch (error) {
           console.error(chalk.red('[Raffle] Error processing Spotify URL:'), error);
@@ -2218,7 +2223,7 @@ async function startServer() {
           io.emit('raffleUpdate', state.rafflePool);
 
           console.log(chalk.green(`[Raffle] Added "${spotifyRequest.title}" by ${spotifyRequest.artist} (from text search) to raffle pool. Requester: ${spotifyRequest.requester}`));
-          sendChatMessage(`@${userName} Your request for "${spotifyRequest.title}" by ${spotifyRequest.artist} has been added to the raffle pool! https://calamarigoldrequests.com`);
+          sendChatMessage(`@${userName} Your free request for "${spotifyRequest.title}" by ${spotifyRequest.artist} has been added to the raffle pool! Your song will have a chance to be pulled every ${AUTO_FILL_RAFFLE_INTERVAL} songs. https://calamarigoldrequests.com`);
 
         } catch (error) {
           console.error(chalk.red('[Raffle] Error processing text search:'), error);
