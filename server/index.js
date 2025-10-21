@@ -483,38 +483,62 @@ io.on('connection', (socket) => {
         
         const songToRemove = state.queue[songIndex];
         
-        // Don't allow deleting empty slots or raffle placeholders
-        if (songToRemove.slotType === 'empty' || songToRemove.slotType === 'raffle_placeholder') {
-            console.warn(chalk.yellow(`[Admin:${socket.id}] Cannot delete empty slot or raffle placeholder: ${songId}`));
-            socket.emit('songRemoveError', { message: 'Cannot delete empty slots or raffle placeholders' });
+        // Don't allow deleting raffle placeholders (but DO allow empty slots)
+        if (songToRemove.slotType === 'raffle_placeholder') {
+            console.warn(chalk.yellow(`[Admin:${socket.id}] Cannot delete raffle placeholder: ${songId}`));
+            socket.emit('songRemoveError', { message: 'Cannot delete raffle placeholders (maintains queue structure)' });
             return;
         }
         
-        // Get the slot position before removing
-        const slotPosition = songToRemove.slotPosition || (songIndex + 1);
+        // Check if this is an empty slot
+        const isEmptySlot = songToRemove.slotType === 'empty';
         
         // Remove from database
         db.removeSongFromDbQueue(songId);
         
-        // Determine what type of slot should replace it based on position and mode
-        let replacementSlot;
-        if (state.queueMode === 'raffle' && slotPosition % AUTO_FILL_RAFFLE_INTERVAL === 0) {
-            // This position should be a raffle placeholder
-            replacementSlot = createRafflePlaceholder(slotPosition);
+        if (isEmptySlot) {
+            // For empty slots, just remove them (don't replace)
+            state.queue.splice(songIndex, 1);
+            
+            // Recalculate slot positions for remaining slots
+            recalculateSlotPositions();
+            
+            // Add a new slot at the end to maintain queue structure
+            addNewEmptySlot();
+            
+            // Update database with new positions
+            db.clearDbQueue();
+            state.queue.forEach(song => {
+                db.addSongToDbQueue(song);
+            });
+            
+            io.emit('queueUpdate', state.queue);
+            broadcastTotalCounts();
+            console.log(chalk.magenta(`[Admin:${socket.id}] Empty slot removed at position ${songIndex + 1}. Queue positions recalculated and new slot added at end.`));
         } else {
-            // This position should be an empty slot
-            replacementSlot = createEmptySlot(slotPosition);
+            // For filled songs (donation, channelPoint, raid), replace with appropriate slot
+            const slotPosition = songToRemove.slotPosition || (songIndex + 1);
+            
+            // Determine what type of slot should replace it based on position and mode
+            let replacementSlot;
+            if (state.queueMode === 'raffle' && slotPosition % AUTO_FILL_RAFFLE_INTERVAL === 0) {
+                // This position should be a raffle placeholder
+                replacementSlot = createRafflePlaceholder(slotPosition);
+            } else {
+                // This position should be an empty slot
+                replacementSlot = createEmptySlot(slotPosition);
+            }
+            
+            // Replace the song with the appropriate slot type
+            state.queue[songIndex] = replacementSlot;
+            
+            // Add the replacement slot to database
+            db.addSongToDbQueue(replacementSlot);
+            
+            io.emit('queueUpdate', state.queue);
+            broadcastTotalCounts();
+            console.log(chalk.magenta(`[Admin:${socket.id}] Song removed and replaced with ${replacementSlot.slotType} at position ${slotPosition}`));
         }
-        
-        // Replace the song with the appropriate slot type
-        state.queue[songIndex] = replacementSlot;
-        
-        // Add the replacement slot to database
-        db.addSongToDbQueue(replacementSlot);
-        
-        io.emit('queueUpdate', state.queue);
-        broadcastTotalCounts();
-        console.log(chalk.magenta(`[Admin:${socket.id}] Song removed and replaced with ${replacementSlot.slotType} at position ${slotPosition}`));
     }))
 
     // Handle updating Spotify link for a request

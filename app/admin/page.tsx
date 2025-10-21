@@ -1717,53 +1717,66 @@ export default function AdminDashboard() {
                                      {/* Buttons and Timestamp container */}
                                      <div className="flex-shrink-0 flex flex-col items-end flex-grow-0">
                                         <div className="flex space-x-1 items-center"> {/* Wrap buttons for alignment */}
-                                           {/* Only show action buttons for actual songs, not empty slots or placeholders */}
-                                           {song.slotType !== 'empty' && song.slotType !== 'raffle_placeholder' && (
-                                             <>
-                                               {/* Edit Spotify Button */}
-                                               <Button 
-                                                 variant="ghost" 
-                                                 size="sm" 
-                                                 className="h-8 w-8 p-0 text-gray-400 hover:text-white"
-                                                 onClick={() => openSpotifyLinkDialog(song)}
-                                                 title="Edit Spotify Link"
-                                                 disabled={!isConnected} // Disable if not connected
-                                               >
-                                                 <Edit size={14} />
-                                               </Button>
-                                              {/* Mari's Choice Button */}
-                                              <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                className="h-8 w-8 p-0 text-yellow-400 hover:text-yellow-300"
-                                                onClick={() => handleMakeMarisChoice(song.id)}
-                                                title="Convert to Mari's Choice template"
-                                                disabled={!isConnected}
+                                          {/* Show action buttons based on slot type */}
+                                          {song.slotType === 'empty' ? (
+                                            // Empty slots: only show delete button to allow skipping them
+                                            <Button 
+                                              variant="ghost" 
+                                              size="sm" 
+                                              className="h-8 w-8 p-0" 
+                                              onClick={() => handleRemoveSong(song.id)} 
+                                              title="Delete Empty Slot (skip to next song)" 
+                                              disabled={!isConnected}
+                                            >
+                                              <Trash2 className="h-4 w-4 text-yellow-500 hover:text-yellow-400" />
+                                            </Button>
+                                          ) : song.slotType !== 'raffle_placeholder' && (
+                                            // Regular songs: show all action buttons
+                                            <>
+                                              {/* Edit Spotify Button */}
+                                              <Button 
+                                                variant="ghost" 
+                                                size="sm" 
+                                                className="h-8 w-8 p-0 text-gray-400 hover:text-white"
+                                                onClick={() => openSpotifyLinkDialog(song)}
+                                                title="Edit Spotify Link"
+                                                disabled={!isConnected} // Disable if not connected
                                               >
-                                                <Star size={16} />
+                                                <Edit size={14} />
                                               </Button>
-                                              {/* Swap with Raffle Button - Only for channel point songs */}
-                                              {song.requestType === 'channelPoint' && (
-                                                <Button
-                                                  variant="ghost"
-                                                  size="sm"
-                                                  className="h-8 w-8 p-0 text-purple-400 hover:text-purple-300"
-                                                  onClick={() => handleSwapWithRaffle(song.id)}
-                                                  title="Swap with random raffle song"
-                                                  disabled={!isConnected || appState.rafflePool.length === 0}
-                                                >
-                                                  <Shuffle size={16} />
-                                                </Button>
-                                              )}
-                                              {/* Existing Play/Remove buttons */}
-                                               <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handlePlaySong(song)} title="Set Active" disabled={!isConnected}>
-                                                   <Play className="h-4 w-4 text-green-500 hover:text-green-400" />
+                                             {/* Mari's Choice Button */}
+                                             <Button
+                                               variant="ghost"
+                                               size="sm"
+                                               className="h-8 w-8 p-0 text-yellow-400 hover:text-yellow-300"
+                                               onClick={() => handleMakeMarisChoice(song.id)}
+                                               title="Convert to Mari's Choice template"
+                                               disabled={!isConnected}
+                                             >
+                                               <Star size={16} />
+                                             </Button>
+                                             {/* Swap with Raffle Button - Only for channel point songs */}
+                                             {song.requestType === 'channelPoint' && (
+                                               <Button
+                                                 variant="ghost"
+                                                 size="sm"
+                                                 className="h-8 w-8 p-0 text-purple-400 hover:text-purple-300"
+                                                 onClick={() => handleSwapWithRaffle(song.id)}
+                                                 title="Swap with random raffle song"
+                                                 disabled={!isConnected || appState.rafflePool.length === 0}
+                                               >
+                                                 <Shuffle size={16} />
                                                </Button>
-                                               <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handleRemoveSong(song.id)} title="Remove from Queue" disabled={!isConnected}>
-                                                 <Trash2 className="h-4 w-4 text-red-500 hover:text-red-400" />
-                                               </Button>
-                                             </>
-                                           )}
+                                             )}
+                                             {/* Existing Play/Remove buttons */}
+                                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handlePlaySong(song)} title="Set Active" disabled={!isConnected}>
+                                                  <Play className="h-4 w-4 text-green-500 hover:text-green-400" />
+                                              </Button>
+                                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handleRemoveSong(song.id)} title="Remove from Queue" disabled={!isConnected}>
+                                                <Trash2 className="h-4 w-4 text-red-500 hover:text-red-400" />
+                                              </Button>
+                                            </>
+                                          )}
                                            {/* Existing YouTube/Spotify links */}
                                            {song.youtubeUrl && (
                                             <a href={song.youtubeUrl} target="_blank" rel="noopener noreferrer" aria-label="Watch on YouTube">
