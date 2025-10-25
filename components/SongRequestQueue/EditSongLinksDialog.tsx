@@ -62,13 +62,13 @@ export function EditSongLinksDialog({
 
   const handleSpotifySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!spotifyInputValue || !currentUser?.login || !socket || !songId) {
+    if (!currentUser?.login || !socket || !songId) {
       return;
     }
     setIsSubmittingSpotify(true);
     socket.emit(socketEvents.EDIT_MY_SONG_SPOTIFY, { 
       requestId: songId,
-      spotifyUrl: spotifyInputValue,
+      spotifyUrl: spotifyInputValue.trim(),
       userLogin: currentUser.login
     });
     setIsSubmittingSpotify(false);
@@ -106,9 +106,12 @@ export function EditSongLinksDialog({
         <div className="flex flex-col gap-6">
           {/* Spotify Section */}
           <form onSubmit={handleSpotifySubmit} className="flex flex-col gap-3">
-            <div className="flex items-center gap-2">
-              <SpotifyIcon className="h-4 w-4" />
-              <Label className="text-sm font-medium">Spotify Link</Label>
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center gap-2">
+                <SpotifyIcon className="h-4 w-4" />
+                <Label className="text-sm font-medium">Spotify Link</Label>
+              </div>
+              <p className="text-xs text-brand-purple-light/50 ml-6">Leave empty to remove (only if YouTube link exists)</p>
             </div>
             <Input 
               ref={spotifyInputRef}
@@ -124,26 +127,29 @@ export function EditSongLinksDialog({
             <Button
               type="submit"
               className="bg-green-600 hover:bg-green-700 text-white font-semibold transition-all"
-              disabled={isAnySubmitting || spotifySuccess || !spotifyInputValue || !spotifyInputValue.includes('spotify.com/track/')}
+              disabled={isAnySubmitting || spotifySuccess}
             >
               {isSubmittingSpotify ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <SpotifyIcon className="mr-2 h-4 w-4" />}
-              {isSubmittingSpotify ? "Updating..." : spotifySuccess ? "Updated!" : "Update Spotify Link"}
+              {isSubmittingSpotify ? "Updating..." : spotifySuccess ? "Updated!" : spotifyInputValue.trim() ? "Update Spotify Link" : "Remove Spotify Link"}
             </Button>
           </form>
           <div className="border-t border-brand-purple-neon/20" />
           {/* YouTube Section */}
           <form onSubmit={handleYouTubeSubmit} className="flex flex-col gap-3">
-            <div className="flex items-center gap-2">
-              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
-              </svg>
-              <Label className="text-sm font-medium">YouTube Link</Label>
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center gap-2">
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+                </svg>
+                <Label className="text-sm font-medium">YouTube Link</Label>
+              </div>
+              <p className="text-xs text-brand-purple-light/50 ml-6">Leave empty to remove (only if Spotify link exists)</p>
             </div>
             <Input 
               ref={youtubeInputRef}
               value={youtubeInputValue} 
               onChange={(e) => setYoutubeInputValue(e.target.value)}
-              placeholder="https://www.youtube.com/watch?v=... (leave empty to remove)" 
+              placeholder="https://www.youtube.com/watch?v=..." 
               className="bg-brand-black/60 text-white border-brand-purple-neon/30 focus-visible:ring-brand-purple-neon/70 placeholder:text-brand-purple-light/50"
               autoComplete="off"
               disabled={isAnySubmitting || youtubeSuccess}

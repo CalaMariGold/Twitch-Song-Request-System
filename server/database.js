@@ -1154,7 +1154,7 @@ function removeSpotifyDataFromSong(requestId, table = 'active_queue') {
         return false;
     }
 
-    const validTables = ['active_queue', 'song_history', 'active_song'];
+    const validTables = ['active_queue', 'song_history', 'active_song', 'channel_point_raffle'];
     if (!validTables.includes(table)) {
         console.warn(chalk.yellow(`[Database] Invalid table "${table}". Valid tables: ${validTables.join(', ')}`));
         return false;
@@ -1178,6 +1178,9 @@ function removeSpotifyDataFromSong(requestId, table = 'active_queue') {
             stmt = db.prepare('UPDATE active_song SET spotifyData = NULL');
             result = stmt.run();
             console.log(chalk.cyan(`[DB] Updated active_song table (all rows), changes: ${result.changes}`));
+        } else if (table === 'channel_point_raffle') {
+            stmt = db.prepare('UPDATE channel_point_raffle SET spotifyData = NULL WHERE request_id = ?');
+            result = stmt.run(requestId);
         }
 
         if (result.changes > 0) {

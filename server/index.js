@@ -923,18 +923,20 @@ io.on('connection', (socket) => {
     // Handle user editing Spotify link for their own request
     socket.on('editMySongSpotify', async (data) => {
         const { requestId, spotifyUrl, userLogin } = data;
-        if (!requestId || !spotifyUrl || !userLogin) {
+        if (!requestId || typeof spotifyUrl !== 'string' || !userLogin) {
             console.warn(chalk.yellow('[Socket.IO] Received invalid editMySongSpotify data:'), data);
             socket.emit('editSpotifyError', { 
                 requestId,
-                message: 'Invalid request data. Please provide Spotify track URL and try again.' 
+                message: 'Invalid request data.' 
             });
             return;
         }
 
         // Check if song is in queue or raffle pool
-        const songIndex = state.queue.findIndex(song => song.id === requestId);
-        const raffleIndex = state.rafflePool.findIndex(song => song.id === requestId);
+        // Convert requestId to string for consistent comparison
+        const requestIdStr = String(requestId);
+        const songIndex = state.queue.findIndex(song => String(song.id) === requestIdStr);
+        const raffleIndex = state.rafflePool.findIndex(song => String(song.id) === requestIdStr);
         
         if (songIndex === -1 && raffleIndex === -1) {
             console.warn(chalk.yellow(`[User] Attempted to edit non-existent song ID: ${requestId}`));
@@ -958,11 +960,49 @@ io.on('connection', (socket) => {
             return;
         }
 
+        const trimmedSpotifyUrl = spotifyUrl.trim();
+
         try {
+            // Check if user wants to remove Spotify data
+            if (!trimmedSpotifyUrl) {
+                // Validate that song has YouTube data before allowing Spotify removal
+                if (!songToEdit.youtubeUrl) {
+                    console.warn(chalk.yellow(`[User] User ${userLogin} attempted to remove Spotify data without YouTube URL for song ${requestId}`));
+                    socket.emit('editSpotifyError', { 
+                        requestId,
+                        message: 'Cannot remove Spotify link without a YouTube link. Please add a YouTube link first.' 
+                    });
+                    return;
+                }
+
+                // Remove Spotify data from memory
+                if (isInQueue) {
+                    state.queue[songIndex].spotifyData = null;
+                    // Remove from database
+                    removeSpotifyDataFromSong(requestIdStr, 'active_queue');
+                    io.emit('queueUpdate', state.queue);
+                } else {
+                    state.rafflePool[raffleIndex].spotifyData = null;
+                    // Remove from database
+                    removeSpotifyDataFromSong(requestIdStr, 'channel_point_raffle');
+                    io.emit('raffleUpdate', state.rafflePool);
+                }
+
+                socket.emit('editSpotifySuccess', { 
+                    requestId,
+                    message: 'Spotify link removed successfully!' 
+                });
+
+                const location = isInQueue ? 'queue' : 'raffle pool';
+                console.log(chalk.cyan(`[User] Spotify data removed by ${userLogin} for request ${requestIdStr} in ${location}`));
+                sendChatMessage(`@${userLogin} removed the Spotify link from their request. https://calamarigoldrequests.com`);
+                return;
+            }
+
             // Extract Spotify track ID and fetch details
-            const trackId = spotify.extractSpotifyTrackId(spotifyUrl);
+            const trackId = spotify.extractSpotifyTrackId(trimmedSpotifyUrl);
             if (!trackId) {
-                console.warn(chalk.yellow(`[User] Invalid Spotify URL provided by ${userLogin} for song ${requestId}: ${spotifyUrl}`));
+                console.warn(chalk.yellow(`[User] Invalid Spotify URL provided by ${userLogin} for song ${requestId}: ${trimmedSpotifyUrl}`));
                 socket.emit('editSpotifyError', { 
                     requestId,
                     message: 'Invalid Spotify track URL. Please provide a valid Spotify track link.' 
@@ -997,7 +1037,7 @@ io.on('connection', (socket) => {
                 
                 // Update the database
                 await db.updateSongSpotifyDataAndDetailsInDbQueue(
-                    requestId, 
+                    requestIdStr, 
                     spotifyDetails, 
                     spotifyDetails.name, 
                     updatedArtist, 
@@ -1016,7 +1056,7 @@ io.on('connection', (socket) => {
                 
                 // Update the database
                 await db.updateSongSpotifyDataAndDetailsInRafflePool(
-                    requestId, 
+                    requestIdStr, 
                     spotifyDetails, 
                     spotifyDetails.name, 
                     updatedArtist, 
@@ -1062,8 +1102,10 @@ io.on('connection', (socket) => {
         }
 
         // Check if song is in queue or raffle pool
-        const songIndex = state.queue.findIndex(song => song.id === requestId);
-        const raffleIndex = state.rafflePool.findIndex(song => song.id === requestId);
+        // Convert requestId to string for consistent comparison
+        const requestIdStr = String(requestId);
+        const songIndex = state.queue.findIndex(song => String(song.id) === requestIdStr);
+        const raffleIndex = state.rafflePool.findIndex(song => String(song.id) === requestIdStr);
         
         if (songIndex === -1 && raffleIndex === -1) {
             console.warn(chalk.yellow(`[User] Attempted to edit non-existent song ID: ${requestId}`));
@@ -1076,6 +1118,8 @@ io.on('connection', (socket) => {
 
         const isInQueue = songIndex !== -1;
         const songToEdit = isInQueue ? state.queue[songIndex] : state.rafflePool[raffleIndex];
+        
+        console.log(chalk.cyan(`[User] Editing YouTube for song ${requestId} (type: ${typeof requestId}) - Location: ${isInQueue ? 'queue' : 'raffle pool'}, queueIndex: ${songIndex}, raffleIndex: ${raffleIndex}, song.id: ${songToEdit.id} (type: ${typeof songToEdit.id})`));
         
         // Verify ownership
         if (!songToEdit.requesterLogin || songToEdit.requesterLogin.toLowerCase() !== userLogin.toLowerCase()) {
@@ -1094,6 +1138,19 @@ io.on('connection', (socket) => {
             let newChannelId = songToEdit.channelId;
             let newThumbnailUrl = songToEdit.thumbnailUrl;
             let newDurationSeconds = songToEdit.durationSeconds;
+
+            // Check if user wants to remove YouTube link
+            if (!finalYoutubeUrl) {
+                // Validate that song has Spotify data before allowing YouTube removal
+                if (!songToEdit.spotifyData) {
+                    console.warn(chalk.yellow(`[User] User ${userLogin} attempted to remove YouTube URL without Spotify data for song ${requestId}`));
+                    socket.emit('editYouTubeError', { 
+                        requestId,
+                        message: 'Cannot remove YouTube link without a Spotify link. Please add a Spotify link first.' 
+                    });
+                    return;
+                }
+            }
 
             // If a valid YouTube URL is provided, fetch the video details
             if (finalYoutubeUrl) {
@@ -1148,7 +1205,7 @@ io.on('connection', (socket) => {
                 state.queue[songIndex].durationSeconds = newDurationSeconds;
 
                 dbSuccess = updateSongYouTubeUrlAndDetailsInDbQueue(
-                    requestId, 
+                    requestIdStr, 
                     finalYoutubeUrl, 
                     newTitle, 
                     newArtist, 
@@ -1170,7 +1227,7 @@ io.on('connection', (socket) => {
                 state.rafflePool[raffleIndex].durationSeconds = newDurationSeconds;
 
                 dbSuccess = updateSongYouTubeUrlAndDetailsInRafflePool(
-                    requestId, 
+                    requestIdStr, 
                     finalYoutubeUrl, 
                     newTitle, 
                     newArtist, 
