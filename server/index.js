@@ -1749,9 +1749,13 @@ io.on('connection', (socket) => {
             return;
         }
         
-        // Get a random song from the raffle pool
-        const randomIndex = Math.floor(Math.random() * state.rafflePool.length);
-        const randomRaffleSong = state.rafflePool[randomIndex];
+        // Get a random song from the raffle pool (using DB for consistency)
+        const randomRaffleSong = getRandomSongFromRaffle();
+        if (!randomRaffleSong) {
+            console.warn(chalk.yellow(`[Raffle Swap] Failed to get random song from raffle pool`));
+            if (ack) ack({ success: false, message: 'Failed to get random song from pool' });
+            return;
+        }
         
         console.log(chalk.blue(`[Raffle Swap] Selected "${randomRaffleSong.title}" from raffle pool`));
         
