@@ -3319,6 +3319,9 @@ function handleSkipSong() {
         db.saveActiveSongToDB(state.activeSong);
         db.removeSongFromDbQueue(nextSong.id); // Remove from queue DB
 
+        // Add a new empty slot at the end of the queue
+        addNewEmptySlot();
+
         // Emit updates
         io.emit('activeSong', state.activeSong);
         io.emit('queueUpdate', state.queue);
