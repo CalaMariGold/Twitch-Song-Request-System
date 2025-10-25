@@ -105,7 +105,9 @@ const tmiClient = initTwitchChat({
 db.initDatabase(dbPath);
 const { 
   updateSongSpotifyDataAndDetailsInDbQueue, 
-  updateSongYouTubeUrlAndDetailsInDbQueue, 
+  updateSongYouTubeUrlAndDetailsInDbQueue,
+  updateSongSpotifyDataAndDetailsInRafflePool,
+  updateSongYouTubeUrlAndDetailsInRafflePool, 
   removeSpotifyDataFromSong,
   addSongToRafflePool,
   removeSongFromRafflePool,
@@ -930,17 +932,22 @@ io.on('connection', (socket) => {
             return;
         }
 
+        // Check if song is in queue or raffle pool
         const songIndex = state.queue.findIndex(song => song.id === requestId);
-        if (songIndex === -1) {
+        const raffleIndex = state.rafflePool.findIndex(song => song.id === requestId);
+        
+        if (songIndex === -1 && raffleIndex === -1) {
             console.warn(chalk.yellow(`[User] Attempted to edit non-existent song ID: ${requestId}`));
             socket.emit('editSpotifyError', { 
                 requestId,
-                message: 'This song is no longer in the queue.' 
+                message: 'This song is no longer in the queue or raffle pool.' 
             });
             return;
         }
 
-        const songToEdit = state.queue[songIndex];
+        const isInQueue = songIndex !== -1;
+        const songToEdit = isInQueue ? state.queue[songIndex] : state.rafflePool[raffleIndex];
+        
         // Verify ownership
         if (!songToEdit.requesterLogin || songToEdit.requesterLogin.toLowerCase() !== userLogin.toLowerCase()) {
             console.warn(chalk.yellow(`[Security] User ${userLogin} attempted to edit song ${requestId} owned by ${songToEdit.requesterLogin}`));
@@ -973,30 +980,53 @@ io.on('connection', (socket) => {
                 return;
             }
 
-            // Update the in-memory state with Spotify data, title, artist, thumbnail, duration
-            state.queue[songIndex].spotifyData = spotifyDetails;
-            state.queue[songIndex].title = spotifyDetails.name || songToEdit.title;
+            // Prepare updated values
             const updatedArtist = spotifyDetails.artists && spotifyDetails.artists.length > 0 
                 ? spotifyDetails.artists[0].name 
                 : (songToEdit.artist || 'Unknown Artist');
-            state.queue[songIndex].artist = updatedArtist;
             const newThumbnailUrl = spotifyDetails.album?.images?.[0]?.url || songToEdit.thumbnailUrl;
             const newDurationSeconds = spotifyDetails.durationMs ? Math.round(spotifyDetails.durationMs / 1000) : songToEdit.durationSeconds;
-            state.queue[songIndex].thumbnailUrl = newThumbnailUrl;
-            state.queue[songIndex].durationSeconds = newDurationSeconds;
 
-            // Update the database using the comprehensive update function
-            await db.updateSongSpotifyDataAndDetailsInDbQueue(
-                requestId, 
-                spotifyDetails, 
-                spotifyDetails.name, 
-                updatedArtist, 
-                newThumbnailUrl, 
-                newDurationSeconds
-            );
-            
-            // Broadcast updated queue to all clients
-            io.emit('queueUpdate', state.queue);
+            // Update the in-memory state
+            if (isInQueue) {
+                state.queue[songIndex].spotifyData = spotifyDetails;
+                state.queue[songIndex].title = spotifyDetails.name || songToEdit.title;
+                state.queue[songIndex].artist = updatedArtist;
+                state.queue[songIndex].thumbnailUrl = newThumbnailUrl;
+                state.queue[songIndex].durationSeconds = newDurationSeconds;
+                
+                // Update the database
+                await db.updateSongSpotifyDataAndDetailsInDbQueue(
+                    requestId, 
+                    spotifyDetails, 
+                    spotifyDetails.name, 
+                    updatedArtist, 
+                    newThumbnailUrl, 
+                    newDurationSeconds
+                );
+                
+                // Broadcast updated queue
+                io.emit('queueUpdate', state.queue);
+            } else {
+                state.rafflePool[raffleIndex].spotifyData = spotifyDetails;
+                state.rafflePool[raffleIndex].title = spotifyDetails.name || songToEdit.title;
+                state.rafflePool[raffleIndex].artist = updatedArtist;
+                state.rafflePool[raffleIndex].thumbnailUrl = newThumbnailUrl;
+                state.rafflePool[raffleIndex].durationSeconds = newDurationSeconds;
+                
+                // Update the database
+                await db.updateSongSpotifyDataAndDetailsInRafflePool(
+                    requestId, 
+                    spotifyDetails, 
+                    spotifyDetails.name, 
+                    updatedArtist, 
+                    newThumbnailUrl, 
+                    newDurationSeconds
+                );
+                
+                // Broadcast updated raffle pool
+                io.emit('raffleUpdate', state.rafflePool);
+            }
             
             // Send success response to the user
             socket.emit('editSpotifySuccess', { 
@@ -1004,7 +1034,8 @@ io.on('connection', (socket) => {
                 message: 'Song details updated successfully from Spotify!' 
             });
             
-            console.log(chalk.cyan(`[User] Song details updated by ${userLogin} for request ${requestId}: ${spotifyDetails.name} by ${updatedArtist}`));
+            const location = isInQueue ? 'queue' : 'raffle pool';
+            console.log(chalk.cyan(`[User] Song details updated by ${userLogin} for request ${requestId} in ${location}: ${spotifyDetails.name} by ${updatedArtist}`));
             
             // Send Twitch chat confirmation message
             sendChatMessage(`@${userLogin} updated their request to: "${spotifyDetails.name}" by ${updatedArtist}. https://calamarigoldrequests.com`);
@@ -1030,17 +1061,22 @@ io.on('connection', (socket) => {
             return;
         }
 
+        // Check if song is in queue or raffle pool
         const songIndex = state.queue.findIndex(song => song.id === requestId);
-        if (songIndex === -1) {
+        const raffleIndex = state.rafflePool.findIndex(song => song.id === requestId);
+        
+        if (songIndex === -1 && raffleIndex === -1) {
             console.warn(chalk.yellow(`[User] Attempted to edit non-existent song ID: ${requestId}`));
             socket.emit('editYouTubeError', { 
                 requestId,
-                message: 'This song is no longer in the queue.' 
+                message: 'This song is no longer in the queue or raffle pool.' 
             });
             return;
         }
 
-        const songToEdit = state.queue[songIndex];
+        const isInQueue = songIndex !== -1;
+        const songToEdit = isInQueue ? state.queue[songIndex] : state.rafflePool[raffleIndex];
+        
         // Verify ownership
         if (!songToEdit.requesterLogin || songToEdit.requesterLogin.toLowerCase() !== userLogin.toLowerCase()) {
             console.warn(chalk.yellow(`[Security] User ${userLogin} attempted to edit song ${requestId} owned by ${songToEdit.requesterLogin}`));
@@ -1101,25 +1137,53 @@ io.on('connection', (socket) => {
                 console.log(chalk.green(`[User] Fetched YouTube details for ${userLogin}: "${newTitle}" by ${newArtist}`));
             }
 
-            // Update the in-memory state
-            state.queue[songIndex].youtubeUrl = finalYoutubeUrl;
-            state.queue[songIndex].title = newTitle;
-            state.queue[songIndex].artist = newArtist;
-            state.queue[songIndex].channelId = newChannelId;
-            state.queue[songIndex].thumbnailUrl = newThumbnailUrl;
-            state.queue[songIndex].durationSeconds = newDurationSeconds;
+            // Update the in-memory state and database
+            let dbSuccess;
+            if (isInQueue) {
+                state.queue[songIndex].youtubeUrl = finalYoutubeUrl;
+                state.queue[songIndex].title = newTitle;
+                state.queue[songIndex].artist = newArtist;
+                state.queue[songIndex].channelId = newChannelId;
+                state.queue[songIndex].thumbnailUrl = newThumbnailUrl;
+                state.queue[songIndex].durationSeconds = newDurationSeconds;
 
-            // Update the database
-            const dbSuccess = updateSongYouTubeUrlAndDetailsInDbQueue(
-                requestId, 
-                finalYoutubeUrl, 
-                newTitle, 
-                newArtist, 
-                newChannelId, 
-                newThumbnailUrl, 
-                newDurationSeconds,
-                songToEdit.spotifyData // Keep existing Spotify data
-            );
+                dbSuccess = updateSongYouTubeUrlAndDetailsInDbQueue(
+                    requestId, 
+                    finalYoutubeUrl, 
+                    newTitle, 
+                    newArtist, 
+                    newChannelId, 
+                    newThumbnailUrl, 
+                    newDurationSeconds,
+                    songToEdit.spotifyData
+                );
+                
+                if (dbSuccess) {
+                    io.emit('queueUpdate', state.queue);
+                }
+            } else {
+                state.rafflePool[raffleIndex].youtubeUrl = finalYoutubeUrl;
+                state.rafflePool[raffleIndex].title = newTitle;
+                state.rafflePool[raffleIndex].artist = newArtist;
+                state.rafflePool[raffleIndex].channelId = newChannelId;
+                state.rafflePool[raffleIndex].thumbnailUrl = newThumbnailUrl;
+                state.rafflePool[raffleIndex].durationSeconds = newDurationSeconds;
+
+                dbSuccess = updateSongYouTubeUrlAndDetailsInRafflePool(
+                    requestId, 
+                    finalYoutubeUrl, 
+                    newTitle, 
+                    newArtist, 
+                    newChannelId, 
+                    newThumbnailUrl, 
+                    newDurationSeconds,
+                    songToEdit.spotifyData
+                );
+                
+                if (dbSuccess) {
+                    io.emit('raffleUpdate', state.rafflePool);
+                }
+            }
 
             if (!dbSuccess) {
                 console.warn(chalk.yellow(`[User] Failed to update YouTube details in database for ${requestId} by ${userLogin}.`));
@@ -1130,16 +1194,14 @@ io.on('connection', (socket) => {
                 return;
             }
             
-            // Broadcast updated queue to all clients
-            io.emit('queueUpdate', state.queue);
-            
             // Send success response to the user
             socket.emit('editYouTubeSuccess', { 
                 requestId,
                 message: 'Song details updated successfully from YouTube!' 
             });
             
-            console.log(chalk.cyan(`[User] Song details updated by ${userLogin} for request ${requestId}: ${newTitle} by ${newArtist}`));
+            const location = isInQueue ? 'queue' : 'raffle pool';
+            console.log(chalk.cyan(`[User] Song details updated by ${userLogin} for request ${requestId} in ${location}: ${newTitle} by ${newArtist}`));
             
             // Send Twitch chat confirmation message
             if (finalYoutubeUrl) {

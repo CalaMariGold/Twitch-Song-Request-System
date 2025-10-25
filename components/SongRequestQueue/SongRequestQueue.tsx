@@ -6,7 +6,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Input } from "@/components/ui/input"
-import { Search, Music, Clock, History, Loader2, Youtube, User, ListPlus, Trash2, GripVertical, Save, Plus, Link as LinkIcon, Edit } from "lucide-react"
+import { Search, Music, Clock, History, Loader2, Youtube, User, ListPlus, Trash2, GripVertical, Save, Plus, Link as LinkIcon, Edit, Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { motion, AnimatePresence } from "framer-motion"
 import { ErrorBoundary } from "@/components/ErrorBoundary"
@@ -38,6 +38,7 @@ import { useTwitchUser } from "@/hooks/useTwitchUser";
 import { useSocketConnection } from "@/hooks/useSocketConnection";
 import { ActiveQueueTab } from "./ActiveQueueTab";
 import { HistoryTab } from "./HistoryTab";
+import { RafflePoolTab } from "./RafflePoolTab";
 
 /*
  * Main queue component that displays current queue, history, and active song
@@ -400,7 +401,7 @@ export default function SongRequestQueue() {
 
         <Tabs defaultValue="queue" className="w-full" onValueChange={setActiveTab}>
           {/* Tabs Style */}
-          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 bg-brand-purple-dark/50 border border-brand-purple-neon/10 p-1 h-auto rounded-lg">
+          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-5 bg-brand-purple-dark/50 border border-brand-purple-neon/10 p-1 h-auto rounded-lg">
             <TabsTrigger value="queue" className="data-[state=active]:bg-brand-purple-dark data-[state=active]:text-brand-pink-light data-[state=active]:shadow-md data-[state=active]:shadow-brand-black/30 text-brand-purple-light/80 hover:bg-brand-purple-dark/70 hover:text-white transition-all rounded-md data-[state=active]:border data-[state=active]:border-brand-pink-neon/50 data-[state=active]:text-glow-pink relative group text-xs sm:text-sm">
               {/* Add shiny icon to active state */}
               <div className="absolute -top-1 -right-1 w-3 h-3 opacity-0 group-data-[state=active]:opacity-100 transition-opacity duration-300">
@@ -409,6 +410,14 @@ export default function SongRequestQueue() {
               <Music className="mr-1 sm:mr-1.5" size={16} />
               {/* Use totalQueueCount for display */}
               <span className="truncate">Queue ({totalQueueCount})</span>
+            </TabsTrigger>
+            <TabsTrigger value="raffle-pool" className="data-[state=active]:bg-brand-purple-dark data-[state=active]:text-brand-pink-light data-[state=active]:shadow-md data-[state=active]:shadow-brand-black/30 text-brand-purple-light/80 hover:bg-brand-purple-dark/70 hover:text-white transition-all rounded-md data-[state=active]:border data-[state=active]:border-brand-pink-neon/50 data-[state=active]:text-glow-pink relative group text-xs sm:text-sm">
+              {/* Add shiny icon to active state */}
+              <div className="absolute -top-1 -right-1 w-3 h-3 opacity-0 group-data-[state=active]:opacity-100 transition-opacity duration-300">
+                <Image src="/shiny.png" alt="" fill sizes="12px" className="object-contain"/>
+              </div>
+              <Sparkles className="mr-1 sm:mr-1.5" size={16} />
+              <span className="truncate">Raffle Pool ({state.rafflePool.length})</span>
             </TabsTrigger>
             <TabsTrigger value="history" className="data-[state=active]:bg-brand-purple-dark data-[state=active]:text-brand-pink-light data-[state=active]:shadow-md data-[state=active]:shadow-brand-black/30 text-brand-purple-light/80 hover:bg-brand-purple-dark/70 hover:text-white transition-all rounded-md data-[state=active]:border data-[state=active]:border-brand-pink-neon/50 data-[state=active]:text-glow-pink relative group text-xs sm:text-sm">
               {/* Add shiny icon to active state */}
@@ -450,9 +459,26 @@ export default function SongRequestQueue() {
               setEditSpotifySuccess={setEditSpotifySuccess}
               setEditYouTubeError={setEditYouTubeError}
               setEditYouTubeSuccess={setEditYouTubeSuccess}
-              rafflePool={state.rafflePool}
-              queueMode={state.queueMode}
             />
+          </TabsContent>
+          <TabsContent value="raffle-pool" className="mt-4">
+            <ErrorBoundary>
+              <RafflePoolTab
+                currentUser={currentUser}
+                rafflePool={state.rafflePool}
+                searchTerm={searchTerm}
+                isLoading={state.isLoading}
+                socket={socket}
+                setEditingSongId={setEditingSongId}
+                setCurrentSpotifyUrl={setCurrentSpotifyUrl}
+                setCurrentYouTubeUrl={setCurrentYouTubeUrl}
+                setIsEditSongLinksDialogOpen={setIsEditSongLinksDialogOpen}
+                setEditSpotifyError={setEditSpotifyError}
+                setEditSpotifySuccess={setEditSpotifySuccess}
+                setEditYouTubeError={setEditYouTubeError}
+                setEditYouTubeSuccess={setEditYouTubeSuccess}
+              />
+            </ErrorBoundary>
           </TabsContent>
           <TabsContent value="history" className="mt-4">
             <HistoryTab

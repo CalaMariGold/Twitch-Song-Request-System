@@ -1633,6 +1633,98 @@ function getRafflePoolCount() {
 }
 
 /**
+ * Updates the Spotify data and related details for a specific song in the raffle pool
+ * @param {string} appRequestId The application-generated unique ID of the song request to update
+ * @param {Object} spotifyData The Spotify data object
+ * @param {string} title The new title
+ * @param {string} artist The new artist
+ * @param {string} thumbnailUrl The new thumbnail URL
+ * @param {number} durationSeconds The new duration in seconds
+ * @returns {boolean} True if successful, false otherwise
+ */
+function updateSongSpotifyDataAndDetailsInRafflePool(appRequestId, spotifyData, title, artist, thumbnailUrl, durationSeconds) {
+    if (!db) {
+        console.error(chalk.red('[DB] Database not initialized. Cannot update song details.'));
+        return false;
+    }
+    if (!appRequestId) {
+        console.warn(chalk.yellow('[DB] updateSongSpotifyDataAndDetailsInRafflePool called with invalid appRequestId.'));
+        return false;
+    }
+
+    try {
+        const stmt = db.prepare('UPDATE channel_point_raffle SET spotifyData = ?, title = ?, artist = ?, thumbnailUrl = ?, durationSeconds = ? WHERE request_id = ?');
+        const result = stmt.run(
+            spotifyData ? JSON.stringify(spotifyData) : null,
+            title || 'Unknown Title',
+            artist || 'Unknown Artist',
+            thumbnailUrl,
+            durationSeconds,
+            appRequestId
+        );
+
+        if (result.changes > 0) {
+            console.log(chalk.blue(`[DB] Updated Spotify data, title, artist, thumbnail, and duration for raffle pool item with request_id ${appRequestId}.`));
+            return true;
+        } else {
+            console.log(chalk.yellow(`[DB] Attempted to update details for non-existent raffle pool item with request_id ${appRequestId}.`));
+            return false;
+        }
+    } catch (error) {
+        console.error(chalk.red(`[DB] Error updating song details in raffle pool for request_id ${appRequestId}:`), error);
+        return false;
+    }
+}
+
+/**
+ * Updates the YouTube URL and related details for a specific song in the raffle pool
+ * @param {string} appRequestId The application-generated unique ID of the song request to update
+ * @param {string | null} youtubeUrl The new YouTube URL (or null)
+ * @param {string} title The new title from YouTube
+ * @param {string} artist The new artist from YouTube
+ * @param {string} channelId The new channel ID from YouTube
+ * @param {string} thumbnailUrl The new thumbnail URL
+ * @param {number} durationSeconds The new duration in seconds
+ * @param {Object} spotifyData The existing Spotify data to preserve
+ * @returns {boolean} True if successful, false otherwise
+ */
+function updateSongYouTubeUrlAndDetailsInRafflePool(appRequestId, youtubeUrl, title, artist, channelId, thumbnailUrl, durationSeconds, spotifyData) {
+    if (!db) {
+        console.error(chalk.red('[DB] Database not initialized. Cannot update YouTube details.'));
+        return false;
+    }
+    if (!appRequestId) {
+        console.warn(chalk.yellow('[DB] updateSongYouTubeUrlAndDetailsInRafflePool called with invalid appRequestId.'));
+        return false;
+    }
+
+    try {
+        const stmt = db.prepare('UPDATE channel_point_raffle SET youtubeUrl = ?, title = ?, artist = ?, channelId = ?, thumbnailUrl = ?, durationSeconds = ?, spotifyData = ? WHERE request_id = ?');
+        const result = stmt.run(
+            youtubeUrl,
+            title || 'Unknown Title',
+            artist || 'Unknown Artist',
+            channelId,
+            thumbnailUrl,
+            durationSeconds,
+            spotifyData ? JSON.stringify(spotifyData) : null,
+            appRequestId
+        );
+
+        if (result.changes > 0) {
+            console.log(chalk.blue(`[DB] Updated YouTube URL and details for raffle pool item with request_id ${appRequestId}.`));
+            return true;
+        } else {
+            console.log(chalk.yellow(`[DB] Attempted to update YouTube details for non-existent raffle pool item with request_id ${appRequestId}.`));
+            return false;
+        }
+    } catch (error) {
+        console.error(chalk.red(`[DB] Error updating YouTube details in raffle pool for request_id ${appRequestId}:`), error);
+        return false;
+    }
+}
+
+/**
  * Updates the slot type for a queue item
  * @param {string} requestId - Request ID of the song
  * @param {string} slotType - New slot type
@@ -1827,6 +1919,8 @@ module.exports = {
     loadRafflePoolFromDB,
     getRandomSongFromRaffle,
     getRafflePoolCount,
+    updateSongSpotifyDataAndDetailsInRafflePool,
+    updateSongYouTubeUrlAndDetailsInRafflePool,
     updateQueueSlotType,
     // Migration
     migrateToSlotSystem

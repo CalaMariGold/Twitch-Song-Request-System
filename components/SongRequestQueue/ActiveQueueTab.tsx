@@ -3,7 +3,6 @@ import { SongList } from "./SongList";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { Socket } from "socket.io-client";
 import React, { useMemo } from "react";
-import { RafflePoolSection } from "./RafflePoolSection";
 
 interface ActiveQueueTabProps {
   songs: SongRequest[];
@@ -18,8 +17,6 @@ interface ActiveQueueTabProps {
   setEditSpotifySuccess: React.Dispatch<React.SetStateAction<boolean>>;
   setEditYouTubeError: React.Dispatch<React.SetStateAction<string | null>>;
   setEditYouTubeSuccess: React.Dispatch<React.SetStateAction<boolean>>;
-  rafflePool: SongRequest[];
-  queueMode: 'raffle' | 'donation-only';
 }
 
 export function ActiveQueueTab({
@@ -35,8 +32,6 @@ export function ActiveQueueTab({
   setEditSpotifySuccess,
   setEditYouTubeError,
   setEditYouTubeSuccess,
-  rafflePool,
-  queueMode,
 }: ActiveQueueTabProps) {
   // Filter queue based on search term
   const filteredQueue = useMemo(
@@ -66,7 +61,6 @@ export function ActiveQueueTab({
         setEditYouTubeError={setEditYouTubeError}
         setEditYouTubeSuccess={setEditYouTubeSuccess}
       />
-      <RafflePoolSection rafflePool={rafflePool} queueMode={queueMode} currentUser={currentUser} />
     </ErrorBoundary>
   );
 } 
