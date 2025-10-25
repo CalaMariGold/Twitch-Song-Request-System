@@ -1788,6 +1788,10 @@ io.on('connection', (socket) => {
         io.emit('raffleUpdate', state.rafflePool);
         broadcastTotalCounts();
         
+        // Send chat notification about the newly picked raffle song
+        const queuePosition = songIndex + 1;
+        sendChatMessage(`🎲 @${randomRaffleSong.requester}, your song "${randomRaffleSong.title}" by ${randomRaffleSong.artist} was pulled from the raffle pool! It's now #${queuePosition} in the queue. https://calamarigoldrequests.com`);
+        
         console.log(chalk.green(`[Raffle Swap] Successfully swapped "${songToSwap.title}" with "${randomRaffleSong.title}"`));
         if (ack) ack({ 
             success: true, 
