@@ -869,14 +869,38 @@ io.on('connection', (socket) => {
             return;
         }
 
+        // Check if song is in queue or raffle pool
         const songIndex = state.queue.findIndex(song => song.id === requestId);
-        if (songIndex === -1) {
+        const raffleIndex = state.rafflePool.findIndex(song => song.id === requestId);
+        
+        if (songIndex === -1 && raffleIndex === -1) {
             console.warn(chalk.yellow(`[User] Attempted to delete non-existent song ID: ${requestId}`));
-            socket.emit('deleteRequestError', { message: 'Song not found in queue' });
+            socket.emit('deleteRequestError', { message: 'Song not found in queue or raffle pool' });
             return;
         }
         
-            const songToDelete = state.queue[songIndex];
+        // Handle raffle pool deletion
+        if (raffleIndex !== -1) {
+            const raffleToDelete = state.rafflePool[raffleIndex];
+            
+            // Verify ownership
+            if (!raffleToDelete.requesterLogin || raffleToDelete.requesterLogin.toLowerCase() !== userLogin.toLowerCase()) {
+                console.warn(chalk.yellow(`[Security] User ${userLogin} attempted to delete raffle song ${requestId} owned by ${raffleToDelete.requesterLogin}`));
+                socket.emit('deleteRequestError', { message: 'Permission denied' });
+                return;
+            }
+            
+            // Remove from raffle pool
+            removeSongFromRafflePool(requestId);
+            state.rafflePool = state.rafflePool.filter(song => song.id !== requestId);
+            io.emit('raffleUpdate', state.rafflePool);
+            broadcastTotalCounts();
+            console.log(chalk.cyan(`[User] Raffle song removed by requester ${userLogin}: ${requestId}`));
+            return;
+        }
+        
+        // Handle queue deletion
+        const songToDelete = state.queue[songIndex];
         
         // Don't allow deleting empty slots or raffle placeholders
         if (songToDelete.slotType === 'empty' || songToDelete.slotType === 'raffle_placeholder') {
@@ -885,9 +909,9 @@ io.on('connection', (socket) => {
             return;
         }
         
-            // Verify ownership
+        // Verify ownership
         if (!songToDelete.requesterLogin || songToDelete.requesterLogin.toLowerCase() !== userLogin.toLowerCase()) {
-                console.warn(chalk.yellow(`[Security] User ${userLogin} attempted to delete song ${requestId} owned by ${songToDelete.requesterLogin}`));
+            console.warn(chalk.yellow(`[Security] User ${userLogin} attempted to delete song ${requestId} owned by ${songToDelete.requesterLogin}`));
             socket.emit('deleteRequestError', { message: 'Permission denied' });
             return;
         }
@@ -1769,7 +1793,8 @@ io.on('connection', (socket) => {
     }));
     
     // Remove specific song from raffle pool (Admin only)
-    socket.on('removeRaffleSong', requireAdmin((songId, ack) => {
+    socket.on('removeRaffleSong', requireAdmin((data, ack) => {
+        const songId = data.requestId || data;
         console.log(chalk.magenta(`[Admin:${socket.id}] Removing song ${songId} from raffle pool...`));
         const success = removeSongFromRafflePool(songId);
         if (success) {
