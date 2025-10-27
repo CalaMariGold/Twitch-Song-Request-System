@@ -128,6 +128,7 @@ export interface AppState {
   rafflePool: SongRequest[] // Channel point raffle pool
   queueMode: 'raffle' | 'donation-only' // Current queue mode
   raffleInterval?: number // Raffle placeholder interval (e.g., every 3 slots)
+  isQueueClosed: boolean // Whether the queue is currently closed
   isLoading: boolean
   error: Error | null
 }
@@ -161,6 +162,8 @@ export interface SocketEvents {
     raffleUpdate: (rafflePool: SongRequest[]) => void;
     modeChange: (mode: 'raffle' | 'donation-only') => void;
     raffleIntervalUpdate: (data: { interval: number }) => void;
+    // --- Queue State Events ---
+    queueStateChange: (data: { isClosed: boolean }) => void;
     // --- Spotify Update Events --- 
     updateSpotifySuccess: (payload: { requestId: string }) => void;
     updateSpotifyError: (payload: { requestId: string; message: string }) => void;
@@ -206,6 +209,8 @@ export interface SocketEvents {
     switchQueueMode: (data: { mode: 'raffle' | 'donation-only' }, callback?: (response: { success: boolean; mode?: string; message?: string }) => void) => void;
     updateRaffleInterval: (data: { interval: number }, callback?: (response: { success: boolean; interval?: number; message?: string }) => void) => void;
     swapWithRaffle: (data: { songId: string }, callback?: (response: { success: boolean; swappedOut?: string; swappedIn?: string; message?: string }) => void) => void;
+    // --- Queue State Admin Actions ---
+    toggleQueueState: (callback?: (response: { success: boolean; isClosed?: boolean; message?: string }) => void) => void;
     // --- Admin Spotify Update Action --- 
     adminUpdateSpotifyLink: (payload: { requestId: string; spotifyUrl: string }) => void;
     // --- Admin YouTube Update Action ---

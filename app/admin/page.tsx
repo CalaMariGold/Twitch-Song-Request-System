@@ -115,6 +115,7 @@ export default function AdminDashboard() {
     rafflePool: [],
     queueMode: 'raffle',
     raffleInterval: 3,
+    isQueueClosed: false,
     isLoading: true,
     error: null
   })
@@ -340,6 +341,11 @@ export default function AdminDashboard() {
         description: `Queue is now in ${mode === 'raffle' ? 'Raffle' : 'Donation-Only'} mode`,
         duration: 3000
       })
+    })
+
+    socketInstance.on('queueStateChange', (data: { isClosed: boolean }) => {
+      console.log('Admin: Queue state changed to', data.isClosed ? 'closed' : 'open')
+      setAppState(prev => ({ ...prev, isQueueClosed: data.isClosed }))
     })
     
     socketInstance.on('raffleIntervalUpdate', (data: { interval: number }) => {
@@ -746,6 +752,25 @@ export default function AdminDashboard() {
     console.log("Admin: Resetting today's count")
     socket.emit('resetTodaysCount')
     toast({ title: "Today's Count Reset", description: "Songs played today counter has been reset to 0." })
+  }
+
+  const handleToggleQueueState = () => {
+    if (!socket) return
+    console.log("Admin: Toggling queue state")
+    socket.emit('toggleQueueState', (response) => {
+      if (response.success) {
+        const newState = response.isClosed ? 'closed' : 'open'
+        toast({ 
+          title: `Queue ${newState === 'closed' ? 'Closed' : 'Opened'}`, 
+          description: `Queue is now ${newState}. ${newState === 'closed' ? 'No new requests will be accepted.' : 'New requests are now being accepted.'}` 
+        })
+      } else {
+        toast({ 
+          title: "Error", 
+          description: response.message || "Failed to toggle queue state"
+        })
+      }
+    })
   }
 
   const handleMove = (songId: string, direction: 'up' | 'down') => {
@@ -2510,6 +2535,43 @@ export default function AdminDashboard() {
                      Controls raffle placeholder positions in queue
                    </span>
                  </div>
+               </div>
+
+               {/* Divider */}
+               <div className="border-t border-gray-700"></div>
+
+               {/* Queue State Toggle */}
+               <div>
+                 <div className="flex items-center justify-between mb-2">
+                   <Label className="text-sm font-medium">Queue State</Label>
+                   <Badge 
+                     variant="outline" 
+                     className={appState.isQueueClosed 
+                       ? 'bg-red-500/20 text-red-300 border-red-500/40' 
+                       : 'bg-green-500/20 text-green-300 border-green-500/40'}
+                   >
+                     {appState.isQueueClosed ? '🔒 Closed' : '🔓 Open'}
+                   </Badge>
+                 </div>
+                 <div className="flex gap-2">
+                   <Button 
+                     onClick={handleToggleQueueState}
+                     disabled={!isConnected}
+                     size="sm"
+                     className={`flex-1 text-white disabled:opacity-50 ${
+                       appState.isQueueClosed 
+                         ? 'bg-green-600 hover:bg-green-700' 
+                         : 'bg-red-600 hover:bg-red-700'
+                     }`}
+                   >
+                     {appState.isQueueClosed ? '🔓 Open Queue' : '🔒 Close Queue'}
+                   </Button>
+                 </div>
+                 <p className="text-xs text-gray-400 mt-1">
+                   {appState.isQueueClosed 
+                     ? 'Queue is closed - no new requests accepted' 
+                     : 'Queue is open - accepting new requests'}
+                 </p>
                </div>
             </CardContent>
           </Card>

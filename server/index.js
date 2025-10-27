@@ -127,7 +127,8 @@ const state = {
   blacklist: [], // Will be loaded from blacklist table
   blockedUsers: [], // Will be loaded from blocked_users table
   rafflePool: [], // Will be loaded from channel_point_raffle table
-  queueMode: DEFAULT_QUEUE_MODE // 'raffle' or 'donation-only'
+  queueMode: DEFAULT_QUEUE_MODE, // 'raffle' or 'donation-only'
+  isQueueClosed: false // Whether the queue is currently closed
 }
 
 const io = new Server(httpServer, {
@@ -1327,6 +1328,17 @@ io.on('connection', (socket) => {
         console.log(chalk.magenta(`[Admin:${socket.id}] Reset today's played count via socket.`));
     }))
 
+    // Handle toggling queue state (Admin only)
+    socket.on('toggleQueueState', requireAdmin((callback) => {
+        console.log(chalk.magenta(`[Admin:${socket.id}] Toggling queue state from ${state.isQueueClosed ? 'closed' : 'open'}...`));
+        const success = toggleQueueState();
+        if (success) {
+            if (callback) callback({ success: true, isClosed: state.isQueueClosed });
+        } else {
+            if (callback) callback({ success: false, message: 'Failed to toggle queue state' });
+        }
+    }))
+
     // Handle active song updates (Auth needed)
     // Note: updateActiveSong can be called with null (stop) or a song object (play)
     socket.on('updateActiveSong', requireAdmin((song) => {
@@ -1968,6 +1980,9 @@ async function startServer() {
   
   // Load queue mode from settings or use default
   state.queueMode = state.settings.queueMode || DEFAULT_QUEUE_MODE;
+  
+  // Load queue closed state from settings or use default
+  state.isQueueClosed = state.settings.isQueueClosed || false;
   
   // Load raffle interval from settings or use default
   if (state.settings.autoFillRaffleInterval) {
@@ -3225,6 +3240,96 @@ function switchQueueMode(newMode) {
   io.emit('queueUpdate', state.queue);
   
   console.log(chalk.green(`[Queue] Mode switched from ${oldMode} to ${newMode}`));
+  return true;
+}
+
+/**
+ * Toggles the queue state between open and closed
+ * When closed: removes all empty slots, sends chat notification
+ * When opened: restores empty slots based on current mode, sends chat notification
+ */
+function toggleQueueState() {
+  const wasClosed = state.isQueueClosed;
+  state.isQueueClosed = !state.isQueueClosed;
+  
+  // Save to settings
+  db.saveSetting('isQueueClosed', state.isQueueClosed);
+  
+  if (state.isQueueClosed) {
+    // Queue is being closed - remove all empty slots and raffle placeholders
+    const slotsRemoved = [];
+    const newQueue = [];
+    
+    for (let i = 0; i < state.queue.length; i++) {
+      const slot = state.queue[i];
+      if (slot.slotType === 'empty' || slot.slotType === 'raffle_placeholder') {
+        // Remove empty slot or raffle placeholder from DB
+        db.removeSongFromDbQueue(slot.id);
+        slotsRemoved.push({ position: slot.slotPosition, type: slot.slotType });
+      } else {
+        // Keep only filled slots (donation and raffle_filled)
+        newQueue.push(slot);
+      }
+    }
+    
+    state.queue = newQueue;
+    
+    // Recalculate slot positions for remaining slots
+    recalculateSlotPositions();
+    
+    const emptyCount = slotsRemoved.filter(s => s.type === 'empty').length;
+    const raffleCount = slotsRemoved.filter(s => s.type === 'raffle_placeholder').length;
+    console.log(chalk.blue(`[Queue] Queue closed. Removed ${emptyCount} empty slots and ${raffleCount} raffle placeholders. Positions: ${slotsRemoved.map(s => `${s.position}(${s.type})`).join(', ')}`));
+    
+    // Send Twitch chat notification
+    sendChatMessage(`🔒 Queue is now CLOSED! No new song requests will be played at this time. Come back Thurs/Fri/Sat 4pm EST for more requests! https://calamarigoldrequests.com`);
+    
+  } else {
+    // Queue is being opened - restore empty slots based on current mode
+    const slotsToAdd = [];
+    
+    // Find the highest slot position to determine where to add new slots
+    let maxPosition = 0;
+    for (const slot of state.queue) {
+      if (slot.slotPosition > maxPosition) {
+        maxPosition = slot.slotPosition;
+      }
+    }
+    
+    // Add empty slots to maintain minimum queue size
+    const targetQueueSize = 9; // Minimum queue size
+    const currentSize = state.queue.length;
+    const slotsNeeded = Math.max(targetQueueSize - currentSize, 1); // Always add at least 1 empty slot
+    
+    for (let i = 1; i <= slotsNeeded; i++) {
+      const position = maxPosition + i;
+      let slotType = 'empty';
+      
+      // In raffle mode, check if this position should be a raffle placeholder
+      if (state.queueMode === 'raffle' && position % AUTO_FILL_RAFFLE_INTERVAL === 0) {
+        slotType = 'raffle_placeholder';
+      }
+      
+      const newSlot = slotType === 'raffle_placeholder' 
+        ? createRafflePlaceholder(position)
+        : createEmptySlot(position);
+      
+      state.queue.push(newSlot);
+      db.addSongToDbQueue(newSlot);
+      slotsToAdd.push({ position, type: slotType });
+    }
+    
+    console.log(chalk.blue(`[Queue] Queue opened. Added ${slotsToAdd.length} slots: ${slotsToAdd.map(s => `${s.position}(${s.type})`).join(', ')}`));
+    
+    // Send Twitch chat notification
+    sendChatMessage(`🔓 Queue is now OPEN! You can request songs again! https://calamarigoldrequests.com`);
+  }
+  
+  // Emit updates
+  io.emit('queueStateChange', { isClosed: state.isQueueClosed });
+  io.emit('queueUpdate', state.queue);
+  
+  console.log(chalk.green(`[Queue] Queue state toggled from ${wasClosed ? 'closed' : 'open'} to ${state.isQueueClosed ? 'closed' : 'open'}`));
   return true;
 }
 

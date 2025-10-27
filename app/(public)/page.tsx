@@ -34,6 +34,7 @@ export default function PublicDashboard() {
   const [totalQueueCount, setTotalQueueCount] = useState(0)
   const [totalHistoryCount, setTotalHistoryCount] = useState(0)
   const [songsPlayedToday, setSongsPlayedToday] = useState(0)
+  const [isQueueClosed, setIsQueueClosed] = useState(false)
   const [historyStats, setHistoryStats] = useState({
     totalDurationFormatted: "-",
     averageDurationFormatted: "-",
@@ -112,6 +113,7 @@ export default function PublicDashboard() {
         activeSong: initialState.activeSong,
         isLoading: false
       }))
+      setIsQueueClosed(initialState.isQueueClosed || false)
       if (initialState.historyStats) {
         setHistoryStats({
           totalDurationFormatted: initialState.historyStats.totalDurationFormatted,
@@ -144,6 +146,11 @@ export default function PublicDashboard() {
     // Listen for today's count update
     socketInstance.on('todaysCountUpdate', (data: { count: number }) => {
       setSongsPlayedToday(data.count);
+    });
+    
+    // Listen for queue state changes
+    socketInstance.on('queueStateChange', (data: { isClosed: boolean }) => {
+      setIsQueueClosed(data.isClosed);
     });
     
     // Request initial state
@@ -217,6 +224,24 @@ export default function PublicDashboard() {
                 </div>
               </noscript>
             </div>
+
+            {/* Queue Closed Notice */}
+            {isQueueClosed && (
+              <div className="w-full bg-red-500/20 border-2 border-red-500/40 rounded-lg p-6 text-center mb-6">
+                <div className="flex items-center justify-center space-x-3">
+                  <div className="text-4xl">🔒</div>
+                  <div>
+                    <h2 className="text-2xl font-bold text-red-300 mb-2">Queue is CLOSED</h2>
+                    <p className="text-red-200 text-lg">
+                      No new song requests will be played at this time.
+                    </p>
+                    <p className="text-red-300/80 text-sm mt-2">
+                      Come back Thurs/Fri/Sat 4pm EST for more requests!
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Song Request Queue */}
             <React.Suspense fallback={<div className="h-[600px] rounded-lg bg-brand-purple-deep/50 animate-pulse"></div>}>

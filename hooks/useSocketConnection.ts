@@ -64,6 +64,7 @@ export function useSocketConnection(
         blockedUsers: serverState.blockedUsers || [],
         rafflePool: serverState.rafflePool || [],
         queueMode: serverState.queueMode || 'raffle',
+        isQueueClosed: serverState.isQueueClosed || false,
         isLoading: false,
         error: null
       }));
@@ -136,11 +137,17 @@ export function useSocketConnection(
       setState((prev: AppState) => ({ ...prev, queueMode: mode }));
     });
     
+    // Queue state events
+    newSocket.on('queueStateChange', (data: { isClosed: boolean }) => {
+      setState((prev: AppState) => ({ ...prev, isQueueClosed: data.isClosed }));
+    });
+    
     setSocket(newSocket);
     return () => {
       newSocket.off('historyOrderChanged');
       newSocket.off(socketEvents.RAFFLE_UPDATE);
       newSocket.off(socketEvents.MODE_CHANGE);
+      newSocket.off('queueStateChange');
       newSocket.disconnect();
     };
   }, [setState, setMyRequestsHistory, setMyRequestsTotal, setMyRequestsOffset, setHasMoreMyRequests, setIsLoadingMyRequests, currentUserRef, setTotalQueueCount, setTotalHistoryCount]);

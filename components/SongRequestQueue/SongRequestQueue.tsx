@@ -54,6 +54,7 @@ export default function SongRequestQueue() {
     blockedUsers: [],
     rafflePool: [],
     queueMode: 'raffle',
+    isQueueClosed: false,
     isLoading: true,
     error: null
   })
