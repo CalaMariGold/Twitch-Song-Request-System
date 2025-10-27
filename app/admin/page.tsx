@@ -143,6 +143,7 @@ export default function AdminDashboard() {
   const [isTimestampDialogOpen, setIsTimestampDialogOpen] = useState(false)
   const [editingTimestampId, setEditingTimestampId] = useState<string | null>(null)
   const [timestampInputValue, setTimestampInputValue] = useState<string>("")
+  const [convertingSongId, setConvertingSongId] = useState<string | null>(null)
   const { toast } = useToast()
   // Add state for admin history search
   const [adminHistorySearch, setAdminHistorySearch] = useState("");
@@ -968,6 +969,50 @@ export default function AdminDashboard() {
         title: "History Item Removed", 
         description: `Removed: ${songToRemove?.title || 'Item'}.`, 
         duration: 2000 
+    });
+  }
+
+  const handleConvertToOriginal = (song: SongRequest) => {
+    if (!socket) return;
+    
+    console.log(`Admin: Converting song ${song.id} to original track`);
+    
+    // Set loading state
+    setConvertingSongId(song.id);
+    
+    // Show loading toast
+    toast({
+      title: "Converting to Original Track...",
+      description: `Searching for original version of "${song.title}"`,
+      duration: 3000
+    });
+    
+    socket.emit('convertToOriginalTrack', { songId: song.id }, (response: any) => {
+      // Clear loading state
+      setConvertingSongId(null);
+      
+      if (response.success) {
+        toast({
+          title: "Conversion Successful",
+          description: `Found original track: "${response.spotifyData.name}" by ${response.spotifyData.artists?.map((a: any) => a.name).join(', ')}`,
+          duration: 5000
+        });
+        
+        // Update the local state to reflect the new Spotify data
+        setHistoryList(prevList => 
+          prevList.map(item => 
+            item.id === song.id 
+              ? { ...item, spotifyData: response.spotifyData }
+              : item
+          )
+        );
+      } else {
+        toast({
+          title: "Conversion Failed",
+          description: response.message || "Could not find original track on Spotify",
+          duration: 5000
+        });
+      }
     });
   }
 
@@ -2118,6 +2163,23 @@ export default function AdminDashboard() {
                                                 <SpotifyIcon className="h-4 w-4 text-green-500 hover:text-green-400" />
                                               </Button>
                                             </a>
+                                          )}
+                                          {/* Convert to Original button - only show if no Spotify data exists */}
+                                          {!song.spotifyData && song.youtubeUrl && (
+                                            <Button 
+                                              variant="ghost" 
+                                              size="sm" 
+                                              className="h-8 w-8 p-0" 
+                                              onClick={() => handleConvertToOriginal(song)}
+                                              title="Convert to Original Track"
+                                              disabled={convertingSongId === song.id}
+                                            >
+                                              {convertingSongId === song.id ? (
+                                                <Loader2 className="h-4 w-4 text-purple-500 animate-spin" />
+                                              ) : (
+                                                <Music className="h-4 w-4 text-purple-500 hover:text-purple-400" />
+                                              )}
+                                            </Button>
                                           )}
                                         </div>
                                         {song.timestamp && (

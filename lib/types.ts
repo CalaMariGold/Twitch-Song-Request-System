@@ -222,6 +222,8 @@ export interface SocketEvents {
     getMoreHistory: (data: { offset: number; limit: number }) => void;
     // --- History Timestamp Update ---
     updateHistoryTimestamp: (data: { id: string; timestamp: string }) => void;
+    // --- Convert to Original Track ---
+    convertToOriginalTrack: (data: { songId: string }, callback?: (response: { success: boolean; spotifyData?: any; message?: string }) => void) => void;
     
     // --- Public/User Actions --- 
     getYouTubeDetails: (youtubeUrl: string, callback: (error: { message: string } | null, details?: YouTubeVideoDetails) => void) => void;

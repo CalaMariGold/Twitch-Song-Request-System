@@ -1231,6 +1231,114 @@ function updateHistoryTimestamp(historyId, newTimestamp) {
 }
 
 /**
+ * Updates the Spotify data for a specific song in the history.
+ * @param {string} historyId - The ID of the history item to update.
+ * @param {Object} spotifyData - The Spotify track data to store.
+ * @param {string} title - The updated title from Spotify.
+ * @param {string} artist - The updated artist from Spotify.
+ * @param {string} thumbnailUrl - The updated thumbnail URL from Spotify.
+ * @param {number} durationSeconds - The updated duration in seconds from Spotify.
+ * @returns {boolean} True if update was successful, false otherwise.
+ */
+function updateHistorySpotifyData(historyId, spotifyData, title, artist, thumbnailUrl, durationSeconds) {
+    if (!db) {
+        console.error(chalk.red('[Database] Database not initialized. Cannot update history Spotify data.'));
+        return false;
+    }
+    if (!historyId || !spotifyData) {
+        console.warn(chalk.yellow('[Database] updateHistorySpotifyData called with invalid parameters.'));
+        return false;
+    }
+
+    try {
+        const spotifyDataJson = JSON.stringify(spotifyData);
+        const stmt = db.prepare(`
+            UPDATE song_history 
+            SET spotifyData = ?, title = ?, artist = ?, thumbnailUrl = ?, durationSeconds = ?
+            WHERE id = ?
+        `);
+        // Convert to number if it's a string, otherwise use as-is
+        const idParam = typeof historyId === 'string' ? parseInt(historyId) : historyId;
+        const result = stmt.run(spotifyDataJson, title, artist, thumbnailUrl, durationSeconds, idParam);
+        
+        if (result.changes > 0) {
+            console.log(chalk.blue(`[DB] Successfully updated Spotify data for history item ${historyId}`));
+            return true;
+        } else {
+            console.log(chalk.yellow(`[DB] No history item found with ID ${historyId}. No changes made.`));
+            return false;
+        }
+    } catch (error) {
+        console.error(chalk.red(`[DB] Error updating Spotify data for history item ${historyId}:`), error);
+        return false;
+    }
+}
+
+/**
+ * Retrieves a specific history item by its ID.
+ * @param {string} historyId - The ID of the history item to retrieve.
+ * @returns {Object|null} The history item or null if not found.
+ */
+function getHistoryItemById(historyId) {
+    if (!db) {
+        console.error(chalk.red('[Database] Database not initialized. Cannot get history item.'));
+        return null;
+    }
+    if (!historyId) {
+        console.warn(chalk.yellow('[Database] getHistoryItemById called with invalid historyId.'));
+        return null;
+    }
+
+    try {
+        const stmt = db.prepare(`
+            SELECT id, youtubeUrl, title, artist, channelId, durationSeconds,
+                   requester, requesterLogin, requesterAvatar, thumbnailUrl, 
+                   requestType, completedAt, spotifyData
+            FROM song_history 
+            WHERE id = ?
+        `);
+        // Convert to number if it's a string, otherwise use as-is
+        const idParam = typeof historyId === 'string' ? parseInt(historyId) : historyId;
+        const row = stmt.get(idParam);
+        
+        if (!row) {
+            console.log(chalk.yellow(`[DB] No history item found with ID ${historyId}`));
+            return null;
+        }
+
+        // Parse Spotify data if it exists
+        let spotifyData = null;
+        if (row.spotifyData) {
+            try {
+                spotifyData = JSON.parse(row.spotifyData);
+            } catch (e) {
+                console.error(chalk.red('[Database] Failed to parse Spotify data for history item:'), e);
+            }
+        }
+
+        return {
+            id: row.id.toString(),
+            youtubeUrl: row.youtubeUrl,
+            title: row.title,
+            artist: row.artist,
+            channelId: row.channelId,
+            duration: row.durationSeconds ? formatDurationFromSeconds(row.durationSeconds) : '0:00',
+            durationSeconds: row.durationSeconds,
+            requester: row.requester,
+            requesterLogin: row.requesterLogin,
+            requesterAvatar: row.requesterAvatar,
+            thumbnailUrl: row.thumbnailUrl,
+            timestamp: row.completedAt,
+            requestType: row.requestType,
+            spotifyData: spotifyData
+        };
+    } catch (error) {
+        console.error(chalk.red(`[DB] Error getting history item ${historyId}:`), error);
+        return null;
+    }
+}
+
+/**
  * Retrieves a paginated list of song history for a specific user and the total count of their requests.
  * @param {string} userLogin - The Twitch login name of the user.
  * @param {number} limit - The maximum number of items to fetch.
@@ -1911,6 +2019,8 @@ module.exports = {
     removeSpotifyDataFromSong,
     getDb,
     updateHistoryTimestamp,
+    updateHistorySpotifyData,
+    getHistoryItemById,
     getHistoryForUser,
     replaceRequesterNameInHistory,
     getHistoryEntriesByRequesterName,

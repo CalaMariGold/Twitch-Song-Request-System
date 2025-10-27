@@ -115,7 +115,9 @@ const {
   loadRafflePoolFromDB,
   getRandomSongFromRaffle,
   getRafflePoolCount,
-  updateQueueSlotType
+  updateQueueSlotType,
+  updateHistorySpotifyData,
+  getHistoryItemById
 } = require('./database');
 
 // Server state - Initial state will be loaded from DB
@@ -1516,6 +1518,90 @@ io.on('connection', (socket) => {
             console.log(chalk.magenta(`[Admin:${socket.id}] History item ${data.id} timestamp updated to ${data.timestamp}`));
         } else {
             console.error(chalk.red(`[Admin:${socket.id}] Failed to update timestamp for history item ${data.id}`));
+        }
+    }))
+
+    // Add handler for converting drumless YouTube videos to original Spotify tracks
+    socket.on('convertToOriginalTrack', requireAdmin(async (data, ack) => {
+        if (!data || !data.songId) {
+            console.warn(chalk.yellow(`[Admin:${socket.id}] Invalid data for convertToOriginalTrack:`, data));
+            if (ack) ack({ success: false, message: 'Invalid song ID provided' });
+            return;
+        }
+
+        try {
+            console.log(chalk.magenta(`[Admin:${socket.id}] Converting song ${data.songId} to original track`));
+            
+            // Find the song in the database directly
+            const historySong = getHistoryItemById(data.songId);
+            if (!historySong) {
+                console.warn(chalk.yellow(`[Admin:${socket.id}] Song ${data.songId} not found in history`));
+                if (ack) ack({ success: false, message: 'Song not found in history' });
+                return;
+            }
+
+            // Check if song already has Spotify data
+            if (historySong.spotifyData) {
+                console.warn(chalk.yellow(`[Admin:${socket.id}] Song ${data.songId} already has Spotify data`));
+                if (ack) ack({ success: false, message: 'Song already has Spotify data' });
+                return;
+            }
+
+            // Clean the title to remove drumless/no drums indicators for original track search
+            const cleanedTitle = historySong.title
+                .replace(/\s*\([^)]*drumless[^)]*\)/gi, '') // Remove (Official Drumless) etc.
+                .replace(/\s*\([^)]*no\s+drums[^)]*\)/gi, '') // Remove (No Drums) etc.
+                .replace(/\s*-\s*drumless/gi, '') // Remove "- Drumless" etc.
+                .replace(/\s*-\s*no\s+drums/gi, '') // Remove "- No Drums" etc.
+                .replace(/\s*drumless\s*/gi, ' ') // Remove standalone "drumless"
+                .replace(/\s*no\s+drums\s*/gi, ' ') // Remove standalone "no drums"
+                .trim();
+
+            console.log(chalk.blue(`[Admin:${socket.id}] Original title: "${historySong.title}"`));
+            console.log(chalk.blue(`[Admin:${socket.id}] Cleaned title: "${cleanedTitle}"`));
+
+            // Use the existing Spotify search function to find the original track
+            const spotifyTrack = await spotify.getSpotifyEquivalent({
+                title: cleanedTitle,
+                artist: historySong.artist
+            });
+
+            if (!spotifyTrack) {
+                console.log(chalk.yellow(`[Admin:${socket.id}] No Spotify equivalent found for song ${data.songId}`));
+                if (ack) ack({ success: false, message: 'No original track found on Spotify' });
+                return;
+            }
+
+            // Update the history item with Spotify data
+            const success = updateHistorySpotifyData(
+                data.songId,
+                spotifyTrack,
+                spotifyTrack.name,
+                spotifyTrack.artists?.map(a => a.name).join(', ') || 'Unknown Artist',
+                spotifyTrack.album?.images?.[0]?.url || historySong.thumbnailUrl,
+                Math.floor(spotifyTrack.durationMs / 1000)
+            );
+
+            if (success) {
+                // Send updated history to all clients
+                const recentHistory = db.getRecentHistory();
+                io.emit('historyUpdate', recentHistory);
+
+                console.log(chalk.green(`[Admin:${socket.id}] Successfully converted song ${data.songId} to original track: ${spotifyTrack.name}`));
+                
+                if (ack) ack({ 
+                    success: true, 
+                    spotifyData: spotifyTrack,
+                    message: `Successfully converted to original track: ${spotifyTrack.name}`
+                });
+            } else {
+                console.error(chalk.red(`[Admin:${socket.id}] Failed to update database for song ${data.songId}`));
+                if (ack) ack({ success: false, message: 'Failed to update song data' });
+            }
+
+        } catch (error) {
+            console.error(chalk.red(`[Admin:${socket.id}] Error converting song ${data.songId} to original track:`), error);
+            if (ack) ack({ success: false, message: 'An error occurred during conversion' });
         }
     }))
 
