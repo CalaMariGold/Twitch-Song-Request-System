@@ -105,7 +105,7 @@ export function SongList({
                       {isEmptySlot && (
                         <>
                           <Music size={18} className="flex-shrink-0" />
-                          <span>Donate $10 to fill this slot</span>
+                          <span>Donate $10 or 1k bits to fill this slot</span>
                         </>
                       )}
                       {isRafflePlaceholder && (

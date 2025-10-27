@@ -15,9 +15,10 @@ let reconnectTimer = null; // Timer for delayed reconnection attempts
  * @param {string} config.TARGET_REWARD_TITLE - Title to match for redemptions
  * @param {Function} onTipCallback - Callback for tip/donation events
  * @param {Function} onRedemptionCallback - Callback for redemption events
+ * @param {Function} onCheerCallback - Callback for cheer/bits events
  * @returns {Object|null} StreamElements socket connection or null if configuration is missing
  */
-function connectToStreamElements(config, onTipCallback, onRedemptionCallback) {
+function connectToStreamElements(config, onTipCallback, onRedemptionCallback, onCheerCallback) {
     const { SE_JWT_TOKEN, SE_ACCOUNT_ID, TARGET_REWARD_TITLE } = config;
     
     if (!SE_JWT_TOKEN || !SE_ACCOUNT_ID) {
@@ -181,6 +182,10 @@ function connectToStreamElements(config, onTipCallback, onRedemptionCallback) {
                     await processTipEvent(event, onTipCallback);
                     break;
                     
+                case 'cheer':
+                    await processCheerEvent(event, onCheerCallback);
+                    break;
+                    
                 default:
                     // Ignore other event types
                     break;
@@ -250,6 +255,33 @@ async function processTipEvent(event, callback) {
         username: userName,
         amount,
         currency,
+        message,
+        timestamp: event.createdAt || new Date().toISOString()
+    });
+}
+
+/**
+ * Process cheer/bits events
+ * @param {Object} event - The StreamElements event object
+ * @param {Function} callback - The callback function to execute
+ */
+async function processCheerEvent(event, callback) {
+    if (!callback || typeof callback !== 'function') {
+        return; // No callback to execute
+    }
+    
+    // Extract cheer information
+    const userName = event.data.username || 'Anonymous';
+    const amount = event.data.amount || 0; // Number of bits
+    const message = event.data.message || '';
+
+    console.log(chalk.magenta(`[StreamElements] Received cheer: ${userName} - ${amount} bits - Msg: "${message}"`));
+    
+    // Call the callback with the cheer data
+    await callback({
+        id: event.data._id || Date.now().toString(),
+        username: userName,
+        amount,
         message,
         timestamp: event.createdAt || new Date().toISOString()
     });

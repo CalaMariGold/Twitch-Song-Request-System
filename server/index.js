@@ -65,8 +65,10 @@ if (productionDomain) {
 // Configuration for Duration Limits (Read from .env with defaults)
 const MAX_DONATION_DURATION_SECONDS = parseInt(process.env.MAX_DONATION_DURATION_SECONDS || '600', 10); // Default 10 minutes
 const MAX_CHANNEL_POINT_DURATION_SECONDS = parseInt(process.env.MAX_CHANNEL_POINT_DURATION_SECONDS || '300', 10); // Default 5 minutes
+const MIN_BITS_FOR_REQUEST = parseInt(process.env.MIN_BITS_FOR_REQUEST || '1000', 10); // Default 1000 bits
 console.log(chalk.blue(`[Config] Max Donation Duration: ${MAX_DONATION_DURATION_SECONDS}s`));
 console.log(chalk.blue(`[Config] Max Channel Point Duration: ${MAX_CHANNEL_POINT_DURATION_SECONDS}s`));
+console.log(chalk.blue(`[Config] Min Bits for Request: ${MIN_BITS_FOR_REQUEST} bits`));
 
 // Configuration for Queue System (Read from .env with defaults)
 let AUTO_FILL_RAFFLE_INTERVAL = parseInt(process.env.AUTO_FILL_RAFFLE_INTERVAL || '3', 10); // Default every 3rd slot
@@ -2220,7 +2222,7 @@ async function startServer() {
 
                 // Send success message
                 const donationMessage = message ? ` - "${message}"` : '';
-                sendChatMessage(`@${userName} Thanks for the ${amount} ${currency} donation! Your priority request for "${spotifyRequest.title}" by ${spotifyRequest.artist} (from Spotify link) is #${queuePosition} in the queue.${donationMessage} https://calamarigoldrequests.com`);
+                sendChatMessage(`@${userName} 🎵 Thanks for the ${amount} ${currency}! Your priority request for "${spotifyRequest.title}" by ${spotifyRequest.artist} is #${queuePosition} in the queue.${donationMessage} https://calamarigoldrequests.com`);
             } else {
                 console.log(chalk.yellow(`[Spotify] Could not find track details for Spotify URL: ${analysisResult.value}`));
                 const donationMessage = message ? ` - "${message}"` : '';
@@ -2272,20 +2274,192 @@ async function startServer() {
 
             // Send success message
             const donationMessage = message ? ` - "${message}"` : '';
-            sendChatMessage(`@${userName} Thanks for the ${amount} ${currency} donation! Your priority request for "${spotifyRequest.title}" by ${spotifyRequest.artist} is #${queuePosition} in the queue.${donationMessage} https://calamarigoldrequests.com`);
+            sendChatMessage(`@${userName} 🎵 Thanks for the ${amount} ${currency}! Your priority request for "${spotifyRequest.title}" by ${spotifyRequest.artist} is #${queuePosition} in the queue.${donationMessage} https://calamarigoldrequests.com`);
           } else {
             console.log(chalk.yellow(`[Spotify] No track found for query: "${searchQuery}"`));
             const donationMessage = message ? ` - "${message}"` : '';
-            sendChatMessage(`@${userName} Thanks for the ${amount} ${currency} donation! I couldn't find a song matching "${searchQuery}". Try a different search or a YouTube/Spotify link next time.${donationMessage} https://calamarigoldrequests.com`);
+            sendChatMessage(`@${userName} Thanks for the ${amount} ${currency}! I couldn't find a song matching "${searchQuery}". Try a different search or a YouTube/Spotify link next time.${donationMessage} https://calamarigoldrequests.com`);
           }
         } catch (error) {
           console.error(chalk.red('[Spotify] Error processing text-based donation:'), error);
           const donationMessage = message ? ` - "${message}"` : '';
-          sendChatMessage(`@${userName} Thanks for the ${amount} ${currency} donation! There was an error finding your requested song. Please try again with a YouTube/Spotify link.${donationMessage} https://calamarigoldrequests.com`);
+          sendChatMessage(`@${userName} Thanks for the ${amount} ${currency}! There was an error finding your requested song. Please try again with a YouTube/Spotify link.${donationMessage} https://calamarigoldrequests.com`);
         }
       }
     } catch (error) {
       console.error(chalk.red('[StreamElements] Error processing donation:'), error);
+    }
+  };
+
+  const onCheerCallback = async (cheerData) => {
+    try {
+      // Extract cheer information
+      const userName = cheerData.username || 'Anonymous';
+      const amount = cheerData.amount || 0; // Number of bits
+      let message = cheerData.message || '';
+
+      // Clean the message by removing "Cheer[amount]" from the end
+      message = message.replace(/\s*Cheer\d+\s*$/i, '').trim();
+
+      console.log(chalk.magenta(`[StreamElements] Processing cheer: ${userName} - ${amount} bits - Msg: "${message}"`));
+
+      // Check if bits amount meets minimum requirement
+      if (amount < MIN_BITS_FOR_REQUEST) {
+          console.log(chalk.yellow(`[StreamElements] Cheer from ${userName} (${amount} bits) below minimum (${MIN_BITS_FOR_REQUEST} bits). Ignoring silently.`));
+          return;
+      }
+
+      // Check for request type
+      const analysisResult = analyzeRequestText(message);
+
+      if (analysisResult.type === 'spotifyAlbumUrl') {
+          console.warn(chalk.yellow(`[StreamElements] User ${userName} provided a Spotify Album link in cheer: "${message}"`));
+          const cheerMessage = message ? ` - "${message}"` : '';
+          sendChatMessage(`@${userName} It looks like you used a Spotify album link in your cheer. Use a track link instead for song requests. Please @ a mod with the correct link and we'll add it to the queue.${cheerMessage}`);
+          return;
+      }
+
+      // If no valid request type found, ignore silently
+      if (analysisResult.type === 'none') {
+          console.warn(chalk.yellow(`[StreamElements] No YouTube URL, Spotify URL, or song query found in cheer from ${userName}: "${message}"`));
+          return;
+      }
+
+      // Create initial song request object (partially filled)
+      const initialRequestData = {
+          id: cheerData.id || Date.now().toString(),
+          requester: userName,
+          timestamp: cheerData.timestamp || new Date().toISOString(),
+          requestType: 'donation', // Treat bits the same as donations
+          donationInfo: {
+              amount: amount,
+              currency: 'bits'
+          },
+          message: message // Keep original message for reference
+      };
+
+      if (analysisResult.type === 'youtube') {
+        // Process as a YouTube URL request using the existing centralized function
+        await validateAndAddSong({
+            ...initialRequestData,
+            youtubeUrl: analysisResult.value,
+            message: null // Clear message field when URL is provided
+        });
+      } else if (analysisResult.type === 'spotifyUrl') {
+        // Process as a Spotify URL request
+        try {
+            console.log(chalk.blue(`[Spotify] Processing cheer with Spotify URL: ${analysisResult.value}`));
+            const trackId = extractSpotifyTrackId(analysisResult.value);
+            if (!trackId) {
+                console.warn(chalk.yellow(`[Spotify] Invalid Spotify URL in cheer: ${analysisResult.value}`));
+                const cheerMessage = message ? ` - "${message}"` : '';
+                sendChatMessage(`@${userName} Thanks for the ${amount} bits! The Spotify link you provided doesn't look right. Please use a valid track link.${cheerMessage} https://calamarigoldrequests.com`);
+                return;
+            }
+            console.log(chalk.blue(`[Spotify] Successfully extracted track ID from cheer: ${trackId}`));
+
+            const spotifyDetails = await getSpotifyTrackDetailsById(trackId);
+            if (spotifyDetails) {
+                // Create a song request based on Spotify data
+                const spotifyRequest = await createSpotifyBasedRequest(spotifyDetails, initialRequestData);
+
+                // --- Perform Validations (Copied from text search path) ---
+                const durationError = validateDuration(
+                    spotifyRequest.durationSeconds,
+                    spotifyRequest.requestType,
+                    MAX_DONATION_DURATION_SECONDS,
+                    MAX_CHANNEL_POINT_DURATION_SECONDS
+                );
+                if (durationError) {
+                    console.log(chalk.yellow(`[Queue] Cheer (Spotify URL) request duration (${spotifyRequest.durationSeconds}s) exceeds limit (${durationError.limit}s) - rejecting "${spotifyRequest.title}"`));
+                    const cheerMessage = message ? ` - "${message}"` : '';
+                    sendChatMessage(`@${userName} ${durationError.message}${cheerMessage} https://calamarigoldrequests.com`);
+                    return;
+                }
+
+                if (handleBlacklistRejection({ title: spotifyRequest.title, artist: spotifyRequest.artist, blacklist: state.blacklist, userName, sendChatMessage, donationMessage: message })) {
+                    return;
+                }
+                // --- End Validations ---
+
+                // Add to queue
+                const position = addSongToQueue(spotifyRequest);
+                const queuePosition = position + 1;
+
+                // Emit updates
+                io.emit('newSongRequest', spotifyRequest);
+                io.emit('queueUpdate', state.queue);
+
+                console.log(chalk.green(`[Queue] Added Spotify song (from URL) "${spotifyRequest.title}" by ${spotifyRequest.artist}. Type: donation. Requester: ${spotifyRequest.requester}. Position: #${queuePosition}`));
+
+                // Send success message
+                const cheerMessage = message ? ` - "${message}"` : '';
+                sendChatMessage(`@${userName} 🎵 Thanks for the ${amount} bits! Your priority request for "${spotifyRequest.title}" by ${spotifyRequest.artist} is #${queuePosition} in the queue.${cheerMessage} https://calamarigoldrequests.com`);
+            } else {
+                console.log(chalk.yellow(`[Spotify] Could not find track details for Spotify URL: ${analysisResult.value}`));
+                const cheerMessage = message ? ` - "${message}"` : '';
+                sendChatMessage(`@${userName} Thanks for the ${amount} bits! I couldn't find the song details for the Spotify link you provided.${cheerMessage} https://calamarigoldrequests.com`);
+            }
+        } catch (error) {
+            console.error(chalk.red('[Spotify] Error processing Spotify URL cheer:'), error);
+            const cheerMessage = message ? ` - "${message}"` : '';
+            sendChatMessage(`@${userName} Thanks for the ${amount} bits! There was an error processing the Spotify link.${cheerMessage} https://calamarigoldrequests.com`);
+        }
+      } else if (analysisResult.type === 'text') {
+        // Process as a text-based song request (Existing Logic)
+        const searchQuery = analysisResult.value;
+        try {
+          console.log(chalk.blue(`[Spotify] Searching for song based on text: "${searchQuery}"`));
+          const spotifyTrack = await spotify.findSpotifyTrackBySearchQuery(searchQuery);
+
+          if (spotifyTrack) {
+            // Create a song request based on Spotify data
+            const spotifyRequest = await createSpotifyBasedRequest(spotifyTrack, initialRequestData);
+
+            // Check duration using the helper and values from .env
+            const durationError = validateDuration(
+                spotifyRequest.durationSeconds,
+                spotifyRequest.requestType,
+                MAX_DONATION_DURATION_SECONDS,
+                MAX_CHANNEL_POINT_DURATION_SECONDS
+            );
+            if (durationError) {
+              console.log(chalk.yellow(`[Queue] Cheer (text) request duration (${spotifyRequest.durationSeconds}s) exceeds limit (${durationError.limit}s) - rejecting "${spotifyRequest.title}"`));
+              const cheerMessage = message ? ` - "${message}"` : '';
+              sendChatMessage(`@${userName} ${durationError.message}${cheerMessage} https://calamarigoldrequests.com`);
+              return;
+            }
+
+            if (handleBlacklistRejection({ title: spotifyRequest.title, artist: spotifyRequest.artist, blacklist: state.blacklist, userName, sendChatMessage, donationMessage: message })) {
+                return;
+            }
+
+            // Add to queue
+            const position = addSongToQueue(spotifyRequest);
+            const queuePosition = position + 1;
+
+            // Emit updates
+            io.emit('newSongRequest', spotifyRequest);
+            io.emit('queueUpdate', state.queue);
+
+            console.log(chalk.green(`[Queue] Added Spotify song (from text) "${spotifyRequest.title}" by ${spotifyRequest.artist}. Type: donation. Requester: ${spotifyRequest.requester}. Position: #${queuePosition}`));
+
+            // Send success message
+            const cheerMessage = message ? ` - "${message}"` : '';
+            sendChatMessage(`@${userName} 🎵 Thanks for the ${amount} bits! Your priority request for "${spotifyRequest.title}" by ${spotifyRequest.artist} is #${queuePosition} in the queue.${cheerMessage} https://calamarigoldrequests.com`);
+          } else {
+            console.log(chalk.yellow(`[Spotify] Could not find track for text search: "${searchQuery}"`));
+            const cheerMessage = message ? ` - "${message}"` : '';
+            sendChatMessage(`@${userName} Thanks for the ${amount} bits! I couldn't find a song matching "${searchQuery}".${cheerMessage} https://calamarigoldrequests.com`);
+          }
+        } catch (error) {
+          console.error(chalk.red('[Spotify] Error processing text search cheer:'), error);
+          const cheerMessage = message ? ` - "${message}"` : '';
+          sendChatMessage(`@${userName} Thanks for the ${amount} bits! There was an error processing your song request.${cheerMessage} https://calamarigoldrequests.com`);
+        }
+      }
+    } catch (error) {
+      console.error(chalk.red('[StreamElements] Error processing cheer:'), error);
     }
   };
 
@@ -2477,7 +2651,7 @@ async function startServer() {
           io.emit('raffleUpdate', state.rafflePool);
 
           console.log(chalk.green(`[Raffle] Added "${spotifyRequest.title}" by ${spotifyRequest.artist} (from Spotify URL) to raffle pool. Requester: ${spotifyRequest.requester}`));
-          sendChatMessage(`@${userName} Your free request for "${spotifyRequest.title}" by ${spotifyRequest.artist} (from Spotify link) has been added to the raffle pool! Your song will have a chance to be pulled every ${AUTO_FILL_RAFFLE_INTERVAL} songs. https://calamarigoldrequests.com`);
+          sendChatMessage(`@${userName} Your free request for "${spotifyRequest.title}" by ${spotifyRequest.artist} has been added to the raffle pool! Your song will have a chance to be pulled every ${AUTO_FILL_RAFFLE_INTERVAL} songs. https://calamarigoldrequests.com`);
 
         } catch (error) {
           console.error(chalk.red('[Raffle] Error processing Spotify URL:'), error);
@@ -2533,7 +2707,7 @@ async function startServer() {
   };
 
   // Connect to StreamElements using the modular approach
-  connectToStreamElements(streamElementsConfig, onTipCallback, onRedemptionCallback);
+  connectToStreamElements(streamElementsConfig, onTipCallback, onRedemptionCallback, onCheerCallback);
   
   console.log(chalk.blue('[Server] Initializing HTTP listener...')); // Added detailed logging
   // Use the custom HTTP server for listening
@@ -2841,7 +3015,7 @@ async function validateAndAddSong(request, bypassRestrictions = false, isRaid = 
       let successMessage = `@${userName} `;
       if (request.requestType === 'donation') {
           const donationMessage = request.message ? ` - "${request.message}"` : '';
-          successMessage += `🎵 Thanks for the ${request.donationInfo?.amount} ${request.donationInfo?.currency} donation! Your priority request for "${finalSongRequest.title}" by ${finalSongRequest.artist} is #${queuePosition} in the queue.${donationMessage}`;
+          successMessage += `🎵 Thanks for the ${request.donationInfo?.amount} ${request.donationInfo?.currency}! Your priority request for "${finalSongRequest.title}" by ${finalSongRequest.artist} is #${queuePosition} in the queue.${donationMessage}`;
       } else {
           successMessage += `🎵 Your free request for "${finalSongRequest.title}" by ${finalSongRequest.artist} is #${queuePosition} in the queue. Donate $10 to bump up your song!`;
       }
