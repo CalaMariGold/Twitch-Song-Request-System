@@ -460,6 +460,19 @@ io.on('connection', (socket) => {
             }
         }
 
+        // Check if this is a Mari's Choice song (should go to top of queue)
+        if (requestToAdd.requestType === 'marisChoice') {
+            console.log(chalk.blue(`[Admin:${socket.id}] Adding Mari's Choice song to top of queue...`));
+            try {
+                await validateAndAddSong(requestToAdd, bypass, true); // Pass true for isRaid (same behavior)
+                return; // Exit early
+            } catch (error) {
+                console.error(chalk.red('[Admin] Error adding Mari\'s Choice song:'), error);
+                socket.emit('addSongError', { message: 'Failed to add Mari\'s Choice song' });
+                return;
+            }
+        }
+
         try {
             await validateAndAddSong(requestToAdd, bypass);
             // Broadcast counts after potentially adding a song
@@ -2801,7 +2814,8 @@ async function validateAndAddSong(request, bypassRestrictions = false, isRaid = 
       
       position = 0; // First position (0-indexed)
       queuePosition = 1; // 1-based for user messages
-      console.log(chalk.magenta(`[Queue] RAID song added to TOP of queue at position 1`));
+      const songType = request.requestType === 'raid' ? 'RAID' : 'MARI\'S CHOICE';
+      console.log(chalk.magenta(`[Queue] ${songType} song added to TOP of queue at position 1`));
   } else {
       // Normal queue addition using slot system
       position = addSongToQueue(finalSongRequest); // This handles DB insertion and state update
@@ -2814,6 +2828,7 @@ async function validateAndAddSong(request, bypassRestrictions = false, isRaid = 
 
   const requestSource = request.requestType === 'donation' ? `donation (${request.donationInfo?.amount} ${request.donationInfo?.currency})` : 
                         request.requestType === 'raid' ? 'RAID (top priority)' :
+                        request.requestType === 'marisChoice' ? 'MARI\'S CHOICE (top priority)' :
                         'channel points';
   console.log(chalk.green(`[Queue] Added song "${finalSongRequest.title}" by ${finalSongRequest.artist}. Type: ${request.requestType}. Requester: ${userName}. Position: #${queuePosition}. Source: ${requestSource}`));
 

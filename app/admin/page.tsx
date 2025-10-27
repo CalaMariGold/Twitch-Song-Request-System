@@ -125,7 +125,7 @@ export default function AdminDashboard() {
   const [newBlockUsername, setNewBlockUsername] = useState("")
   const [newBlacklistTerm, setNewBlacklistTerm] = useState("")
   const [newBlacklistType, setNewBlacklistType] = useState<BlacklistItem['type']>('keyword')
-  const [requestType, setRequestType] = useState<'channelPoint' | 'donation' | 'raffle' | 'raid'>('channelPoint')
+  const [requestType, setRequestType] = useState<'channelPoint' | 'donation' | 'raffle' | 'raid' | 'marisChoice'>('marisChoice')
   const [bypassRestrictions, setBypassRestrictions] = useState(false)
   const [isSpotifyLinkDialogOpen, setIsSpotifyLinkDialogOpen] = useState(false)
   const [editingRequestId, setEditingRequestId] = useState<string | null>(null)
@@ -1493,7 +1493,17 @@ export default function AdminDashboard() {
                               Points
                             </Badge>
                           )}
-                           {appState.activeSong.requestType !== 'donation' && appState.activeSong.requestType !== 'channelPoint' && (
+                          {appState.activeSong.requestType === 'raid' && (
+                            <Badge variant="secondary" className="px-1.5 py-0.5 text-xs bg-gradient-to-r from-orange-500 to-red-500 text-white font-semibold border-orange-500 shadow-md">
+                              🚀 Raid
+                            </Badge>
+                          )}
+                          {appState.activeSong.requestType === 'marisChoice' && (
+                            <Badge variant="secondary" className="px-1.5 py-0.5 text-xs bg-gradient-to-r from-purple-500 to-pink-500 text-white font-semibold border-purple-500 shadow-md">
+                              💖 Mari's Choice
+                            </Badge>
+                          )}
+                           {appState.activeSong.requestType !== 'donation' && appState.activeSong.requestType !== 'channelPoint' && appState.activeSong.requestType !== 'raid' && appState.activeSong.requestType !== 'marisChoice' && (
                               <Badge variant="secondary" className="px-1.5 py-0.5 text-xs">
                                   {appState.activeSong.requestType}
                               </Badge>
@@ -1743,6 +1753,11 @@ export default function AdminDashboard() {
                                          {song.requestType === 'raid' && (
                                            <Badge variant="secondary" className="px-1.5 py-0.5 text-xs bg-gradient-to-r from-orange-500 to-red-500 text-white font-semibold border-orange-500 shadow-md">
                                              🚀 Raid
+                                           </Badge>
+                                         )}
+                                         {song.requestType === 'marisChoice' && (
+                                           <Badge variant="secondary" className="px-1.5 py-0.5 text-xs bg-gradient-to-r from-purple-500 to-pink-500 text-white font-semibold border-purple-500 shadow-md">
+                                             💖 Mari's Choice
                                            </Badge>
                                          )}
                                         </div>
@@ -2124,6 +2139,16 @@ export default function AdminDashboard() {
                                                Points
                                              </Badge>
                                            )}
+                                           {song.requestType === 'raid' && (
+                                             <Badge variant="secondary" className="px-1.5 py-0.5 text-xs bg-gradient-to-r from-orange-500 to-red-500 text-white font-semibold border-orange-500 shadow-md">
+                                               🚀 Raid
+                                             </Badge>
+                                           )}
+                                           {song.requestType === 'marisChoice' && (
+                                             <Badge variant="secondary" className="px-1.5 py-0.5 text-xs bg-gradient-to-r from-purple-500 to-pink-500 text-white font-semibold border-purple-500 shadow-md">
+                                               💖 Mari's Choice
+                                             </Badge>
+                                           )}
                                         </div>
                                         {/* START: Added Spotify Details */} 
                                         {song.spotifyData && (
@@ -2306,14 +2331,15 @@ export default function AdminDashboard() {
                   className="bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:border-purple-500 focus:ring-purple-500"
                  />
                 {/* Consistent Select style */}
-                <Select onValueChange={(value: 'channelPoint' | 'donation' | 'raffle' | 'raid') => setRequestType(value)} defaultValue={requestType}>
+                <Select onValueChange={(value: 'marisChoice' | 'raid' | 'donation' | 'channelPoint' | 'raffle' ) => setRequestType(value)} defaultValue={requestType}>
                     <SelectTrigger className="w-full bg-gray-700 border-gray-600 text-white focus:border-purple-500 focus:ring-purple-500">
                         <SelectValue placeholder="Select request type" />
                     </SelectTrigger>
                     <SelectContent className="bg-gray-800 border-gray-700 text-white">
-                        <SelectItem value="channelPoint" className="focus:bg-gray-700">Channel Point (Queue)</SelectItem>
-                        <SelectItem value="donation" className="focus:bg-gray-700">Donation (Priority Queue)</SelectItem>
+                        <SelectItem value="marisChoice" className="focus:bg-gray-700">💖 Mari's Choice (Top Priority)</SelectItem>
                         <SelectItem value="raid" className="focus:bg-gray-700">🚀 Raid (Top Priority)</SelectItem>
+                        <SelectItem value="donation" className="focus:bg-gray-700">💲 Donation (Priority Queue)</SelectItem>
+                        <SelectItem value="channelPoint" className="focus:bg-gray-700">🟣 Channel Point (Queue)</SelectItem>
                         <SelectItem value="raffle" className="focus:bg-gray-700">🎲 Raffle Pool</SelectItem>
                     </SelectContent>
                 </Select>

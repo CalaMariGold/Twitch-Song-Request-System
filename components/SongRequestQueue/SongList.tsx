@@ -161,18 +161,23 @@ export function SongList({
                       {song.requester}
                     </Link>
                     {song.requestType === 'donation' && (
-                       <Badge variant="secondary" className="px-1.5 py-0.5 text-xs bg-brand-purple-neon/80 text-brand-black font-semibold border-brand-purple-neon shadow-sm">
+                       <Badge variant="secondary" className="px-1.5 py-0.5 text-xs bg-green-800 text-green-200 border-green-700">
                         Dono
                       </Badge>
                     )}
                     {song.requestType === 'channelPoint' && (
-                      <Badge variant="outline" className="px-1.5 py-0.5 text-xs bg-brand-pink-neon/80 text-brand-black font-semibold border-brand-pink-neon shadow-sm">
+                      <Badge variant="outline" className="px-1.5 py-0.5 text-xs bg-purple-800 text-purple-200 border-purple-700">
                         Points
                       </Badge>
                     )}
                     {song.requestType === 'raid' && (
                       <Badge variant="secondary" className="px-1.5 py-0.5 text-xs bg-gradient-to-r from-orange-500 to-red-500 text-white font-semibold border-orange-500 shadow-md">
                         🚀 Raid
+                      </Badge>
+                    )}
+                    {song.requestType === 'marisChoice' && (
+                      <Badge variant="secondary" className="px-1.5 py-0.5 text-xs bg-gradient-to-r from-purple-500 to-pink-500 text-white font-semibold border-purple-500 shadow-md">
+                        💖 Mari's Choice
                       </Badge>
                     )}
                   </div>
