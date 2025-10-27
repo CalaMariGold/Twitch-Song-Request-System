@@ -1800,7 +1800,19 @@ export default function AdminDashboard() {
                                             >
                                               <Trash2 className="h-4 w-4 text-yellow-500 hover:text-yellow-400" />
                                             </Button>
-                                          ) : song.slotType !== 'raffle_placeholder' && (
+                                          ) : song.slotType === 'raffle_placeholder' ? (
+                                            // Raffle placeholders: show delete button to allow removing them
+                                            <Button 
+                                              variant="ghost" 
+                                              size="sm" 
+                                              className="h-8 w-8 p-0" 
+                                              onClick={() => handleRemoveSong(song.id)} 
+                                              title="Delete Raffle Placeholder Slot" 
+                                              disabled={!isConnected}
+                                            >
+                                              <Trash2 className="h-4 w-4 text-purple-500 hover:text-purple-400" />
+                                            </Button>
+                                          ) : (
                                             // Regular songs: show all action buttons
                                             <>
                                               {/* Edit Spotify Button */}

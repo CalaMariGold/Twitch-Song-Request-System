@@ -488,28 +488,19 @@ io.on('connection', (socket) => {
         
         const songToRemove = state.queue[songIndex];
         
-        // Don't allow deleting raffle placeholders (but DO allow empty slots)
-        if (songToRemove.slotType === 'raffle_placeholder') {
-            console.warn(chalk.yellow(`[Admin:${socket.id}] Cannot delete raffle placeholder: ${songId}`));
-            socket.emit('songRemoveError', { message: 'Cannot delete raffle placeholders (maintains queue structure)' });
-            return;
-        }
-        
-        // Check if this is an empty slot
+        // Check if this is an empty slot or raffle placeholder
         const isEmptySlot = songToRemove.slotType === 'empty';
+        const isRafflePlaceholder = songToRemove.slotType === 'raffle_placeholder';
         
         // Remove from database
         db.removeSongFromDbQueue(songId);
         
-        if (isEmptySlot) {
-            // For empty slots, just remove them (don't replace)
+        if (isEmptySlot || isRafflePlaceholder) {
+            // For empty slots and raffle placeholders, just remove them
             state.queue.splice(songIndex, 1);
             
             // Recalculate slot positions for remaining slots
             recalculateSlotPositions();
-            
-            // Add a new slot at the end to maintain queue structure
-            addNewEmptySlot();
             
             // Update database with new positions
             db.clearDbQueue();
@@ -519,7 +510,9 @@ io.on('connection', (socket) => {
             
             io.emit('queueUpdate', state.queue);
             broadcastTotalCounts();
-            console.log(chalk.magenta(`[Admin:${socket.id}] Empty slot removed at position ${songIndex + 1}. Queue positions recalculated and new slot added at end.`));
+            
+            const slotTypeName = isEmptySlot ? 'empty donation' : 'raffle placeholder';
+            console.log(chalk.magenta(`[Admin:${socket.id}] ${slotTypeName} slot removed at position ${songIndex + 1}. Queue positions recalculated.`));
         } else {
             // For filled songs (donation, channelPoint, raid), replace with appropriate slot
             const slotPosition = songToRemove.slotPosition || (songIndex + 1);
