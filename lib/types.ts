@@ -113,6 +113,7 @@ export interface AllTimeStats {
     topRequesters: { requester: string; request_count: number }[];
     topSongs: { title: string | null; artist: string | null; play_count: number }[]; // Title/Artist can be null
     topArtists: { artist: string | null; play_count: number }[]; // Artist can be null
+    excludeCalaMariGold?: boolean; // Whether CalaMariGold requests were excluded
 }
 
 /**
@@ -197,7 +198,7 @@ export interface SocketEvents {
     updateActiveSong: (song: SongRequest | null) => void;
     updateBlacklist: (newBlacklist: BlacklistItem[]) => void; // Assuming full list update based on frontend code
     updateBlockedUsers: (newBlockedUsers: BlockedUser[]) => void; // Assuming full list update based on frontend code
-    getAllTimeStats: () => void;
+    getAllTimeStats: (data?: { excludeCalaMariGold?: boolean }) => void;
     deleteHistoryItem: (id: string) => void;
     markSongAsFinished: (song: SongRequest) => void; // Frontend seems to send the song object
     returnToQueue: (song: SongRequest) => void; // Frontend seems to send the song object

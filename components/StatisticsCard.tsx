@@ -3,6 +3,9 @@ import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/com
 import { BarChart2, Loader2, Music, User, Users, Trophy, Award, Medal } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Switch } from "@/components/ui/switch"
+import { Label } from "@/components/ui/label"
+import { useState } from "react"
 
 interface StatisticsCardProps {
   isLoading: boolean
@@ -13,6 +16,7 @@ interface StatisticsCardProps {
   description?: string
   heightClass?: string
   showAllStats?: boolean
+  socket?: any // Socket.IO client for requesting filtered stats
 }
 
 export function StatisticsCard({
@@ -23,10 +27,22 @@ export function StatisticsCard({
   title = "All-Time Statistics",
   description = "Overall system usage stats.",
   heightClass = "h-[200px]",
-  showAllStats = true
+  showAllStats = true,
+  socket
 }: StatisticsCardProps) {
+  
+  const [excludeCalaMariGold, setExcludeCalaMariGold] = useState(false);
+  
   // Determine default tab based on whether we're showing requesters
   const defaultTab = includeRequesters ? "requesters" : "songs"
+  
+  // Handle toggle change
+  const handleToggleChange = (checked: boolean) => {
+    setExcludeCalaMariGold(checked);
+    if (socket) {
+      socket.emit('getAllTimeStats', { excludeCalaMariGold: checked });
+    }
+  };
   
   // Helper to generate medal icon for top entries
   const getMedalIcon = (index: number) => {
@@ -46,6 +62,23 @@ export function StatisticsCard({
           {title}
         </CardTitle>
         <CardDescription className="text-brand-purple-light/80">{description}</CardDescription>
+        
+        {/* Toggle for excluding CalaMariGold requests */}
+        {socket && (
+          <div className="flex items-center justify-between mt-2 pt-2 border-t border-brand-purple-neon/10">
+            <div className="flex items-center space-x-3">
+              <Switch
+                id="exclude-calamarigold"
+                checked={excludeCalaMariGold}
+                onCheckedChange={handleToggleChange}
+                className="data-[state=checked]:bg-brand-pink-neon"
+              />
+              <Label htmlFor="exclude-calamarigold" className="text-xs text-brand-purple-light/70 cursor-pointer">
+                Exclude CalaMariGold's requests
+              </Label>
+            </div>
+          </div>
+        )}
       </CardHeader>
       <CardContent>
         {isLoading ? (

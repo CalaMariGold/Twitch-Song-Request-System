@@ -65,7 +65,7 @@ export default function PublicDashboard() {
     
     socketInstance.on('connect', () => {
       setIsConnected(true)
-      socketInstance.emit('getAllTimeStats')
+      socketInstance.emit('getAllTimeStats', { excludeCalaMariGold: false })
     })
     
     socketInstance.on('disconnect', () => {
@@ -258,6 +258,7 @@ export default function PublicDashboard() {
               // Use brand colors, add blur and subtle glow
               className="bg-brand-purple-deep/70 border-brand-purple-neon/30 backdrop-blur-md shadow-glow-purple-sm"
               heightClass="h-[220px]"
+              socket={socket}
             />
           </div>
 

@@ -1302,9 +1302,10 @@ io.on('connection', (socket) => {
     });
 
     // Handle getAllTimeStats request
-    socket.on('getAllTimeStats', () => {
+    socket.on('getAllTimeStats', (data) => {
         try {
-            const stats = fetchAllTimeStats(db.getDb());
+            const excludeCalaMariGold = data?.excludeCalaMariGold || false;
+            const stats = fetchAllTimeStats(db.getDb(), excludeCalaMariGold);
             socket.emit('allTimeStatsUpdate', stats);
         } catch (error) {
             console.error(chalk.red('[Statistics] Failed to get all-time statistics:'), error);

@@ -244,7 +244,7 @@ export default function AdminDashboard() {
       // --- END ---
 
       socketInstance.emit('getState')
-      socketInstance.emit('getAllTimeStats')
+      socketInstance.emit('getAllTimeStats', { excludeCalaMariGold: false })
       setIsLoadingStats(true)
     })
     
@@ -2200,6 +2200,7 @@ export default function AdminDashboard() {
             title="All-Time Statistics"
             description="Overall system usage stats."
             className="mt-6"
+            socket={socket}
           />
         </div>
 
