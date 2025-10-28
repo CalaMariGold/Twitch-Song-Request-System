@@ -7,8 +7,8 @@ const Footer = () => {
   const links = [
     { href: 'https://github.com/CalaMariGold/Twitch-Song-Request-System', label: 'GitHub Project (open source!)', icon: Github },
     { href: 'https://www.twitch.tv/calamarigold', label: 'Twitch', icon: Twitch },
-    { href: 'https://bsky.app/profile/calamari.gold', label: 'Bluesky', icon: BlueskyIcon },
-    { href: 'https://calamari.gold/discord', label: 'Discord', icon: DiscordIcon },
+    { href: 'https://bsky.app/profile/calamarigold.bsky.social', label: 'Bluesky', icon: BlueskyIcon },
+    { href: 'https://discord.gg/pmMzBfRBY4', label: 'Discord', icon: DiscordIcon },
     { href: 'https://www.instagram.com/calamarigold_ttv', label: 'Instagram', icon: Instagram },
     { href: 'https://youtube.com/c/CalaMariGold', label: 'YouTube', icon: Youtube },
     { href: 'https://www.ko-fi.com/calamarigold', label: 'Ko-fi', icon: Coffee },
