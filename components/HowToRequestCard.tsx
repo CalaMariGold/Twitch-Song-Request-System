@@ -1,5 +1,5 @@
 import { Card, CardHeader, CardTitle, CardContent } from "./ui/card";
-import { Gift, DollarSign, Star, AlertTriangle, ExternalLink, Zap } from "lucide-react";
+import { Music, DollarSign, Star, Ban, ExternalLink, AlertTriangle } from "lucide-react";
 import { Button } from "./ui/button";
 import React from "react";
 
@@ -12,7 +12,7 @@ const HowToRequestCard: React.FC<HowToRequestCardProps> = ({ raffleInterval = 3,
   <Card className="bg-brand-purple-deep/70 border-brand-purple-neon/30 backdrop-blur-md shadow-glow-purple-sm">
     <CardHeader className="pb-2 pt-3">
       <CardTitle className="text-brand-pink-light flex items-center gap-2 text-glow-pink">
-        <Gift size={18} />
+        <Music size={26} className="mt-1.5" />
         How to Request
       </CardTitle>
     </CardHeader>
@@ -31,19 +31,19 @@ const HowToRequestCard: React.FC<HowToRequestCardProps> = ({ raffleInterval = 3,
           rel="noopener noreferrer"
           className="block my-3.0"
         >
-          <Button 
-            variant="default" 
-            size="sm" 
-            className="w-full bg-gradient-to-r from-brand-pink-light to-brand-pink-neon text-brand-black font-bold hover:opacity-90 shadow-md hover:shadow-glow-pink-lg text-glow-white-xs transition-transform duration-200 hover:scale-[1.02]"
-          >
-            Tip Here to Request <ExternalLink size={14} className="ml-1.5" />
-          </Button>
         </a>
         <ul className="list-disc list-inside text-brand-purple-light/80 space-y-0.5 pl-1 text-xs">
           <li>Donations get queue priority!</li>
           <li>All songs: $10 OR 1000 Twitch bits</li>
           <li>Max 10 min duration</li>
         </ul>
+        <Button 
+            variant="default" 
+            size="sm" 
+            className="w-full bg-gradient-to-r from-brand-pink-light to-brand-pink-neon text-brand-black font-bold hover:opacity-90 shadow-md hover:shadow-glow-pink-lg text-glow-white-xs transition-transform duration-200 hover:scale-[1.02]"
+          >
+            Tip Here to Request <ExternalLink size={14} className="ml-1.5" />
+          </Button>
         <div className="mt-2 p-2 bg-gradient-to-r from-purple-500/20 to-pink-500/20 border border-purple-400/30 rounded-md">
           <p className="text-xs text-purple-200 font-medium text-center">
             🎉 NEW: Bits are now accepted! 🎉
@@ -74,10 +74,11 @@ const HowToRequestCard: React.FC<HowToRequestCardProps> = ({ raffleInterval = 3,
         <>
           <div className="space-y-1">
             <h4 className="font-semibold text-white flex items-center gap-1.5">
-              <AlertTriangle size={16} className="text-orange-400" /> Channel Points Disabled
+              <Ban size={16} className="text-orange-400" /> Free Requests Disabled
             </h4>
             <p className="text-brand-purple-light/90 text-xs">
-              Channel point requests are currently disabled. The queue is in donation-only mode. Use donations or bits to request songs!
+              The queue is in donation-only mode. Use donations or bits to request songs!<br />
+              Channel point requests are usually enabled on Fridays and Saturdays.
             </p>
           </div>
 
