@@ -1,9 +1,14 @@
 import { Card, CardHeader, CardTitle, CardContent } from "./ui/card";
-import { Gift, DollarSign, Star, AlertTriangle, ExternalLink } from "lucide-react";
+import { Gift, DollarSign, Star, AlertTriangle, ExternalLink, Zap } from "lucide-react";
 import { Button } from "./ui/button";
 import React from "react";
 
-const HowToRequestCard: React.FC = () => (
+interface HowToRequestCardProps {
+  raffleInterval?: number;
+  queueMode?: 'raffle' | 'donation-only';
+}
+
+const HowToRequestCard: React.FC<HowToRequestCardProps> = ({ raffleInterval = 3, queueMode = 'raffle' }) => (
   <Card className="bg-brand-purple-deep/70 border-brand-purple-neon/30 backdrop-blur-md shadow-glow-purple-sm">
     <CardHeader className="pb-2 pt-3">
       <CardTitle className="text-brand-pink-light flex items-center gap-2 text-glow-pink">
@@ -12,13 +17,13 @@ const HowToRequestCard: React.FC = () => (
       </CardTitle>
     </CardHeader>
     <CardContent className="space-y-3 px-3 pb-3 pt-1 text-sm">
-      {/* Donation Section */}
+      {/* Priority Request Section */}
       <div className="space-y-1.5">
         <h4 className="font-semibold text-white flex items-center gap-1.5 pt-1">
           <DollarSign size={16} className="text-green-400"/> Priority Request (Donation)
         </h4>
         <p className="text-brand-purple-light/90 text-xs">
-          IMPORTANT: Include the YouTube link, Spotify link, OR Artist & Song Title in your donation message.
+          IMPORTANT: Include the YouTube link, Spotify link, OR Artist & Song Title in your donation/bits message.
         </p>
         <a 
           href="https://streamelements.com/calamarigold/tip" 
@@ -36,24 +41,49 @@ const HowToRequestCard: React.FC = () => (
         </a>
         <ul className="list-disc list-inside text-brand-purple-light/80 space-y-0.5 pl-1 text-xs">
           <li>Donations get queue priority!</li>
-          <li>All songs: $10 flat rate</li>
+          <li>All songs: $10 OR 1000 Twitch bits</li>
           <li>Max 10 min duration</li>
         </ul>
+        <div className="mt-2 p-2 bg-gradient-to-r from-purple-500/20 to-pink-500/20 border border-purple-400/30 rounded-md">
+          <p className="text-xs text-purple-200 font-medium text-center">
+            🎉 NEW: Bits are now accepted! 🎉
+          </p>
+        </div>
       </div>
 
       <hr className="border-brand-purple-dark/50" />
 
-      {/* Channel Points Section */}
-      <div className="space-y-1">
-        <h4 className="font-semibold text-white flex items-center gap-1.5">
-          <Star size={16} className="text-yellow-400" /> Channel Point Request
-        </h4>
-        <p className="text-brand-purple-light/90 text-xs">
-          Redeem the 'Request a Song!' reward on Twitch to add a song to the end of the queue.
-        </p>
-      </div>
+      {/* Channel Points Section - Only show in raffle mode */}
+      {queueMode === 'raffle' && (
+        <>
+          <div className="space-y-1">
+            <h4 className="font-semibold text-white flex items-center gap-1.5">
+              <Star size={16} className="text-yellow-400" /> Channel Point Request
+            </h4>
+            <p className="text-brand-purple-light/90 text-xs">
+              Redeem the 'Request a Song!' channel point reward (flower icon) in Twitch chat. This will add your song to the raffle pool where Mari will pull from after every {raffleInterval} songs.
+            </p>
+          </div>
 
-      <hr className="border-brand-purple-dark/50" />
+          <hr className="border-brand-purple-dark/50" />
+        </>
+      )}
+
+      {/* Donation-Only Mode Notice */}
+      {queueMode === 'donation-only' && (
+        <>
+          <div className="space-y-1">
+            <h4 className="font-semibold text-white flex items-center gap-1.5">
+              <AlertTriangle size={16} className="text-orange-400" /> Channel Points Disabled
+            </h4>
+            <p className="text-brand-purple-light/90 text-xs">
+              Channel point requests are currently disabled. The queue is in donation-only mode. Use donations or bits to request songs!
+            </p>
+          </div>
+
+          <hr className="border-brand-purple-dark/50" />
+        </>
+      )}
 
       {/* Song Rules Section */}
       <div className="space-y-1">

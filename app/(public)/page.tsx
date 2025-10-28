@@ -35,6 +35,8 @@ export default function PublicDashboard() {
   const [totalHistoryCount, setTotalHistoryCount] = useState(0)
   const [songsPlayedToday, setSongsPlayedToday] = useState(0)
   const [isQueueClosed, setIsQueueClosed] = useState(false)
+  const [raffleInterval, setRaffleInterval] = useState(3)
+  const [queueMode, setQueueMode] = useState<'raffle' | 'donation-only'>('raffle')
   const [historyStats, setHistoryStats] = useState({
     totalDurationFormatted: "-",
     averageDurationFormatted: "-",
@@ -114,6 +116,8 @@ export default function PublicDashboard() {
         isLoading: false
       }))
       setIsQueueClosed(initialState.isQueueClosed || false)
+      setRaffleInterval(initialState.raffleInterval || 3)
+      setQueueMode(initialState.queueMode || 'raffle')
       if (initialState.historyStats) {
         setHistoryStats({
           totalDurationFormatted: initialState.historyStats.totalDurationFormatted,
@@ -146,6 +150,11 @@ export default function PublicDashboard() {
     // Listen for today's count update
     socketInstance.on('todaysCountUpdate', (data: { count: number }) => {
       setSongsPlayedToday(data.count);
+    });
+    
+    // Listen for queue mode changes
+    socketInstance.on('modeChange', (mode: 'raffle' | 'donation-only') => {
+      setQueueMode(mode);
     });
     
     // Listen for queue state changes
@@ -269,7 +278,7 @@ export default function PublicDashboard() {
             <PosterCard />
 
             {/* How to Request Card */}
-            <HowToRequestCard />
+            <HowToRequestCard raffleInterval={raffleInterval} queueMode={queueMode} />
 
             {/* Queue Statistics Card - Use brand colors, add blur and subtle glow */}
             <QueueStatisticsCard

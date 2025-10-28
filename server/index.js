@@ -3017,7 +3017,7 @@ async function validateAndAddSong(request, bypassRestrictions = false, isRaid = 
           const donationMessage = request.message ? ` - "${request.message}"` : '';
           successMessage += `🎵 Thanks for the ${request.donationInfo?.amount} ${request.donationInfo?.currency}! Your priority request for "${finalSongRequest.title}" by ${finalSongRequest.artist} is #${queuePosition} in the queue.${donationMessage}`;
       } else {
-          successMessage += `🎵 Your free request for "${finalSongRequest.title}" by ${finalSongRequest.artist} is #${queuePosition} in the queue. Donate $10 to bump up your song!`;
+          successMessage += `🎵 Your free request for "${finalSongRequest.title}" by ${finalSongRequest.artist} is #${queuePosition} in the queue. Donate $10 or cheer 1k bits to bump up your song!`;
       }
       sendChatMessage(successMessage + ' https://calamarigoldrequests.com');
   }
