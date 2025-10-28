@@ -14,7 +14,7 @@ This is a real-time, web-based song request system designed for Twitch streamers
 
 ### **Dynamic Queue System**
 - **Slot-based queue** with pre-allocated positions
-- **Raffle mode** - Channel points go into a raffle pool, randomly selected every X songs
+- **Raffle mode** - Channel points go into a raffle pool, randomly selected after every X donation songs
 - **Donation-only mode** - All slots reserved for paid requests
 - **Real-time updates** via Socket.IO
 
@@ -36,24 +36,8 @@ This is a real-time, web-based song request system designed for Twitch streamers
 - **History search** with full database search capabilities
 - **Request type tracking** (donations vs channel points vs bits)
 
-## **Live Demo**
 
-This site is currently deployed and active at: **[calamarigoldrequests.com](https://calamarigoldrequests.com)**
-
-## **Queue Modes**
-
-### **Raffle Mode** (Default)
-- Every X slot is reserved for channel point requests
-- Channel points go into a raffle pool
-- Admin randomly pulls songs to fill raffle slots
-- Donations and bits fill empty slots immediately
-
-### **Donation-Only Mode**
-- All slots reserved for paid requests
-- Channel point requests are disabled
-- Shows "Free Requests Disabled" notice
-
-## 🛠️ **Tech Stack**
+## **Tech Stack**
 
 | Category | Technology |
 |----------|------------|
@@ -64,7 +48,7 @@ This site is currently deployed and active at: **[calamarigoldrequests.com](http
 | **UI Components** | Radix UI, Lucide React |
 | **Animations** | Framer Motion |
 
-## 📁 **Project Structure**
+## **Project Structure**
 
 ```
 ├── app/                    # Next.js app directory
@@ -109,6 +93,10 @@ While this project is primarily for my own streams, I welcome contributions! Fee
 ## **License**
 
 This project is open source. Feel free to use it for your own streams or as a learning resource!
+
+## **Live Demo**
+
+This site is currently deployed and active at: **[calamarigoldrequests.com](https://calamarigoldrequests.com)**
 
 ---
 
