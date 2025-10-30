@@ -25,25 +25,27 @@ const HowToRequestCard: React.FC<HowToRequestCardProps> = ({ raffleInterval = 3,
         <p className="text-brand-purple-light/90 text-xs">
           IMPORTANT: Include the YouTube link, Spotify link, OR Artist & Song Title in your donation/bits message.
         </p>
-        <a 
-          href="https://streamelements.com/calamarigold/tip" 
-          target="_blank" 
-          rel="noopener noreferrer"
-          className="block my-3.0"
-        >
-        </a>
+        {/* Tip link button */}
+        <Button 
+            asChild
+            variant="default" 
+            size="sm" 
+            className="w-full bg-gradient-to-r from-brand-pink-light to-brand-pink-neon text-brand-black font-bold hover:opacity-90 shadow-md hover:shadow-glow-pink-lg text-glow-white-xs transition-transform duration-200 hover:scale-[1.02] my-3"
+          >
+            <a 
+              href="https://streamelements.com/calamarigold/tip" 
+              target="_blank" 
+              rel="noopener noreferrer"
+            >
+              Tip Here to Request <ExternalLink size={14} className="ml-1.5" />
+            </a>
+          </Button>
         <ul className="list-disc list-inside text-brand-purple-light/80 space-y-0.5 pl-1 text-xs">
           <li>Donations get queue priority!</li>
           <li>All songs: $10 OR 1000 Twitch bits</li>
           <li>Max 10 min duration</li>
         </ul>
-        <Button 
-            variant="default" 
-            size="sm" 
-            className="w-full bg-gradient-to-r from-brand-pink-light to-brand-pink-neon text-brand-black font-bold hover:opacity-90 shadow-md hover:shadow-glow-pink-lg text-glow-white-xs transition-transform duration-200 hover:scale-[1.02]"
-          >
-            Tip Here to Request <ExternalLink size={14} className="ml-1.5" />
-          </Button>
+        
         <div className="mt-2 p-2 bg-gradient-to-r from-purple-500/20 to-pink-500/20 border border-purple-400/30 rounded-md">
           <p className="text-xs text-purple-200 font-medium text-center">
             🎉 NEW: Bits are now accepted! 🎉
