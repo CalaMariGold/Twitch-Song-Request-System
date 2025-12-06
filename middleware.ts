@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
-import { cookies } from 'next/headers'
 
 // List of Twitch usernames that have admin access from environment variable
 const ADMIN_USERNAMES = process.env.ADMIN_USERNAMES 
@@ -8,6 +7,13 @@ const ADMIN_USERNAMES = process.env.ADMIN_USERNAMES
   : []
 
 export function middleware(request: NextRequest) {
+  // CVE-2025-29927 Defense-in-Depth: Block requests with x-middleware-subrequest header
+  // This header should only be set internally by Next.js, never by external clients
+  // Even though this is patched in 14.2.25+, this provides additional security
+  if (request.headers.has('x-middleware-subrequest')) {
+    return new NextResponse(null, { status: 403 })
+  }
+
   // Skip middleware for Socket.IO connections
   if (request.nextUrl.pathname.startsWith('/socket.io')) {
     return NextResponse.next()
